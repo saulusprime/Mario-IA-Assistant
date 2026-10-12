@@ -410,6 +410,25 @@ Conseguenze pratiche:
   I log delle prove del 12/10 restano quindi solo in locale: se servono come prova documentale,
   copiarne gli estratti in `docs/`.
 
+### 12/10 19:16–19:21 — Verifiche dal vivo della sezione 1 (`tools/live_checks.py`)
+
+- Nuovo script guidato a voce: pulsante, pantaloni, gesti con RAW+GEST combinati, scanner con
+  TAG+RGB combinati, RSSI, allarmi, disconnessione comandata (con riconnessione), spegnimento.
+- Esiti: pulsante OK; pantaloni cambiati dal vivo (0x21 Mario, 0x18 Peach confermati, **0x01
+  nuovo**, 0x00 tra un paio e l'altro); RSSI sempre 0 (non implementata); allarmi: i quattro tipi
+  rispondono "nessun problema"; `DISCONNECT` → `WILL_DISCONNECT`, link chiuso in 0,2 s e
+  riconnessione senza tasto; `SWITCH_OFF` → `WILL_SWITCH_OFF` ×2 + `WILL_DISCONNECT` ×2, spento.
+- Modalità combinata: accettata su porte 0 e 1 (404 + 162 messaggi 0x46), ma lo script leggeva la
+  maschera dei dataset come little endian e scartava tutto; dal log è emerso che Mario la manda con
+  il **byte alto per primo** (`00 1f`) e che con multi-update manda solo i dataset cambiati.
+  Corretti `lwp3.describe` e lo script; i dati sono stati recuperati rianalizzando il log.
+- Gesti recuperati dal log: salto `0x8000` anche nel sollevare/appoggiare/colpire; scossa `0xA111`;
+  girare in piedi `0x8102` (bit `0x0002` nuovo); inclinare `0x0100`; cadere `0x2100`; fermo nulla.
+  Accelerometro: int8, fermo in mano y ≈ 17..60 (gravità sull'asse y), scossa fino a ±98 su z.
+- Scanner TAG+RGB: i codici colore TAG sono tutti corretti (bianco, nero, giallo, nougat, verde,
+  rosso, blu: l'utente ha superfici rosse e blu). Del modo RGB si aggiorna solo il primo canale
+  (0..189, più alto sul chiaro); gli altri due restano 117 e 130: da riprovare in modo singolo.
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -430,6 +449,7 @@ Conseguenze pratiche:
 | `mario/web/templates/`, `static/` | pagine HTML, CSS e JavaScript |
 | `tools/capture_btmon.sh` | cattura HCI con btmon durante un tentativo di connessione (sudo) |
 | `tools/diag_connect.py` | proprietà BlueZ del dispositivo + tentativo di connessione prima/dopo la rimozione del record |
+| `tools/live_checks.py` | verifiche dal vivo guidate a voce della sezione 1 del TODO (pulsante, pantaloni, gesti, RGB, RSSI, allarmi, disconnect, off) |
 | `tools/catalog_tiles.py` | sessione guidata con le basette reali: annunci vocali, eventi porta 3 per basetta, aggiornamento del database |
 | `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |

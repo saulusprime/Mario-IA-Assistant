@@ -7,29 +7,39 @@ verificato, `[x]` fatto.
 
 ## 1. Da verificare dal vivo (bastano Mario e `./run.sh monitor`)
 
-- [~] **Pantaloni (porta 2, modo PANT)**: verificato che la sottoscrizione funziona e che
-      alla sottoscrizione arriva il valore corrente (`Mario normale`, 17:45). Resta da
-      provare il cambio dei pantaloni dal vivo e confrontare i codici con `codes.PANTS`.
-- [~] **Barcode (porta 1, modo TAG)**: verificati dal vivo il 12/10 (`tools/catalog_tiles.py`)
-      `0xB8` Start Mario, `0x02` Goomba, `0x2E` Nuvola, `0x14` Rotazione. **Da identificare**
-      aggiunte `0x0160` aereo e `0x015B` carrello minerario (entrambe del set 71425 Diddy Kong);
-      `0x00F5` è il Clown Koopa di Bowser Jr. (aggiunto; verificare se `0x0099` della community
-      è un'altra basetta di Bowser Jr.). L'ottava basetta condivide il codice `0x0002` del Goomba: annotare quale nemico è.
-- [ ] **Gesti**: dare un nome ai bit `0x0002`, `0x0008`, `0x0020`, `0x0040` (quasi sempre
-      insieme all'urto `0x0001`) e `0x0080`. Procedura: un gesto alla volta, annotando
-      cosa si fa fisicamente; in parallelo `monitor --raw-accel` per vedere l'accelerometro.
-- [ ] **Scanner in modo RGB (porta 1 modo 1)**: `monitor --sub 1:1` su pezzi di colore
-      noto per capire la scala dei tre byte.
-- [ ] **Pulsante**: `watch button` nella shell e premere il tasto sulla schiena; verificare
-      che arrivi `BUTTON premuto/rilasciato` (poi, con l'assistente, ascolto on/off: sezione 7).
-- [ ] **Allarmi hub**: `alert low_voltage on` e vedere se Mario li manda con batteria bassa.
-- [ ] **RSSI**: la proprietà risponde sempre 0; provare `watch rssi on` per capire se
-      arrivano aggiornamenti o se Mario non la implementa.
-- [ ] **Modalità combinata** (porte 0 e 1 sono combinabili, combinazione `[0, 1]`):
-      `combo 1 0 0:0 0:1 1:0 1:1 1:2` nella shell e controllare che arrivino messaggi
-      `PORT_VALUE_COMBINED` (0x46) decodificati correttamente.
-- [ ] **Spegnimento e disconnessione da PC**: `off` e `disconnect` nella shell, verificare
-      `WILL_SWITCH_OFF` / `WILL_DISCONNECT` e che l'app esca pulita.
+Sessione guidata del 12/10 alle 19:16 (`tools/live_checks.py`, log `logs/live-checks-20261012-191602.txt`).
+
+- [~] **Pantaloni (porta 2, modo PANT)**: cambio dal vivo verificato (sequenza con 0x00 "nessun
+      pantalone" tra un paio e l'altro); confermati `0x21` Mario normale e `0x18` Peach; **codice
+      nuovo `0x01`** da identificare con l'utente (quale paio è) e aggiungere a `codes.PANTS`.
+- [~] **Barcode (porta 1, modo TAG)**: verificati `0xB8` Start Mario, `0x02` Goomba, `0x2E` Nuvola,
+      `0x14` Rotazione; aggiunti `0x00F5` Clown Koopa, `0x0160` aereo e `0x015B` carrello minerario
+      (set 71425). Resta la seconda basetta con codice Goomba (quale nemico è).
+- [~] **Gesti**: osservati con accelerometro e gesti insieme (modalità combinata): salto `0x8000`
+      scatta anche sollevando, appoggiando o colpendo Mario; la scossa produce `0xA111` (urto +
+      scossa + rotazione + inversione + salto); girare Mario in piedi dà `0x0100` + salto + il **bit
+      `0x0002`**; inclinarlo `0x0100`; cadere da pochi cm `0x2100`; fermo in mano nessun gesto.
+      Il bit `0x0040` compare con l'urto quando Mario viene appoggiato su una basetta (atterraggio).
+      Restano senza nome `0x0008`, `0x0020`, `0x0080`: ripetere con movimenti più "isolati"
+      (`live_checks.py --steps gesti`) e, per il `0x0002`, girare Mario senza sollevarlo.
+- [~] **Scanner in modo RGB (porta 1 modo 1)**: in modalità combinata TAG+RGB Mario aggiorna solo il
+      primo dei tre canali (0..189, cresce sulle superfici chiare); gli altri due restano fissi (117,
+      130). Da ripetere con il solo modo RGB (`monitor --sub 1:1`) per capire se i tre canali si
+      muovono. Intanto i **codici colore del modo TAG sono verificati**: bianco, nero, giallo, nougat,
+      verde, rosso, blu.
+- [x] **Pulsante**: aggiornamenti `BUTTON` premuto/rilasciato arrivano (12/10).
+- [x] **Allarmi hub**: tutti e quattro (`LOW_VOLTAGE`, `HIGH_CURRENT`, `LOW_SIGNAL_STRENGTH`,
+      `OVER_POWER_CONDITION`) rispondono "nessun problema" alla richiesta e accettano l'abilitazione;
+      resta da vedere se con batteria scarica arriva l'aggiornamento spontaneo.
+- [x] **RSSI**: la proprietà risponde sempre 0 e gli aggiornamenti sono sempre 0 anche allontanando
+      Mario: non implementata dal firmware. Usare l'RSSI dell'advertising in scansione.
+- [x] **Modalità combinata**: funziona su porta 0 (RAW+GEST) e porta 1 (TAG+RGB). Attenzione: Mario
+      manda la maschera dei dataset con il byte alto per primo (`00 1f`) e aggiorna solo i dataset
+      cambiati (multi-update): il ricevitore deve tenere l'ultimo valore di ciascuno. Corretti
+      `lwp3.describe` e `tools/live_checks.py`.
+- [x] **Spegnimento e disconnessione da PC**: `DISCONNECT` → `WILL_DISCONNECT` e link chiuso in
+      0,2 s, Mario resta acceso e si ricollega senza premere il tasto; `SWITCH_OFF` →
+      `WILL_SWITCH_OFF` (×2) + `WILL_DISCONNECT` (×2), scollegato in 6 s, Mario spento.
 
 ## 2. Reverse engineering ancora da fare
 

@@ -37,13 +37,18 @@ PANTS = {
     0x11: "Gatto (Cat)",
     0x12: "Fuoco (Fire)",
     0x14: "Pinguino (Penguin)",
-    0x18: "Peach",
+    0x18: "Peach (verificati dal vivo il 12/10/2026)",
     0x21: "Mario normale",
     0x22: "Costruttore (Builder)",
     0x23: "Ghiaccio (Ice)",
 }
 
-# Porta 0, modo GEST: campo di bit a 16 bit (fonte: legomario.py)
+# Porta 0, modo GEST: campo di bit a 16 bit (fonte: legomario.py). Osservato dal vivo il 12/10/2026
+# (tools/live_checks.py): salto 0x8000 anche sollevando/appoggiando/colpendo Mario; scossa = 0xA111
+# (urto+scossa+rotazione+inversione+salto insieme); girare Mario in piedi = 0x0100 + 0x8000 + bit 0x0002;
+# inclinarlo = 0x0100; cadere da pochi cm = 0x2100; fermo in mano = nessun gesto. Bit 0x0040 visto
+# con l'urto quando Mario viene appoggiato su una basetta (atterraggio?). Pantaloni: codice 0x01 visto
+# il 12/10, da identificare.
 GESTURES = {
     0x0001: "urto (bump)",
     0x0010: "scossa (shake)",
@@ -122,7 +127,8 @@ BARCODES = {
     0x0164: 'Strutzi (Birdo)',
 }
 
-# Porta 1, modo TAG: byte 3-4 = colore del terreno (little endian), 0xFFFF = nessuno
+# Porta 1, modo TAG: byte 3-4 = colore del terreno (little endian), 0xFFFF = nessuno.
+# Verificati dal vivo il 12/10/2026: bianco, nero, giallo, nougat, verde, rosso, blu (tools/live_checks.py).
 COLORS = {
     0x0013: "bianco",
     0x0015: "rosso (lava / fuoco)",

@@ -661,7 +661,8 @@ def describe(msg: Message, port_lookup: Optional[PortLookup] = None,
                             text += f" -> {extra}"
             return text
         if t == MessageType.PORT_VALUE_COMBINED:
-            port, mask, data = p[0], le16(p[1:3]), p[3:]
+            # Mario (fw 6.5.01) manda la maschera dei dataset con il byte alto per primo: `00 1f` = dataset 0..4
+            port, mask, data = p[0], int.from_bytes(bytes(p[1:3]), "big"), p[3:]
             return f"Valore combinato porta {port}: dataset mask 0b{mask:016b} dati {data.hex(' ')}"
         if t == MessageType.PORT_INPUT_FORMAT_SINGLE:
             port, mode, delta, notify = p[0], p[1], struct.unpack("<I", p[2:6])[0], p[6]

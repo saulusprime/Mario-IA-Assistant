@@ -289,6 +289,18 @@ tipo, MAC...) più `0x12` **volume** (0-100), specifica di Mario:
 Il comando `info` interroga davvero il dispositivo, quindi se il firmware espone
 porte o modalità in più rispetto a questa tabella le vedrai nel report.
 
+### Verifiche del 12 ottobre 2026 (`tools/live_checks.py`, `tools/catalog_tiles.py`)
+
+- Pulsante: arrivano gli aggiornamenti premuto/rilasciato. RSSI: sempre 0, non implementata.
+  Allarmi: i quattro tipi rispondono. `DISCONNECT` e `SWITCH_OFF` annunciano `WILL_DISCONNECT` /
+  `WILL_SWITCH_OFF` e chiudono il link.
+- Modalità combinata (porte 0 e 1): funziona, ma la maschera dei dataset arriva con il byte alto
+  per primo e, con multi-update, solo i dataset cambiati vengono inviati.
+- Pantaloni: codici 0x21 e 0x18 confermati, 0x01 nuovo. Colori del modo TAG confermati per sette
+  colori. Basette: sette codici letti, tre nuovi aggiunti (Clown Koopa, aereo, carrello minerario).
+- Gesti: il salto scatta anche sollevando o appoggiando Mario; la scossa accende cinque bit insieme;
+  bit nuovo 0x0002 girando Mario in piedi.
+
 ## Problemi di connessione (MacBook con Bluetooth Broadcom)
 
 Sintomo: Mario viene trovato, compare `Connected: yes` per un istante e subito dopo
