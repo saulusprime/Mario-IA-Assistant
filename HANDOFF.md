@@ -1,0 +1,481 @@
+# HANDOFF — LEGO Mario via Bluetooth LE
+
+Diario dettagliato del lavoro svolto l'11 ottobre 2026 (sessione unica, circa dalle 12:40
+alle 17:40) e stato del progetto per chi lo riprende. Il README spiega *come si usa*;
+questo file spiega *cosa è stato fatto, perché, cosa ha funzionato e cosa no*.
+
+## 1. Obiettivo
+
+Creare un'applicazione Python 3 che comunichi con il LEGO Mario (set 71360) dal PC via
+Bluetooth LE, scopra tutte le funzioni esposte dal dispositivo e permetta la comunicazione
+bidirezionale, sia decodificata sia a byte grezzi.
+
+Risultato: obiettivo raggiunto. Scoperta completa eseguita dal vivo (7 porte, 13
+modalità), lettura e scrittura delle proprietà verificate (volume, nome), sensori letti in
+tempo reale per 3 minuti e 40 secondi, shell interattiva funzionante.
+
+## 2. Ambiente (fatti verificati)
+
+| Elemento | Valore |
+|---|---|
+| PC | MacBookPro12,1 (13", inizio 2015) |
+| Sistema | Debian 13, kernel 6.12.111, BlueZ 5.82, Python 3.13.5 sull'host |
+| Bluetooth | Broadcom BCM20703A1 integrato, USB `05ac:8290`, driver `btusb`, HCI 4.2 |
+| Wi-Fi | Broadcom BCM43602 (`brcmfmac`), stesso modulo e stessa antenna del Bluetooth |
+| Firmware BT | **nessun file `.hcd` in `/lib/firmware/brcm/`**: il chip gira col firmware ROM |
+| Ambiente di lavoro | VS Code da Flatpak: nel sandbox non esistono `bluetoothctl` né `org.bluez` sul bus di sistema |
+| Utente | utente normale nei gruppi `bluetooth` e `sudo` (password richiesta, niente sudo automatico) |
+| Mario | nome iniziale `Mario 5wzZ` (rinominato durante i test con un nome di famiglia, qui `MarioCasa`), firmware 6.5.01, hardware 0.4, LWP 3.0 |
+| Indirizzo di Mario | random privato risolvibile, cambia a ogni accensione (visti 7C:5B:9C…, 61:15:65…, 6C:4E:A9…, 42:6B:D2…, 58:65:93…, 70:52:52…, F4:60:77:5A:20:11 = indirizzo identità dopo il bonding) |
+
+Conseguenze pratiche:
+
+- Tutto ciò che tocca il Bluetooth va eseguito sull'host con `flatpak-spawn --host`.
+  `run.sh` lo fa da solo; il venv `.venv` è stato creato con il Python dell'host.
+- Lo scratchpad del sandbox (`/tmp/claude-…`) non è visibile dall'host: i file di lavoro
+  stanno nel progetto (`logs/`, `docs/`).
+- Le chiamate Bash parallele condividono la stessa shell: un `cd` in una chiamata cambia
+  la directory anche all'altra. Usare sempre percorsi assoluti.
+
+## 3. Cronologia
+
+### 12:40–12:50 — Ricerca del dispositivo
+
+- `bluetoothctl` assente nel sandbox; raggiunto sull'host via `flatpak-spawn`.
+- Prime scansioni: solo dispositivi Samsung (manufacturer 0x0075) e Google Fast Pair.
+- Mario compare solo quando si preme il tasto Bluetooth sulla schiena (icona lampeggiante,
+  circa 30 s): `Mario 5wzZ`, manufacturer `0x0397` LEGO con dati `00 43 03 ff ff 00`
+  (0x43 = system type Mario), servizio `00001623-1212-efde-1623-785feabcd123`, RSSI −38…−61.
+
+### 12:50–13:00 — Creazione del progetto
+
+- Verificato: dal sandbox `org.bluez` non è raggiungibile (`ServiceUnknown`); sull'host
+  Python 3.13.5 senza bleak; creato `.venv` sull'host e installato bleak 3.0.2 (API
+  controllata per firme: `services` è una proprietà, `write_gatt_char(..., response=)`,
+  `BleakScanner(detection_callback, service_uuids, ...)`).
+- Ricerca fonti: documentazione ufficiale LWP3, bricklife/LEGO-Mario-Reveng (porte, modalità,
+  pantaloni, colori), djipko/legomario.py (gesti, barcode, volume `06 00 01 12 01 <v>`),
+  node-poweredup (IO type). Dettagli in README, sezione Fonti.
+- Scritti: `mario/lwp3.py` (codec LWP3 completo, senza dipendenze), `mario/codes.py`
+  (tabelle Mario), `mario/device.py` (bleak, stato hub, richieste con attesa risposta,
+  scoperta automatica), `mario/cli.py` (scan, info, monitor, shell, comandi rapidi),
+  `tests/test_lwp3.py`, `run.sh`, `README.md`.
+- Test offline verdi sia nel sandbox sia nel venv dell'host. `mario/__init__.py` importa
+  `device` in modo pigro così i test girano anche senza bleak.
+
+### 13:00–13:50 — Prima serie di fallimenti di connessione
+
+1. **12:53** Mario trovato, connessione fallita: primo tentativo con errore vuoto, poi
+   `device … not found` perché BlueZ aveva scartato il record. Correzione: ri-scansione a
+   ogni tentativo invece di riusare un `BLEDevice` stale.
+2. **12:55** con debug: `le-connection-abort-by-local` ripetuto (retry interni di bleak),
+   poi `failed to discover services, device disconnected`.
+3. Prova con il solo `bluetoothctl connect`: stesso errore → problema di sistema, non
+   dell'app.
+4. Diagnosi dell'adattatore: Broadcom Apple, `power/control = auto`, `runtime_status =
+   suspended` (autosospensione USB a 2 s), nessun firmware `.hcd`; `bluez-firmware` Debian
+   non contiene il file per questo chip (verificato sul filelist); nemmeno il repository
+   winterheart/broadcom-bt-firmware.
+5. **L'utente ha disattivato l'autosospensione** (`echo on > …/power/control` e
+   `options btusb enable_autosuspend=0` in `/etc/modprobe.d/btusb.conf`).
+6. **13:35** nuovo errore, immediato: `br-connection-canceled` (BlueZ sceglieva il bearer
+   BR/EDR). Il record era già scaduto quando l'ho ispezionato; dal sorgente di BlueZ 5.82
+   un indirizzo random va sempre via LE. Aggiunto all'app: stampa del tipo di indirizzo
+   visto da BlueZ e, su errore `br-connection`, `Adapter1.RemoveDevice` + nuovo tentativo.
+   Non si è più ripresentato.
+7. **13:48** con indirizzo `random`: link stabilito, poi caduto durante la scoperta GATT.
+
+### 14:00–14:10 — Catture btmon (script `tools/capture_btmon.sh`, serve sudo)
+
+- **Cattura 1 (14:02)**: `LE Connection Complete` (intervallo 48,75 ms, supervision
+  420 ms), MTU scambiato, primi servizi letti, ma conferme ACL a 194/335/378 ms e dopo
+  2,3 s `Disconnect Complete, Reason: Connection Timeout (0x08)` (supervision timeout).
+  Subito dopo la connessione BlueZ aveva ripreso la scansione LE al 100% del tempo perché
+  il mio scanner era ancora attivo. Correzione: fermare lo scanner prima di connettersi.
+- **Cattura 2 (14:08)**, scanner fermo: sette volte `Connection Failed to be Established
+  (0x3E)` dopo circa 300 ms (6 intervalli), con `LE Create Connection` identico alla
+  cattura 1. Quindi condizioni radio: Wi-Fi a 2,4 GHz (canale 11, 95% di segnale) sulla
+  stessa antenna, con il firmware ROM che gestisce male la coesistenza.
+- **L'utente ha spostato il Wi-Fi sulla rete a 5 GHz la rete a 5 GHz di casa.** Da lì in poi la
+  connessione riesce in circa 2 secondi.
+
+### 14:40–15:00 — Il blocco silenzioso e la causa vera
+
+- **14:44** `info --json` restava appeso per 8 minuti dopo "mi connetto": nessuna
+  operazione aveva timeout. Aggiunti timeout a connessione (45 s), attivazione notifiche
+  (15 s, poi ripiego `AcquireNotify` 10 s), scritture GATT (5 s), disconnessione (10 s);
+  messaggi di avanzamento spostati su stderr (prima sparivano con `>` nel file).
+- **14:55** con i timeout: "collegato ma non conferma l'attivazione delle notifiche".
+- **Cattura 3 (14:59)**: scoperta GATT completa (servizi GATT, GAP, LEGO con CCCD
+  all'handle 0x0013, servizio OAD Texas Instruments `f000ffc0-…`: il chip BLE di Mario è
+  TI). Poi BlueZ scrive il CCCD di *Service Changed* (handle 0x0004) e Mario risponde
+  `Insufficient Authentication (0x05)`. BlueZ avvia da solo un pairing SMP con IO
+  `DisplayYesNo` e MITM; Mario risponde IO `NoInputNoOutput`, bonding, Secure Connections;
+  la conferma va all'agente di sistema (GNOME) che la nega: `User Confirmation Negative
+  Reply` → `Pairing Failed: Numeric comparison failed` → Mario chiude. Il nostro
+  `StartNotify` restava in coda dietro al pairing. Nota utile: a 7,7 s Mario chiede lui
+  i parametri di connessione (intervallo 30 ms, supervision 3 s).
+
+### 15:00–15:15 — Rimedio: agente di pairing nell'app
+
+- Implementato `BlueZAgent` in `device.py`: oggetto `org.bluez.Agent1` esportato con
+  dbus-fast (già dipendenza di bleak), capacità `NoInputNoOutput`, accetta ogni
+  richiesta; registrato e impostato come agente predefinito per la durata della sessione,
+  rimosso alla disconnessione.
+- Prima della connessione, se Mario non risulta `Bonded`/`Paired`, l'app chiama
+  `Device1.Pair()` (Just Works con bonding); il bond viene salvato da BlueZ.
+- Bug trovato subito: in `device.py` il nome `Message` è la classe LWP3, che nascondeva
+  `dbus_fast.Message`; ora il tipo D-Bus è importato come `DBusMessage`.
+- Aggiunti i comandi `pair`, `unpair` e l'opzione `--no-pair`; opzione `-i/--adapter`
+  per usare un'eventuale chiavetta USB (`hci1`).
+
+### 17:00 — Successo
+
+- `./run.sh info --json` completa la scoperta. Mario risulta bonded in BlueZ con
+  indirizzo identità `F4:60:77:5A:20:11`. Il JSON è in `docs/capabilities-fw-6.5.01.json`.
+- Risultati rispetto alle note della community: firmware 6.5.01; porta 4 (0x55) ha **un
+  solo** modo `Events` (2 × int16) in ingresso e uscita; esiste una **porta 7, IO type
+  0x60, modo `Telemetry` (16 × int8), ingresso e uscita**, mai documentata; tensione
+  batteria raw 0…2705 = 0…3300 mV; la proprietà "system type" risponde `0x40` mentre
+  l'advertisement dice `0x43`.
+
+### 17:06–17:12 — Sessioni dal vivo dell'utente
+
+- `monitor` (log `logs/monitor-20261011-170650.txt`, 2003 righe): gesti decodificati
+  (rotazione, rotazione+inversione, salto, scossa, urto), con bit non documentati
+  `0x0040` (quasi sempre insieme all'urto), `0x0020` e `0x0008`; colori bianco, nero,
+  nougat, giallo, rosso; eventi porta 3 come coppie `[codice, valore]` (es. `0x3861` con
+  valore 1→8, un contatore); batteria che inondava il log a delta 1; allo spegnimento
+  `WILL_SWITCH_OFF`/`WILL_DISCONNECT`. **Nessun valore dalla porta 2 (pantaloni)** e
+  nessun barcode: da verificare in una sessione mirata.
+- `shell`: `props` ok, `name MarioCasa` ha rinominato Mario, `modes 1` ha fatto crollare la
+  shell: `port_report` era stato inserito per errore nella classe `ModeInfo`.
+
+### 17:15–17:40 — Correzioni e completamenti
+
+- `port_report` spostato in `MarioDevice`; la shell cattura ogni eccezione senza chiudersi.
+- `monitor`: scelta dei modi per nome (robusta ai cambi di numerazione tra firmware),
+  delta 25 per la batteria, esito delle sottoscrizioni scritto nel log.
+- `monitor` e `shell` scrivono log in `logs/` con i byte grezzi.
+- Decodifica strutturata degli eventi porta 3 (`codes.GAME_EVENTS`, significati ipotetici).
+- Conversione raw→SI generica nel `describe` (es. batteria in mV) usando gli intervalli
+  letti dal dispositivo.
+- Tabella barcode portata da 13 a 58 tile con nome: fonte `ALL_RGB_CODES.json` del
+  pacchetto pyLegoMario (scaricato con `pip download`, copia in
+  `logs/pylegomario-src/`), codici letti come little endian dei primi due byte del messaggio.
+  La tabella gesti di pyLegoMario è dichiarata inaffidabile dagli autori stessi.
+- 18 test offline, tutti verdi.
+
+### 17:25–17:45 — Dashboard web
+
+- Su richiesta: dashboard Flask con menù di tutte le funzionalità, catalogo dei dispositivi
+  in un database SQLite locale e gestione degli accessori (pantaloni, basette, colori).
+- Architettura: `mario/web/ble_worker.py` (thread con loop asyncio che possiede il
+  `MarioDevice`; `call()` inoltra le coroutine; eventi su code SSE e nel DB),
+  `mario/web/db.py` (SQLite, libreria standard), `mario/web/app.py` (pagine + API JSON),
+  template Jinja e `static/app.js` (barra di stato, SSE, logica per pagina).
+- Verificato con il test client Flask (tutte le pagine e le API) e con il server reale
+  sull'host (stato, home, scansione via API, flusso SSE). Test del database in
+  `tests/test_db.py`.
+- Comando: `./run.sh web` (porta 8765). Il DB è `data/mario.sqlite3` (ignorato da git).
+
+### 17:45–17:51 — Prima sessione dal vivo con la dashboard (dall'utente)
+
+- Connessione dalla Panoramica riuscita; 1189 eventi nel database, dispositivo salvato
+  come `MarioCasa` (identità F4:60:77:5A:20:11).
+- Porta 2: valore iniziale `Mario normale` ricevuto alla sottoscrizione (quindi la porta
+  funziona e trasmette solo ai cambi). Basetta `0xB8` Start Mario riconosciuta; colori
+  bianco, nero, giallo, nougat, ciano, blu. Il contatore "visti" degli Accessori si è
+  aggiornato da solo.
+- Gesti: nuovi bit `0x0002` e `0x0080`. Porta 3: undici codici nuovi, tra cui `0x0113`
+  con valore 184 = 0xB8 (basetta letta) e `0x3004` = 601. Aggiunti a `codes.GAME_EVENTS`.
+
+### 17:55 — Chiusura della sessione e stato finale
+
+- Documentazione allineata (README, HANDOFF, TODO) prima della compressione del contesto
+  della sessione di lavoro assistita: da qui in poi questi tre file sono la fonte di verità.
+- Test offline: 24 verdi (`tests.test_lwp3` 18, `tests.test_db` 6), sia nel sandbox sia nel venv dell'host.
+- Il database `data/mario.sqlite3` contiene già 1 dispositivo/i (MarioCasa), 1189 eventi e 8 accessori avvistati (ultimo evento alle 17:50): la dashboard è stata usata con Mario connesso.
+- Nella cartella del progetto sono comparsi tre cloni git di repository di riferimento
+  (`LEGO-Mario-Reveng/`, `legomario.py/`, `pyLegoMario/`), fatti dall'utente: utili per
+  consultare le fonti offline, da spostare in `third_party/` (voce nel TODO). In `logs/`
+  c'è anche `pylegomario-src/` (pacchetto scaricato con `pip download`), ridondante con il clone.
+- Memoria persistente dell'assistente: `~/.claude/projects/<cartella-del-progetto>/memory/mario-ble-environment.md`
+  (ambiente, cause dei problemi, decisioni). Non fa parte del progetto.
+- Repository git inizializzato il 12/10 sera (vedi la voce in cronologia); fino ad allora il progetto era senza versionamento.
+
+### 18:00–18:25 — Punto 7 del TODO: Mario come I/O di una sessione con un LLM
+
+- Verifiche sull'host: nessuna chiave API nell'ambiente, nessun pacchetto LLM nel venv;
+  `spd-say` (speech-dispatcher 0.12 con espeak-ng 1.52 e voci italiane) e l'audio
+  PipeWire/PulseAudio funzionano (prova vocale riuscita). Non ci sono `node` nel sandbox
+  (c'è sull'host), né `ollama`, né `piper`.
+- Nuovo pacchetto `mario/assistant/` (solo libreria standard, niente Flask né bleak):
+  `intents.py` (11 regole sensori → intenti con pausa minima, stato del corpo, caratteri per
+  pantaloni, famiglie di basette), `emotions.py` (8 emozioni, parser dei tag in streaming,
+  spezzatura in frasi), `tts.py` (spd-say/espeak-ng, effetti sonori sintetizzati con `wave`),
+  `llm.py` (Claude via API Messages, endpoint compatibile OpenAI, demo a regole), `behaviours.py`
+  (volume, busy 0x05/0x06, porte 4/7 sperimentali, allow-list), `session.py` (turno in
+  streaming, cronologia, eventi `ASSISTANT`), `service.py` (impostazioni nel DB, flusso del worker).
+- Dashboard: pagina "Assistente" (chat, faccia, stato del corpo, simulazione sensori,
+  impostazioni, tabella regole), 12 API `/api/assistant/*`, tabella `assistant_messages`,
+  `BleWorker.push()`. CLI: `./run.sh assistant [--no-mario] [--backend] [--model] [--base-url]
+  [--persona] [--no-tts] [--no-behaviours]`, log in `logs/assistant-*.txt`.
+- Scelta di progetto: i comportamenti su Mario seguono la voce (callback all'inizio di ogni
+  frase pronunciata), non il testo che arriva più veloce; senza voce seguono il testo.
+  Un'emozione nuova interrompe lo script precedente (attese interrompibili).
+- Test: 25 nuovi in `tests/test_assistant.py` (3 richiedono Flask+bleak e girano sull'host).
+  Totale 49 verdi nel sandbox (3 saltati) e sull'host (nessun `ResourceWarning`).
+- Prova dal vivo del server sull'host con DB temporaneo: pagine 200, risposta demo in
+  streaming, voce pronunciata dal PC, eventi SSE (`delta`, `speaking`, `emotion`, `done`,
+  `intent`, `context`), simulazione "basetta Goomba" → intento → risposta, cronologia salvata.
+  Non ancora provato con Mario connesso né con una chiave Claude vera.
+
+### 18:44–18:48 — Chiave API di Claude in `.env`
+
+- L'utente ha creato `.env` nella radice del progetto con `ANTHROPIC_API_KEY`. Aggiunti
+  `mario/env.py` (parser e caricatore senza dipendenze: `export`, apici, commenti; non
+  sovrascrive l'ambiente), il caricamento in `cli.main()` e in `create_app()`, `.env` in
+  `.gitignore`, permessi del file portati a 600.
+- Prima richiesta vera: HTTP 400 "`temperature` is deprecated for this model": i modelli
+  Claude 5 rifiutano il parametro; tolto dal corpo della richiesta Anthropic (resta per gli
+  endpoint OpenAI-compatibili).
+- Prova riuscita da CLI (`assistant --no-mario --no-tts`): `claude-sonnet-5-5` risponde in
+  italiano, nel personaggio, con i tag emozione (gioia, sorpresa, pensieroso), 2,8–3,8 s a
+  risposta completa. Test: 50 verdi. La dashboard risolve il backend `anthropic` dall'ambiente
+  senza esporre la chiave (campo mascherato vuoto, `env_anthropic_key` = vero).
+
+### 18:50–18:58 — Prima sessione dal vivo dell'assistente con Mario connesso (dall'utente)
+
+- `./run.sh assistant`: connessione in 6 s, Claude risponde ai sensori veri: terreno
+  bianco/nero/nougat, rotazione, salto, basette Start Mario, Goomba, "Rotazione" (0x14) e una
+  sconosciuta 0x0160; risposte in 1,8–2,9 s, nel personaggio, con i tag; volume cambiato a
+  ogni emozione (il volume di base di Mario era 100).
+- Problemi visti e corretti subito:
+  1. la voce restava indietro di decine di secondi (ogni risposta 8–10 s di parlato, nuovi
+     turni ogni 2–3 s, intenti scartati con "sto già rispondendo"): ora gli intenti dai sensori
+     aspettano che la voce sia libera (`Speaker.idle`), si accumulano uno per regola, i più
+     vecchi di 8 s si scartano e i restanti diventano un solo prompt; chi scrive da tastiera
+     taglia la voce; ai sensori si chiede "una frase, massimo due";
+  2. volume "100 → 100": livelli ora relativi alla base (`up` = base × 4/3 + 5, frazioni per
+     sonno/tristezza/pensieroso);
+  3. terminale illeggibile (righe dei comportamenti sopra il testo in streaming, `\r`): le righe
+     laterali aspettano la fine della risposta; comportamenti visibili solo con `-v`/`-d`;
+  4. all'uscita (Ctrl+C) il thread dei comportamenti scriveva sul log già chiuso (traceback):
+     `SessionLog` tollerante, `_log` del motore non propaga, `session.shutdown()` ripristina il
+     volume aspettando la fine, poi disconnessione, poi chiusura del log.
+- Rotazione e colore del terreno si attivano di continuo tenendo Mario in mano: pause portate
+  a 8 s. Pulsante e pantaloni non provati in questa sessione. Nessuna osservazione ancora su
+  cosa si sente o si vede su Mario quando cambia il volume.
+- Test: 53 verdi (29 dell'assistente).
+
+### 12/10 07:33–07:37 — Prova a scatola nera: eventi "riflessi" sulla porta 4 (`tools/probe_port4.py`)
+
+- Domanda: si può far partire una clip sonora di Mario via Bluetooth? Primo tentativo: rimandare
+  sulla porta 4 (`Events`, 2 × int16, scrivibile) i codici che la porta 3 emette nel gioco.
+- Metodo: script che annuncia a voce dal PC "Prova N" (chi guarda Mario sa cosa succede), invia
+  un Port Output Command e registra 3 s di risposte; log `logs/probe-port4-20261012-073251.txt`.
+- Risultati sul protocollo (fw 6.5.01): **WriteDirectModeData (0x51)** accettato per tutti i 19
+  codici con feedback `0x82` "comando completato, inattivo" (`05 00 82 04 0a`); **WriteDirect
+  (0x50)** → `INVALID_USE`; **sottocomando 0x00** → `COMMAND_NOT_RECOGNIZED`; **azioni hub 0x05 e
+  0x06** (busy) → `INVALID_USE`: Mario non ha l'indicazione "occupato" (opzione della dashboard
+  lasciata ma segnata come senza effetto). Nessun eco sulle porte 3, 4 o 7 dopo le scritture.
+- Reazione fisica (suoni, display): da riferire dall'utente, prova per prova (il PC annunciava i
+  numeri). Prossima prova pronta: `--in-level` (Mario sulla basetta Start, poi monete crescenti e
+  Goomba) e `--readback` (rilettura del valore della porta 4 dopo ogni scrittura, per capire se è
+  una "casella" che il gioco legge).
+
+### 12/10 17:32–17:34 — Prova "in livello" sulla porta 4 (`probe_port4.py --in-level`)
+
+- Esito della prova del mattino, riferito dall'utente: nessuna reazione visibile di Mario alle
+  19 scritture (nessun suono, nessuna animazione).
+- Prova in livello: Mario appoggiato sulla basetta Start (letta alle 17:32:25), poi 10 scritture
+  WriteDirectModeData sulla porta 4 (monete 1-2-3-10, Goomba, 0x3004=601, 0x3803=100, 0x386B=5,
+  0x1803=4, traguardo), ciascuna seguita dalla rilettura del valore della porta 4.
+- Risultato: la porta 4 **non conserva** il valore scritto (rilettura sempre `00 00 00 00`),
+  nessun eco, il contatore monete della porta 3 (0x3861) non si muove. Le scritture vengono
+  accettate e ignorate: l'ipotesi "porta 4 = eventi riflessi del gioco" è da scartare, almeno con
+  questi codici e questo sottocomando.
+- Ricavato collaterale: il ciclo del livello sulla porta 3. Subito dopo Start `0x1803=4`; dopo
+  circa 45 s con Mario sollevato la sequenza di fine livello `0x3004=601, 0x1803=3, 0x3812=2,
+  0x3852=0, 0x386E=0, 0x3803=100`, poi l'uscita dal livello `0x1801=0, 0x1803=0, 0x3812=1,
+  0x3862=0` (ipotesi aggiornate in `codes.GAME_EVENTS`). Log `logs/probe-port4-20261012-173210.txt`.
+- Conferma dell'utente: la sequenza vista è il "tempo scaduto" di Mario (conto alla rovescia
+  accelerato sul display); le monete sono rimaste a zero per tutta la prova.
+- Prossima prova pronta: `--port7` (37 sequenze sulla porta 7 Telemetry con rilettura).
+
+### 12/10 17:39–17:43 — Prova sulla porta 7 Telemetry (`probe_port4.py --port7`)
+
+- 37 scritture WriteDirectModeData (0x51) sulla porta 7: tutti zero, tutti 255, tutti 1, un byte
+  alla volta a 1 e a 255 nelle 16 posizioni, rampe 0..15 e 15..0; rilettura dopo ciascuna.
+- Risultato: **nessun feedback 0x82, nessun errore, rilettura sempre 16 zeri**. A differenza della
+  porta 4 (che conferma "completato" ma non conserva), la porta 7 ignora le scritture in silenzio.
+  Log `logs/probe-port4-20261012-173722.txt`.
+- Alla connessione la porta 3 ha emesso `0x3862 = 4` (valore nuovo; prima visti 0 e 2).
+- Bilancio delle prove a scatola nera: via LWP3, con i sottocomandi standard, non c'è una via
+  per far suonare o animare Mario. Restano la scansione dei sottocomandi non standard (costo
+  basso, aspettativa bassa), le basette virtuali su schermo e la cattura del traffico dell'app.
+
+### 12/10 17:50–17:59 — Controprova sul "sorriso" visto durante le prove della porta 7
+
+- L'utente aveva notato, tra le prove 15 e 25 della porta 7 (17:40:23–17:41:31), la bocca di
+  Mario illuminarsi (di norma si vede solo la lingua).
+- Controprova 1, `--baseline 180`: Mario connesso e fermo per 3 minuti senza alcun comando, con
+  il PC che scandiva il tempo a voce ogni 30 s. Nessuna animazione anomala; via Bluetooth solo il
+  valore iniziale del gesto e una lettura dello scanner "sollevato". Le animazioni di standby
+  (palpebre, sguardo) non producono alcun messaggio LWP3.
+- Controprova 2, `--port7 --only 15-25 --times 3`: 33 scritture identiche a quelle sospette.
+  Nessuna reazione fisica, protocollo identico (nessun feedback, rilettura zero).
+- Conclusione dell'utente: falso positivo, probabilmente una svista. Nessuna delle scritture
+  provate oggi (porta 4: 29 + 10, porta 7: 37 + 33) produce effetti osservabili su Mario.
+- Script arricchito con `--baseline`, `--only DA-A`, `--times N`, `--pause S`.
+
+### 12/10 sera — Basette virtuali su schermo: negativo
+
+- L'utente ha mostrato un barcode su uno schermo sotto lo scanner: nessuna lettura. Spiegazione
+  probabile: il sensore illumina e legge la luce riflessa (verosimilmente nel vicino infrarosso),
+  uno schermo emissivo con polarizzatori non offre contrasto. Nel TODO restano carta stampata,
+  e-ink e il trucco della luce colorata sul foglio bianco per il sensore colore.
+
+### 12/10 18:09–18:13 — Sessione guidata con le 8 basette reali (`tools/catalog_tiles.py`)
+
+- Nuovo script: annuncia a voce il nome di ogni basetta letta, registra gli eventi della porta 3
+  nei 6 s successivi, a fine sessione stampa il riepilogo e segna le basette come possedute nel
+  database (7 aggiornate). Log `logs/tiles-20261012-180737.txt`.
+- Codici letti (7 distinti): `0x00B8` Start Mario, `0x0002` Goomba, `0x002E` Nuvola, `0x0014`
+  Rotazione: nomi di tabella confermati. **Tre codici non in tabella**: `0x00F5`, `0x0160`,
+  `0x015B` (da identificare con l'utente: cosa c'è stampato sulle basette).
+- Porta 3, nuovi codici con ipotesi: `0x2042` conta 1, 2, 3 a ogni Goomba letto e `0x3712 = 1`
+  circa 1 s dopo (nemico sconfitto?); `0x20C2` 6 poi 8 circa 3 s dopo la basetta `0x0160`
+  (monete?); `0x2022` 1, 2, 3 mentre Mario veniva fatto girare sulla basetta Rotazione (giri
+  contati); `0x3862 = 0` quasi a ogni basetta letta o sollevata; `0x3803 = 0` subito dopo alcune
+  basette e `100` alla fine del livello. Dopo la basetta `0x00F5` (8 s dopo) è arrivata la stessa
+  sequenza del "tempo scaduto" (`0x3004=601, 0x3812=2, 0x3852=0, 0x1803=3, 0x386E=0, 0x3803=100`)
+  a soli 20 s dallo Start. L'utente precisa che la basetta è il **Clown Koopa** (Bowser Jr.) e che
+  il livello **non** si è chiuso: quella sequenza quindi non è per forza "fine livello"; forse
+  è legata all'incontro con un boss o a un'animazione lunga. Aggiunta a `codes.BARCODES`
+  (`0x00F5`, con la nota che pyLegoMario dà Bowser Jr. = `0x0099`).
+- Gesti: a ogni appoggio su una basetta arriva `urto + bit 0x0040` (atterraggio?), poi spesso
+  `salto`; sulla basetta Rotazione decine di `rotazione` consecutive.
+- Colori visti: bianco (0x13), nero (0x1A), giallo sabbia (0x18), verde (0x25).
+- Difetto corretto nello script: il numero della basetta nelle riletture.
+
+### 12/10 18:25–18:27 — Seconda sessione con le basette (`catalog_tiles.py`), 8 appoggi
+
+- Stessi 7 codici: l'ottava basetta condivide `0x0002` con il Goomba (appoggiata subito dopo la
+  `0x015B`). Quindi le 8 basette dell'utente sono: Start, Clown Koopa (`0x00F5`), due nemici con
+  codice Goomba, `0x0160`, `0x015B`, Nuvola, Rotazione.
+- Contatori della porta 3 ora leggibili: `0x386B` = **totale monete** (1 dopo il Goomba, 7 dopo
+  la `0x0160` che ne dà 6, 8 dopo il secondo nemico); `0x20C2` = monete date dalla basetta
+  appena letta (6); `0x2042` = nemici sconfitti (1, 2); `0x3712 = 1` circa 1 s dopo ogni nemico.
+  La basetta `0x0160` dà monete: probabilmente un blocco o un oggetto bonus.
+- La sequenza `0x3004=601, 0x3812=2, 0x3852=0, 0x1803=3, 0x386E=0, 0x3803=100` è arrivata 44 s
+  dopo lo Start senza basette sotto (alle 17:33 erano 45 s): è compatibile con la fine del livello
+  a tempo (il conto alla rovescia visto dall'utente), anche se nella sessione delle 18:09 era
+  arrivata dopo 21 s. Da osservare il display insieme al log la prossima volta.
+- L'utente ha indicato il wiki italiano https://mario.fandom.com/it/wiki/LEGO_Super_Mario come
+  fonte per i nomi di set e personaggi.
+
+### 12/10 18:30 — Wiki LEGO Super Mario (fonte indicata dall'utente)
+
+- `https://mario.fandom.com/it/wiki/LEGO_Super_Mario`: la pagina HTML è protetta (403 "Just a
+  moment", 402 dal lettore), ma l'API MediaWiki funziona (`api.php?action=parse&...&prop=wikitext`).
+- Set iniziale 71360 "Avventura di Mario": tubo, asta della bandiera, blocco ?, blocco mattone,
+  fortezza, piattaforma mobile, zattera di nuvole, Bowser Jr., Goomba = 8 elementi, come le 8
+  basette dell'utente. Regole: saltando sui nemici si ottengono monete; sul blocco ? parte una
+  roulette che decide il premio (coerente con 0x20C2 = 6 o 8 della basetta `0x0160`); Yoshi, Toad
+  e Toadette danno un cuore e 5 monete; la piattaforma rotante dà monete (coerente con `0x2022`
+  che conta i giri); la lava toglie energia; all'asta della bandiera parte la musica di fine
+  livello e il riepilogo monete sul petto.
+- L'utente identifica `0x015B` = **carrello minerario**: le basette non vengono tutte dal set
+  iniziale. Aggiunto a `codes.BARCODES` (60 nomi). Prima attribuito al 71365 in base al wiki,
+  poi corretto dall'utente: il set è il **71425 "Corsa nella miniera di Diddy Kong"** (2023,
+  ondata Donkey Kong, non presente nel wiki che si ferma al 2022).
+  L'utente identifica poi `0x0160` = **aereo** del 71425 (aggiunto: 61 nomi); resta la seconda
+  basetta con codice Goomba.
+- Set di provenienza confermati dall'utente: **71360** (Avventura di Mario) e **71425** (Corsa
+  nella miniera di Diddy Kong). Quindi la sesta basetta (codice Goomba 0x0002) e forse la quarta
+  (`0x0160`, 6 o 8 monete) vengono dal 71425: nemici e oggetti dell'ondata Donkey Kong che il
+  firmware tratta con codici già noti o nuovi. Esiste anche il set 71396 "Clown Koopa di Bowser
+  Junior": il codice `0x00F5` potrebbe venire da lì, e `0x0099` della community dal Bowser Jr. del
+  71360 (o viceversa).
+
+### 12/10 sera — Repository git
+
+- `git init` nella cartella del progetto (ramo `main`), identità impostata solo per questo
+  repository (nome dell'utente ed email di lavoro, modificabili con `git config user.name` /
+  `user.email`). Primo commit con codice, test, strumenti e documentazione.
+- Esclusi da git: `.venv/`, `logs/` (catture btmon, log di monitor, shell, assistente e prove),
+  `data/` (database della dashboard), `.env` (chiave API), i tre cloni di terze parti nella radice.
+  I log delle prove del 12/10 restano quindi solo in locale: se servono come prova documentale,
+  copiarne gli estratti in `docs/`.
+
+## 4. Stato del codice
+
+| File | Ruolo |
+|---|---|
+| `run.sh` | avvio; salta sull'host se in Flatpak; crea il venv se manca |
+| `mario/lwp3.py` | protocollo LWP3: enumerazioni, costruttori di messaggi, parser, `describe`, formati valore, versioni, scaling SI |
+| `mario/codes.py` | tabelle Mario: pantaloni, gesti, barcode (58), colori, eventi osservati, IO type 0x46/0x47/0x49/0x4A/0x55/0x60, modi di default per nome, delta |
+| `mario/device.py` | `MarioDevice` (scansione, connessione con retry, agente di pairing, bonding, notifiche, richieste con attesa, stato hub, scoperta, report, JSON), `BlueZAgent`, `remove_bluez_device` |
+| `mario/cli.py` | comandi `scan`, `info [--json] [--quick]`, `monitor [--sub P:M[:D]] [--raw-accel] [--rssi]`, `shell`, `assistant`, `web`, `volume`, `name`, `prop`, `pair`, `unpair`, `off`, `raw`; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
+| `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
+| `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `session.py`, `service.py` (vedi README, sezione Assistente) |
+| `tests/test_lwp3.py` | 18 test senza Bluetooth |
+| `tests/test_db.py` | 6 test del database della dashboard |
+| `tests/test_assistant.py` | 29 test dell'assistente e del caricatore `.env` (3 API Flask solo sull'host) |
+| `mario/web/app.py` | Flask: pagine (menù) e API JSON |
+| `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
+| `mario/web/db.py` | SQLite: dispositivi, accessori, eventi, impostazioni, messaggi dell'assistente |
+| `mario/web/templates/`, `static/` | pagine HTML, CSS e JavaScript |
+| `tools/capture_btmon.sh` | cattura HCI con btmon durante un tentativo di connessione (sudo) |
+| `tools/diag_connect.py` | proprietà BlueZ del dispositivo + tentativo di connessione prima/dopo la rimozione del record |
+| `tools/catalog_tiles.py` | sessione guidata con le basette reali: annunci vocali, eventi porta 3 per basetta, aggiornamento del database |
+| `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
+| `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
+| `docs/capabilities-fw-6.5.01.json` | mappa completa delle funzioni letta dal dispositivo |
+| `logs/` | catture btmon, log di monitor/shell, sorgente pyLegoMario (ignorata da git) |
+
+Nel README: uso, comandi della shell, protocollo, tabella porte verificata, osservazioni
+dal vivo, sezione "Problemi di connessione" con tutte e tre le catture.
+
+## 5. Punti aperti
+
+Spostati in [TODO.md](TODO.md), che è la lista di lavoro aggiornata (verifiche dal vivo,
+reverse engineering, sistema, software, idee).
+
+## 6. Come riprendere
+
+```sh
+cd ~/Sviluppo/Mario
+python3 -m unittest tests.test_lwp3 tests.test_db tests.test_assistant -v   # test offline (53)
+./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario
+./run.sh monitor                             # eventi in tempo reale, log in logs/
+./run.sh shell                               # console bidirezionale, log in logs/
+./run.sh web                                 # dashboard su http://127.0.0.1:8765 (pagina Assistente inclusa)
+./run.sh assistant --no-mario                # assistente senza Bluetooth: tastiera, modello (demo), voce
+./run.sh assistant                           # con Claude: la chiave è in .env (o nelle impostazioni della pagina)
+./tools/capture_btmon.sh                     # se la connessione torna a fallire
+```
+
+Checklist prima di cercare bug nell'app: Wi-Fi su 5 GHz (`nmcli -t -f ACTIVE,SSID,FREQ dev
+wifi | grep '^sì'`), autosospensione disattivata (`cat /sys/bus/usb/devices/1-3/power/control`
+deve dire `on`), Mario con l'icona Bluetooth che lampeggia, bond presente
+(`bluetoothctl devices Bonded`). Se qualcosa resta appeso, ogni fase dell'app ha un
+timeout e stampa dove si trova; i log di `monitor`, `shell` e `btmon` sono in `logs/`.
+
+Per i prossimi sviluppi partire da [TODO.md](TODO.md): prime verifiche dal vivo
+(pantaloni, barcode, gesti), poi designer di avventure e Mario come I/O per un LLM.
+
+## 7. Fonti consultate
+
+- LEGO Wireless Protocol 3.0: https://lego.github.io/lego-ble-wireless-protocol-docs/
+- bricklife/LEGO-Mario-Reveng: https://github.com/bricklife/LEGO-Mario-Reveng
+- djipko/legomario.py: https://github.com/djipko/legomario.py
+- Jackomatrus/pyLegoMario (file `ALL_RGB_CODES.json`): https://github.com/Jackomatrus/pyLegoMario
+- node-poweredup: https://github.com/nathankellenicki/node-poweredup
+- Sorgente BlueZ 5.82 (`src/device.c`, scelta del bearer): https://github.com/bluez/bluez
+- Filelist Debian `bluez-firmware`: https://packages.debian.org/trixie/all/bluez-firmware/filelist
+- winterheart/broadcom-bt-firmware: https://github.com/winterheart/broadcom-bt-firmware
+- Thread Arch Linux su BCM20703A1 e BLE: https://bbs.archlinux.org/viewtopic.php?id=243616
+- Thread Eurobricks sul reverse engineering di Mario: https://www.eurobricks.com/forum/forums/topic/179464-reverse-engineering-lego-super-mario

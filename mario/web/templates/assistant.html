@@ -1,0 +1,102 @@
+{% extends "base.html" %}{% block title %}Assistente{% endblock %}
+{% block content %}
+<div class="grid two">
+<section class="card">
+  <h1>Conversazione <small class="muted" id="as-backend"></small></h1>
+  <div class="chat" id="chat"><p class="muted" id="chat-empty">Scrivi a Mario, oppure fai qualcosa con il Mario fisico: un salto, un cambio di pantaloni, una basetta.</p></div>
+  <div class="actions">
+    <input type="text" id="as-text" placeholder="Scrivi a Mario… (Invio per inviare)" style="flex:1; min-width:12em" autocomplete="off">
+    <button id="as-send" class="primary">Invia</button>
+    <button id="as-stop" class="ghost">Stop</button>
+    <button id="as-repeat" class="ghost" title="Ripete a voce l'ultima risposta (come la scossa)">Ripeti</button>
+    <button id="as-reset" class="ghost" title="Il modello dimentica la conversazione">Nuova</button>
+  </div>
+  <p id="as-msg" class="muted"></p>
+  <h2>Senza il Mario fisico: simula un sensore</h2>
+  <div class="actions">
+    <button class="small" data-sim="salto">Salto</button>
+    <button class="small" data-sim="caduta">Caduta</button>
+    <button class="small" data-sim="scossa">Scossa</button>
+    <button class="small" data-sim="pantaloni_fuoco">Pantaloni Fuoco</button>
+    <button class="small" data-sim="pantaloni_gatto">Pantaloni Gatto</button>
+    <button class="small" data-sim="basetta_start">Basetta Start</button>
+    <button class="small" data-sim="basetta_goomba">Basetta Goomba</button>
+    <button class="small" data-sim="basetta_traguardo">Traguardo</button>
+    <button class="small" data-sim="terreno_lava">Terreno lava</button>
+    <button class="small" data-sim="pulsante">Pulsante</button>
+    <button class="small" data-sim="batteria">Batteria 10 %</button>
+  </div>
+</section>
+<section class="card">
+  <h1>Mario</h1>
+  <div class="face" id="face" style="--emo:#2e9e44"><div class="emoji" id="face-emoji">🙂</div><div class="label" id="face-label">Calma</div><div class="muted small" id="face-sub"></div></div>
+  <div class="actions">
+    <label><input type="checkbox" id="as-listen"> ascolto dei sensori (si attiva anche con il pulsante di Mario)</label>
+  </div>
+  <h2>Stato del corpo</h2>
+  <dl class="kv">
+    <dt>Pantaloni</dt><dd id="ctx-pants">-</dd>
+    <dt>Terreno</dt><dd id="ctx-color">-</dd>
+    <dt>Ultima basetta</dt><dd id="ctx-tile">-</dd>
+    <dt>Ultimo gesto</dt><dd id="ctx-gesture">-</dd>
+    <dt>Batteria</dt><dd id="ctx-battery">-</dd>
+  </dl>
+  <h2>Prova un'emozione</h2>
+  <div class="actions" id="emo-buttons">{% for e in emotions %}<button class="small" data-emotion="{{ e.key }}" title="{{ e.description }}" style="border-color:{{ e.color }}">{{ e.emoji }} {{ e.label }}</button>{% endfor %}</div>
+  <div class="actions"><input type="text" id="say-text" placeholder="Frase da far dire a Mario con la voce" style="flex:1; min-width:10em"><button id="say-send">Di' questo</button></div>
+  <h2>Ultimi intenti dai sensori</h2>
+  <ul id="intent-list" class="menu-list"><li class="muted">nessuno</li></ul>
+  <h2>Comportamenti su Mario <small class="muted">(volume, indicazione occupato, porte sperimentali)</small></h2>
+  <pre class="log small" id="beh-log"></pre>
+</section>
+</div>
+
+<section class="card">
+  <h1>Impostazioni</h1>
+  <div class="grid two">
+    <div>
+      <h2>Modello</h2>
+      <div class="actions">
+        <label>Backend <select id="set-backend"><option value="auto">automatico</option><option value="anthropic">Claude (API Anthropic)</option><option value="openai">compatibile OpenAI (Ollama, LM Studio…)</option><option value="demo">demo locale (senza rete)</option></select></label>
+        <span class="muted" id="set-resolved"></span>
+      </div>
+      <div class="actions"><label>Modello <input type="text" id="set-model" list="models" placeholder="claude-sonnet-5-5" style="width:16em"></label>
+        <datalist id="models">{% for m in models %}<option value="{{ m }}"></option>{% endfor %}</datalist></div>
+      <div class="actions"><label>Chiave API <input type="password" id="set-key" placeholder="lascia vuoto per non cambiare" style="width:20em"></label> <span class="muted" id="set-key-state"></span> <label><input type="checkbox" id="set-key-clear"> cancella</label></div>
+      <div class="actions"><label>Base URL (solo OpenAI-compatibile) <input type="text" id="set-base" placeholder="http://localhost:11434/v1" style="width:20em"></label></div>
+      <div class="actions"><label>Token massimi <input type="number" id="set-max" min="50" max="2000" style="width:6em"></label> <label title="Solo per gli endpoint compatibili OpenAI: Claude 5 non la accetta">Temperatura (OpenAI) <input type="number" id="set-temp" min="0" max="1" step="0.1" style="width:5em"></label></div>
+      <h2>Carattere</h2>
+      <textarea id="set-persona" rows="3" placeholder="Istruzioni in più per il modello, es. 'Ti chiami MarioCasa e parli con Leo, 7 anni'"></textarea>
+    </div>
+    <div>
+      <h2>Voce dal PC</h2>
+      <div class="actions"><label><input type="checkbox" id="set-tts"> voce attiva</label> <label><input type="checkbox" id="set-sounds"> effetti sonori</label> <span class="muted" id="set-engine"></span></div>
+      <div class="actions"><label>Voce <input type="text" id="set-voice" placeholder="es. Italian+Alex (vuoto = predefinita)" style="width:16em"></label></div>
+      <div class="actions"><label>Velocità <input type="range" id="set-rate" min="-100" max="100"> <span id="set-rate-v"></span></label> <label>Tono <input type="range" id="set-pitch" min="-100" max="100"> <span id="set-pitch-v"></span></label></div>
+      <h2>Comportamenti sul Mario fisico</h2>
+      <div class="actions"><label><input type="checkbox" id="set-beh"> attivi</label> <label><input type="checkbox" id="set-vol"> effetti di volume</label> <label title="Provato il 12/10/2026: Mario fw 6.5.01 risponde INVALID_USE, quindi non ha effetto"><input type="checkbox" id="set-busy"> indicazione "occupato" (azione hub 0x05/0x06: Mario la rifiuta, nessun effetto)</label></div>
+      <div class="actions"><label><input type="checkbox" id="set-ports"> scritture sperimentali su porta 4/7</label></div>
+      <textarea id="set-payloads" rows="3" placeholder='JSON emozione -> "porta:hex", es. {"gioia": "4:01 00 00 00", "allarme": "7:ff 00"}'></textarea>
+      <p class="hint">Le scritture sulle porte 4 e 7 hanno significato ignoto: attivale solo per esperimenti, osservando display e suoni di Mario.</p>
+    </div>
+  </div>
+  <div class="actions"><button id="set-save" class="primary">Salva impostazioni</button> <span id="set-msg" class="muted"></span></div>
+</section>
+
+<section class="card">
+  <h1>Regole: sensori → intenti</h1>
+  <table class="compact" id="rules-table"><thead><tr><th>Attiva</th><th>Regola</th><th>Origine</th><th>Tipo</th><th>Testo per il modello / azione</th><th>Pausa (s)</th></tr></thead><tbody></tbody></table>
+  <div class="actions"><button id="rules-save">Salva regole</button> <span id="rules-msg" class="muted"></span></div>
+  <p class="hint">Nei testi si possono usare <code>{name}</code>, <code>{hint}</code> e <code>{value}</code> dove la regola li prevede. "Pausa" è il tempo minimo tra due attivazioni della stessa regola.</p>
+</section>
+
+<section class="card">
+  <h1>Come funziona</h1>
+  <ul class="menu-list">
+    <li><b>Ingresso</b>: i sensori di Mario (gesti, pantaloni, basette, colore del terreno, pulsante, batteria) diventano messaggi "[sensore: …]" per il modello, secondo le regole qui sopra. Il pulsante sulla schiena attiva o sospende l'ascolto; la scossa ripete l'ultima risposta.</li>
+    <li><b>Modello</b>: la risposta arriva in streaming; ogni frase è marcata con un'emozione tra parentesi quadre scelta dal modello.</li>
+    <li><b>Uscita</b>: la voce esce dagli altoparlanti del PC (Mario non ha un canale audio Bluetooth); l'emozione cambia la faccia qui sopra, un effetto sonoro e, sul Mario fisico, il volume e l'indicazione "occupato". Le scritture sulle porte 4 e 7 restano sperimentali.</li>
+    <li><b>Senza chiave API</b> il backend "demo" risponde con frasi fisse: utile per provare la catena completa. Con una chiave Anthropic (variabile <code>ANTHROPIC_API_KEY</code> o campo qui sopra) risponde Claude.</li>
+  </ul>
+</section>
+{% endblock %}

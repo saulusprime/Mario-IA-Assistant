@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Scansione{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Scansione Bluetooth LE</h1>
+  <div class="actions">
+    <label>Durata <input type="number" id="scan-duration" value="8" min="2" max="60" style="width:5em"> s</label>
+    <label><input type="checkbox" id="scan-any" checked> anche altri hub LEGO</label>
+    <button class="primary" id="scan-start">Avvia scansione</button>
+    <span id="scan-status" class="muted"></span>
+  </div>
+  <p class="muted">Mario trasmette solo con l'icona Bluetooth lampeggiante (tasto sulla schiena), per circa 30 secondi.</p>
+  <table id="scan-results">
+    <thead><tr><th>Indirizzo</th><th>Nome</th><th>Tipo</th><th>RSSI</th><th>Manufacturer data</th><th></th></tr></thead>
+    <tbody>
+    {% for d in last_scan %}
+      <tr><td><code>{{ d.address }}</code></td><td>{{ d.name }}</td><td>{{ d.type_name }}</td><td>{{ d.rssi }} dBm</td>
+      <td><code>{{ d.manufacturer }}</code></td><td><button class="small" data-connect="{{ d.address }}">Connetti</button></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if last_scan_time %}<p class="muted">Ultima scansione: {{ fmt_time(last_scan_time) }}</p>{% endif %}
+</section>
+{% endblock %}

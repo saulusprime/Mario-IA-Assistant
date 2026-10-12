@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Dashboard{% endblock %} · LEGO Mario</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body data-page="{{ page }}">
+<header class="top">
+  <div class="brand"><span class="logo">M</span> LEGO Mario · Dashboard</div>
+  <nav>
+    {% for key, label, href in menu %}<a href="{{ href }}" class="{{ 'active' if key == page else '' }}">{{ label }}</a>{% endfor %}
+  </nav>
+</header>
+<div id="statusbar" class="statusbar">
+  <span class="badge state" id="st-state">…</span>
+  <span id="st-device">nessun dispositivo</span>
+  <span id="st-battery"></span>
+  <span id="st-progress" class="muted"></span>
+  <span class="spacer"></span>
+  <button class="small" id="st-connect">Connetti</button>
+  <button class="small ghost" id="st-disconnect">Disconnetti</button>
+</div>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer class="muted">Progetto LEGO Mario BLE · Flask + bleak · <a href="/docs">documentazione</a></footer>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

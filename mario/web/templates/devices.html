@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Dispositivi{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Dispositivi conosciuti</h1>
+  <p class="muted">Ogni Mario connesso viene salvato con le sue proprietà e la mappa delle funzioni. La chiave è l'indirizzo identità (MAC primario), stabile anche se l'indirizzo Bluetooth cambia.</p>
+  <table>
+    <thead><tr><th>Nome</th><th>Identità</th><th>Tipo</th><th>Firmware</th><th>Batteria</th><th>Associato</th><th>Ultima volta</th><th></th></tr></thead>
+    <tbody>
+    {% for d in devices %}
+      <tr>
+        <td><a href="/devices/{{ d.id }}"><b>{{ d.name or '(senza nome)' }}</b></a></td>
+        <td><code>{{ d.identity }}</code></td>
+        <td>{{ system_names.get(d.system_type, '0x%02X' % (d.system_type or 0)) if d.system_type is not none else '-' }}</td>
+        <td>{{ d.fw_version or '-' }}</td>
+        <td>{{ d.last_battery ~ ' %' if d.last_battery is not none else '-' }}</td>
+        <td>{{ 'sì' if d.bonded else 'no' }}</td>
+        <td>{{ fmt_time(d.last_seen) }}</td>
+        <td><button class="small" data-connect="{{ d.last_address or '' }}">Connetti</button>
+            <button class="small danger ghost" data-delete-device="{{ d.id }}">Elimina</button></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted">Nessun dispositivo salvato: connetti un Mario dalla Panoramica.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

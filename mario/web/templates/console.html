@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% block title %}Console{% endblock %}
+{% block content %}
+<div class="grid two">
+<section class="card">
+  <h1>Proprietà dell'hub</h1>
+  <div class="actions">
+    <button id="props-all" class="primary">Leggi tutte</button>
+    <select id="prop-name">{% for name, value in properties %}<option value="{{ value }}">{{ name }} (0x{{ '%02X' % value }})</option>{% endfor %}</select>
+    <button data-prop-action="get">Leggi</button>
+    <button data-prop-action="watch" class="ghost">Segui</button>
+    <button data-prop-action="unwatch" class="ghost">Smetti</button>
+  </div>
+  <table class="compact" id="props-table"><tbody></tbody></table>
+  <h2>Imposta</h2>
+  <div class="actions">
+    <label>Volume <input type="range" id="vol" min="0" max="100" value="50"> <span id="vol-val">50</span></label>
+    <button id="vol-set">Imposta volume</button>
+  </div>
+  <div class="actions">
+    <label>Nome <input type="text" id="name-new" maxlength="14" placeholder="max 14 byte"></label>
+    <button id="name-set">Rinomina</button>
+  </div>
+  <div class="actions">
+    <label>Proprietà grezza (hex) <input type="text" id="prop-raw" placeholder="es. 32"></label>
+    <button id="prop-set-raw" class="ghost">Scrivi sulla proprietà selezionata</button>
+  </div>
+</section>
+<section class="card">
+  <h1>Messaggi verso Mario</h1>
+  <h2>Messaggio LWP3 (header automatico)</h2>
+  <div class="actions">
+    <label>Tipo <input type="text" id="msg-type" value="0x01" style="width:5em"></label>
+    <label>Payload hex <input type="text" id="msg-payload" value="12 05" style="width:16em"></label>
+    <button id="msg-send">Invia</button>
+  </div>
+  <h2>Byte grezzi (header incluso)</h2>
+  <div class="actions">
+    <input type="text" id="raw-hex" value="05 00 01 12 05" style="width:22em">
+    <button id="raw-send">Invia</button>
+  </div>
+  <h2>Port Output Command (0x81)</h2>
+  <div class="actions">
+    <label>Porta <input type="number" id="out-port" value="4" style="width:4em"></label>
+    <label>Sub-comando <input type="text" id="out-sub" value="0x00" style="width:5em"></label>
+    <label>Payload hex <input type="text" id="out-payload" value="01 00" style="width:12em"></label>
+    <button id="out-send">Invia</button>
+  </div>
+  <h2>Azioni e allarmi</h2>
+  <div class="actions">
+    <select id="action-name">{% for name, value in actions %}<option value="{{ value }}">{{ name }}</option>{% endfor %}</select>
+    <button id="action-send">Esegui azione</button>
+  </div>
+  <div class="actions">
+    <select id="alert-name">{% for a in alerts %}<option value="{{ a }}">{{ a }}</option>{% endfor %}</select>
+    <select id="alert-op"><option value="req">leggi</option><option value="on">segui</option><option value="off">smetti</option></select>
+    <button id="alert-send">Allarme</button>
+  </div>
+  <p id="console-msg" class="muted"></p>
+</section>
+</div>
+<section class="card">
+  <h1>Log della console <small class="muted">(tutti i messaggi, anche le risposte)</small></h1>
+  <div class="actions"><button class="ghost" id="con-clear">Svuota</button></div>
+  <pre class="log" id="con-log"></pre>
+</section>
+{% endblock %}

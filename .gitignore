@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+logs/
+data/
+.env
+# cloni di repository di terze parti (fonti consultate), non fanno parte del progetto
+LEGO-Mario-Reveng/
+legomario.py/
+pyLegoMario/
+third_party/
+.pytest_cache/

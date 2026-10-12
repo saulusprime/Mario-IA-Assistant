@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% block title %}{{ device.name or device.identity }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>{{ device.name or '(senza nome)' }} <small class="muted"><code>{{ device.identity }}</code></small></h1>
+  <div class="grid two">
+    <dl class="kv">
+      <dt>Tipo</dt><dd>{{ system_names.get(device.system_type, '?') }} ({{ '0x%02X' % (device.system_type or 0) }})</dd>
+      <dt>Firmware</dt><dd>{{ device.fw_version or '-' }}</dd>
+      <dt>Hardware</dt><dd>{{ device.hw_version or '-' }}</dd>
+      <dt>LWP</dt><dd>{{ device.lwp_version or '-' }}</dd>
+      <dt>Radio</dt><dd>{{ device.radio_fw or '-' }}</dd>
+      <dt>Produttore</dt><dd>{{ device.manufacturer or '-' }}</dd>
+      <dt>Batteria</dt><dd>{{ device.last_battery ~ ' %' if device.last_battery is not none else '-' }} ({{ 'ricaricabile' if device.battery_type == 1 else 'pile' }})</dd>
+      <dt>Volume</dt><dd>{{ device.volume ~ ' %' if device.volume is not none else '-' }}</dd>
+      <dt>Ultimo indirizzo BLE</dt><dd><code>{{ device.last_address or '-' }}</code></dd>
+      <dt>Associato (bond)</dt><dd>{{ 'sì' if device.bonded else 'no' }}</dd>
+      <dt>Prima volta</dt><dd>{{ fmt_time(device.first_seen) }}</dd>
+      <dt>Ultima volta</dt><dd>{{ fmt_time(device.last_seen) }}</dd>
+    </dl>
+    <div>
+      <h2>Note</h2>
+      <textarea id="dev-notes" rows="8" data-device-id="{{ device.id }}">{{ device.notes or '' }}</textarea>
+      <div class="actions">
+        <button class="primary" id="dev-save-notes">Salva note</button>
+        <button data-connect="{{ device.last_address or '' }}">Connetti</button>
+        <button data-action="discover">Aggiorna funzioni (connesso)</button>
+        <button class="ghost" data-unpair="{{ device.last_address or '' }}">Dimentica associazione</button>
+      </div>
+      <p id="dev-msg" class="muted"></p>
+    </div>
+  </div>
+</section>
+<section class="card">
+  <h1>Funzioni scoperte</h1>
+  {% if caps %}
+  {% for port, ps in caps.ports.items() %}
+    <h2>Porta {{ port }} · {{ ps.io_name }} <small class="muted">{{ ps.io_type }} · HW {{ ps.hw_version }} · SW {{ ps.sw_version }}</small></h2>
+    <p class="muted">capacità: {{ ps.capabilities|join(', ') if ps.capabilities else '-' }} · modalità input {{ ps.input_modes }} · output {{ ps.output_modes }}{% if ps.combinations %} · combinazioni {{ ps.combinations }}{% endif %}</p>
+    <table class="compact">
+      <thead><tr><th>Modo</th><th>Nome</th><th>Formato</th><th>Raw</th><th>SI</th><th>Unità</th><th>Mapping</th></tr></thead>
+      <tbody>
+      {% for mode, mi in ps.modes.items() %}
+        <tr><td>{{ mode }}</td><td><b>{{ mi.name }}</b></td>
+        <td>{% if mi.value_format %}{{ mi.value_format.datasets }} × {{ mi.value_format.type }}{% endif %}</td>
+        <td>{% if mi.raw %}{{ mi.raw[0] }}…{{ mi.raw[1] }}{% endif %}</td>
+        <td>{% if mi.si %}{{ mi.si[0] }}…{{ mi.si[1] }}{% endif %}</td>
+        <td>{{ mi.symbol }}</td>
+        <td>{% if mi.mapping %}in {{ mi.mapping.input|join('/') }} out {{ mi.mapping.output|join('/') or '-' }}{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if ps.hint %}<p class="hint">{{ ps.hint }}</p>{% endif %}
+  {% endfor %}
+  <details><summary>Report testuale</summary><pre class="log">{{ caps_text }}</pre></details>
+  {% else %}
+  <p class="muted">Nessuna mappa salvata: connetti il dispositivo e usa "Aggiorna funzioni".</p>
+  {% endif %}
+</section>
+{% endblock %}

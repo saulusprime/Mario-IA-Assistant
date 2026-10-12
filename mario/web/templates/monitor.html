@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% block title %}Monitor{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Sensori in tempo reale</h1>
+  <div class="actions">
+    <button class="primary" data-action="subscribe-defaults">Attiva sensori standard</button>
+    <label>Porta <input type="number" id="sub-port" value="2" min="0" max="15" style="width:4em"></label>
+    <label>Modo <input type="number" id="sub-mode" value="0" min="0" max="15" style="width:4em"></label>
+    <label>Delta <input type="number" id="sub-delta" value="1" min="1" style="width:5em"></label>
+    <button id="sub-on">Attiva</button>
+    <button id="sub-off" class="ghost">Disattiva</button>
+    <button id="sub-value" class="ghost">Leggi valore</button>
+    <span id="sub-msg" class="muted"></span>
+  </div>
+  <div class="ports" id="port-cards"></div>
+</section>
+<section class="card">
+  <h1>Flusso eventi <small class="muted">(<span id="ev-count">0</span>)</small></h1>
+  <div class="actions">
+    <label><input type="checkbox" id="ev-pause"> pausa</label>
+    <label>Filtra porta <select id="ev-port"><option value="">tutte</option>{% for p in range(0, 8) %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></label>
+    <label><input type="checkbox" id="ev-hide-battery" checked> nascondi batteria</label>
+    <button class="ghost" id="ev-clear">Svuota</button>
+  </div>
+  <table class="events" id="ev-table"><thead><tr><th>Ora</th><th>Porta</th><th>Modo</th><th>Decodifica</th><th>Grezzo</th></tr></thead><tbody></tbody></table>
+</section>
+<section class="card">
+  <h1>Storico (database)</h1>
+  <div class="actions">
+    <label>Porta <input type="number" id="hist-port" style="width:4em"></label>
+    <label>Testo <input type="text" id="hist-q" placeholder="es. pantaloni, Goomba"></label>
+    <label>Limite <input type="number" id="hist-limit" value="100" style="width:5em"></label>
+    <button id="hist-load">Carica</button>
+    <span id="hist-stats" class="muted"></span>
+  </div>
+  <table class="events" id="hist-table"><thead><tr><th>Data</th><th>Porta</th><th>Tipo</th><th>Testo</th><th>Grezzo</th></tr></thead><tbody></tbody></table>
+</section>
+{% endblock %}

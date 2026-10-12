@@ -1,0 +1,276 @@
+/* Dashboard LEGO Mario: helper API, barra di stato, flusso eventi SSE, logica per pagina. */
+(function () {
+  const page = document.body.dataset.page;
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+  const hhmmss = (ts) => new Date((ts || Date.now() / 1000) * 1000).toLocaleTimeString("it-IT");
+  const fmtDate = (ts) => ts ? new Date(ts * 1000).toLocaleString("it-IT") : "-";
+
+  async function api(path, method, data) {
+    const opts = { method: method || "GET", headers: {} };
+    if (data !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(data); }
+    const res = await fetch(path, opts);
+    let json = {};
+    try { json = await res.json(); } catch (e) { json = { ok: false, error: "risposta non valida (" + res.status + ")" }; }
+    if (!json.ok) throw new Error(json.error || ("errore " + res.status));
+    return json;
+  }
+  function busy(btn, on) { if (btn) { btn.disabled = on; btn.dataset.label = btn.dataset.label || btn.textContent; btn.textContent = on ? "attendi…" : btn.dataset.label; } }
+  function flash(el, text, isError) { if (!el) return; el.textContent = text; el.style.color = isError ? "#d7262c" : ""; }
+
+  // ---- barra di stato -------------------------------------------------------------------
+  const STATE_LABEL = { disconnected: "scollegato", scanning: "scansione…", connecting: "connessione…", connected: "connesso", discovering: "scoperta…" };
+  const STATE_CLASS = { disconnected: "err", scanning: "busy", connecting: "busy", connected: "ok", discovering: "busy" };
+  let lastStatus = null;
+  function renderStatus(st) {
+    lastStatus = st;
+    const badge = $("#st-state");
+    badge.textContent = STATE_LABEL[st.state] || st.state; badge.className = "badge state " + (STATE_CLASS[st.state] || "");
+    $("#st-device").textContent = st.device ? `${st.device.name || "?"} [${st.device.address}]${st.device.bonded ? " · associato" : ""}` : "nessun dispositivo";
+    $("#st-battery").textContent = st.battery !== null && st.battery !== undefined ? `🔋 ${st.battery}%` : "";
+    $("#st-progress").textContent = st.error ? ("⚠ " + st.error) : (st.progress && st.progress.length ? st.progress[st.progress.length - 1] : "");
+    document.dispatchEvent(new CustomEvent("mario:status", { detail: st }));
+  }
+  async function refreshStatus() { try { renderStatus((await api("/api/status")).status); } catch (e) { $("#st-progress").textContent = "server non raggiungibile"; } }
+  refreshStatus(); setInterval(refreshStatus, 2500);
+
+  async function doAction(name, btn, extra) {
+    busy(btn, true);
+    try {
+      if (name === "scan") { const r = await api("/api/scan", "POST", { duration: 8 }); flash($("#st-progress"), `trovati ${r.devices.length} dispositivi LEGO`); if (page !== "scan") location.href = "/scan"; }
+      else if (name === "connect") { await api("/api/connect", "POST", { address: extra || "" }); }
+      else if (name === "disconnect") { await api("/api/disconnect", "POST", {}); }
+      else if (name === "discover") { await api("/api/discover", "POST", { full: 1 }); if (page === "report" || page === "devices") location.reload(); }
+      else if (name === "off") { if (confirm("Spegnere Mario?")) await api("/api/hub_action", "POST", { action: "SWITCH_OFF" }); }
+      else if (name === "subscribe-defaults") { await api("/api/subscribe_defaults", "POST", {}); }
+      else if (name === "unpair") { if (confirm("Rimuovere l'associazione? Al prossimo collegamento verrà rifatto il pairing.")) await api("/api/unpair", "POST", { address: extra || "" }); }
+      await refreshStatus();
+    } catch (e) { flash($("#st-progress"), e.message, true); alert(e.message); }
+    finally { busy(btn, false); }
+  }
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button"); if (!b) return;
+    if (b.dataset.action) doAction(b.dataset.action, b);
+    else if (b.dataset.connect !== undefined) doAction("connect", b, b.dataset.connect);
+    else if (b.dataset.unpair !== undefined) doAction("unpair", b, b.dataset.unpair);
+    else if (b.id === "st-connect") doAction("connect", b);
+    else if (b.id === "st-disconnect") doAction("disconnect", b);
+  });
+
+  // ---- flusso eventi (SSE) -----------------------------------------------------------
+  const listeners = [];
+  function onEvent(fn) { listeners.push(fn); }
+  function startStream() {
+    const es = new EventSource("/api/stream");
+    es.onmessage = (m) => { let ev; try { ev = JSON.parse(m.data); } catch (e) { return; } listeners.forEach((fn) => { try { fn(ev); } catch (err) { console.error(err); } }); };
+    es.onerror = () => { /* EventSource riprova da solo */ };
+  }
+  const isBattery = (ev) => ev.io_type === 20 || (ev.prop === "BATTERY_VOLTAGE");
+  function eventRow(ev, cols) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = cols.map((c) => `<td>${c}</td>`).join("");
+    return tr;
+  }
+  const esc = (s) => String(s === undefined || s === null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+  // ---- pagine -------------------------------------------------------------------------
+  if (page === "index") {
+    const tbody = $("#ov-events tbody");
+    onEvent((ev) => {
+      if (!ev.interesting || ev.type === "STATE" || isBattery(ev)) return;
+      tbody.prepend(eventRow(ev, [hhmmss(ev.ts), ev.port !== undefined ? ev.port : "", esc(ev.decoded || ev.text)]));
+      while (tbody.children.length > 30) tbody.lastChild.remove();
+    });
+    document.addEventListener("mario:status", (e) => {
+      const st = e.detail;
+      $("#ov-state").textContent = STATE_LABEL[st.state] || st.state;
+      $("#ov-device").textContent = st.device ? `${st.device.name || "?"} (fw ${st.device.fw || "?"})` : "-";
+      $("#ov-address").textContent = st.device ? st.device.address : "-";
+      $("#ov-battery").textContent = st.battery !== null && st.battery !== undefined ? st.battery + " %" : "-";
+      $("#ov-subs").textContent = Object.keys(st.subscriptions || {}).length ? Object.entries(st.subscriptions).map(([p, s]) => `${p}:${s.name || s.mode}`).join(", ") : "-";
+      $("#ov-progress").textContent = (st.progress || []).join("\n");
+    });
+    startStream();
+  }
+
+  if (page === "scan") {
+    $("#scan-start").addEventListener("click", async (ev) => {
+      const btn = ev.target; busy(btn, true); flash($("#scan-status"), "scansione in corso…");
+      try {
+        const r = await api("/api/scan", "POST", { duration: Number($("#scan-duration").value), any: $("#scan-any").checked });
+        const tbody = $("#scan-results tbody"); tbody.innerHTML = "";
+        r.devices.forEach((d) => tbody.appendChild(eventRow(d, [`<code>${d.address}</code>`, esc(d.name), esc(d.type_name), `${d.rssi} dBm`, `<code>${d.manufacturer}</code>`, `<button class="small" data-connect="${d.address}">Connetti</button>`])));
+        flash($("#scan-status"), r.devices.length ? `${r.devices.length} dispositivi` : "nessun Mario: premi il tasto Bluetooth e riprova");
+      } catch (e) { flash($("#scan-status"), e.message, true); } finally { busy(btn, false); }
+    });
+  }
+
+  if (page === "devices") {
+    document.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button"); if (!b) return;
+      if (b.dataset.deleteDevice) { if (confirm("Eliminare il dispositivo e i suoi eventi dal database?")) { await api("/api/devices/" + b.dataset.deleteDevice, "DELETE"); location.reload(); } }
+      if (b.id === "dev-save-notes") { const ta = $("#dev-notes"); try { await api("/api/devices/" + ta.dataset.deviceId, "POST", { notes: ta.value }); flash($("#dev-msg"), "note salvate"); } catch (e) { flash($("#dev-msg"), e.message, true); } }
+    });
+  }
+
+  if (page === "monitor") {
+    const cards = $("#port-cards"), tbody = $("#ev-table tbody"); let count = 0;
+    function renderPorts(st) {
+      cards.innerHTML = "";
+      Object.entries(st.ports || {}).forEach(([p, info]) => {
+        const div = document.createElement("div"); div.className = "port" + (info.notify ? " active" : "");
+        const last = info.last || {};
+        div.innerHTML = `<h3>Porta ${p} · ${esc(info.io_name)}</h3><div class="muted">${esc(info.io_type)} · modo ${info.current_mode ?? "-"} ${esc(info.mode_name || "")} ${info.notify ? "· notifiche ON" : ""}</div><div class="val">${esc(last.text || "—")}</div><div class="raw">${esc(last.raw || "")} ${last.ts ? hhmmss(last.ts) : ""}</div><div class="muted">modi: ${Object.entries(info.modes || {}).map(([m, n]) => `${m}=${n}`).join(" ")}</div>`;
+        cards.appendChild(div);
+      });
+      if (!Object.keys(st.ports || {}).length) cards.innerHTML = '<p class="muted">Nessuna porta: connetti Mario.</p>';
+    }
+    document.addEventListener("mario:status", (e) => renderPorts(e.detail));
+    onEvent((ev) => {
+      if (!ev.interesting || ev.type === "STATE" || ev.type === "STATUS") return;
+      if ($("#ev-pause").checked) return;
+      const pf = $("#ev-port").value; if (pf !== "" && String(ev.port) !== pf) return;
+      if ($("#ev-hide-battery").checked && isBattery(ev)) return;
+      count++; $("#ev-count").textContent = count;
+      tbody.prepend(eventRow(ev, [hhmmss(ev.ts), ev.port ?? "", ev.mode ?? "", esc(ev.decoded || ev.text), `<code>${esc(ev.raw)}</code>`]));
+      while (tbody.children.length > 300) tbody.lastChild.remove();
+      if (ev.port !== undefined && lastStatus) { const card = cards.children[Object.keys(lastStatus.ports || {}).indexOf(String(ev.port))]; if (card) { card.querySelector(".val").textContent = ev.decoded || ev.text; card.querySelector(".raw").textContent = `${ev.raw} ${hhmmss(ev.ts)}`; } }
+    });
+    $("#ev-clear").addEventListener("click", () => { tbody.innerHTML = ""; count = 0; $("#ev-count").textContent = 0; });
+    const sub = async (notify) => { try { const r = await api("/api/subscribe", "POST", { port: $("#sub-port").value, mode: $("#sub-mode").value, delta: $("#sub-delta").value, notify: notify ? 1 : 0 }); flash($("#sub-msg"), r.reply); refreshStatus(); } catch (e) { flash($("#sub-msg"), e.message, true); } };
+    $("#sub-on").addEventListener("click", () => sub(true));
+    $("#sub-off").addEventListener("click", () => sub(false));
+    $("#sub-value").addEventListener("click", async () => { try { const r = await api("/api/value", "POST", { port: $("#sub-port").value }); flash($("#sub-msg"), "valore grezzo: " + r.raw); } catch (e) { flash($("#sub-msg"), e.message, true); } });
+    $("#hist-load").addEventListener("click", async () => {
+      const q = new URLSearchParams({ port: $("#hist-port").value, q: $("#hist-q").value, limit: $("#hist-limit").value });
+      try { const r = await api("/api/history?" + q); const tb = $("#hist-table tbody"); tb.innerHTML = "";
+        r.events.forEach((e) => tb.appendChild(eventRow(e, [fmtDate(e.ts), e.port ?? "", esc(e.type), esc(e.decoded || e.text), `<code>${esc(e.raw)}</code>`])));
+        flash($("#hist-stats"), `${r.stats.total} eventi in archivio`); } catch (e) { flash($("#hist-stats"), e.message, true); }
+    });
+    startStream();
+  }
+
+  if (page === "console") {
+    const log = $("#con-log"), msg = $("#console-msg");
+    const addLog = (text) => { log.textContent += text + "\n"; log.scrollTop = log.scrollHeight; };
+    onEvent((ev) => { if (ev.type === "STATE" || ev.type === "ASSISTANT" || isBattery(ev)) return; addLog(`[${hhmmss(ev.ts)}] <- ${ev.text}   [${ev.raw}]`); });
+    const run = async (label, fn) => { try { const r = await fn(); addLog(`[${hhmmss()}] -> ${label}` + (r ? `  (${r})` : "")); flash(msg, "ok"); refreshStatus(); } catch (e) { flash(msg, e.message, true); addLog(`[${hhmmss()}] !! ${label}: ${e.message}`); } };
+    $("#props-all").addEventListener("click", () => run("leggi tutte le proprietà", async () => { const r = await api("/api/properties"); const tb = $("#props-table tbody"); tb.innerHTML = ""; r.properties.forEach((p) => tb.appendChild(eventRow(p, [`<b>${p.prop}</b> <span class="muted">0x${p.id.toString(16).padStart(2, "0")}</span>`, esc(p.text), `<code>${esc(p.raw)}</code>`]))); return r.properties.length + " proprietà"; }));
+    $$("[data-prop-action]").forEach((b) => b.addEventListener("click", () => run(`${b.dataset.propAction} ${$("#prop-name").selectedOptions[0].text}`, async () => { const r = await api("/api/property", "POST", { prop: $("#prop-name").value, action: b.dataset.propAction }); return r.text || ""; })));
+    $("#vol").addEventListener("input", () => { $("#vol-val").textContent = $("#vol").value; });
+    $("#vol-set").addEventListener("click", () => run("volume " + $("#vol").value, async () => (await api("/api/volume", "POST", { level: $("#vol").value })).volume + " %"));
+    $("#name-set").addEventListener("click", () => run("nome " + $("#name-new").value, async () => (await api("/api/name", "POST", { name: $("#name-new").value })).name));
+    $("#prop-set-raw").addEventListener("click", () => run("scrivi proprietà", async () => (await api("/api/property", "POST", { prop: $("#prop-name").value, action: "set", value: $("#prop-raw").value })).text || ""));
+    $("#msg-send").addEventListener("click", () => run(`msg ${$("#msg-type").value} ${$("#msg-payload").value}`, () => api("/api/message", "POST", { type: $("#msg-type").value, payload: $("#msg-payload").value })));
+    $("#raw-send").addEventListener("click", () => run("raw " + $("#raw-hex").value, () => api("/api/raw", "POST", { hex: $("#raw-hex").value })));
+    $("#out-send").addEventListener("click", () => run(`out ${$("#out-port").value} ${$("#out-sub").value} ${$("#out-payload").value}`, () => api("/api/port_output", "POST", { port: $("#out-port").value, subcommand: $("#out-sub").value, payload: $("#out-payload").value })));
+    $("#action-send").addEventListener("click", () => run("azione " + $("#action-name").selectedOptions[0].text, () => api("/api/hub_action", "POST", { action: $("#action-name").value })));
+    $("#alert-send").addEventListener("click", () => run(`allarme ${$("#alert-name").value} ${$("#alert-op").value}`, async () => (await api("/api/alert", "POST", { alert: $("#alert-name").value, operation: $("#alert-op").value })).reply || ""));
+    $("#con-clear").addEventListener("click", () => { log.textContent = ""; });
+    startStream();
+  }
+
+  if (page === "accessories") {
+    const msg = $("#acc-msg");
+    $$("button.tab").forEach((b) => b.addEventListener("click", () => { $$("button.tab").forEach((x) => x.classList.toggle("active", x === b)); $$(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== b.dataset.tab)); }));
+    const filter = () => { const q = $("#acc-q").value.toLowerCase(), onlyOwned = $("#acc-only-owned").checked; $$(".acc-table tbody tr").forEach((tr) => { const text = tr.textContent.toLowerCase() + " " + $$("input[type=text]", tr).map((i) => i.value.toLowerCase()).join(" "); const owned = $(".acc-owned", tr).checked; tr.classList.toggle("hidden", (q && !text.includes(q)) || (onlyOwned && !owned)); }); };
+    $("#acc-q").addEventListener("input", filter); $("#acc-only-owned").addEventListener("change", filter);
+    document.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button"); if (!b) return; const tr = b.closest("tr");
+      if (b.classList.contains("acc-save") && tr) { try { await api("/api/accessories/" + tr.dataset.id, "POST", { owned: $(".acc-owned", tr).checked ? 1 : 0, quantity: $(".acc-qty", tr).value, set_number: $(".acc-set", tr).value, notes: $(".acc-notes", tr).value }); tr.classList.toggle("owned", $(".acc-owned", tr).checked); flash(msg, "salvato"); } catch (e) { flash(msg, e.message, true); } }
+      if (b.classList.contains("acc-del") && tr) { if (confirm("Eliminare questo accessorio?")) { await api("/api/accessories/" + tr.dataset.id, "DELETE"); tr.remove(); } }
+      if (b.id === "new-add") { try { await api("/api/accessories", "POST", { kind: $("#new-kind").value, name: $("#new-name").value, code: $("#new-code").value, set_number: $("#new-set").value, notes: $("#new-notes").value, owned: $("#new-owned").checked ? 1 : 0, quantity: $("#new-owned").checked ? 1 : 0 }); location.reload(); } catch (e) { flash(msg, e.message, true); } }
+    });
+    document.addEventListener("change", (ev) => { const cb = ev.target; if (cb.classList && cb.classList.contains("acc-owned")) { const tr = cb.closest("tr"); api("/api/accessories/" + tr.dataset.id, "POST", { owned: cb.checked ? 1 : 0 }).then(() => tr.classList.toggle("owned", cb.checked)).catch((e) => flash(msg, e.message, true)); } });
+  }
+
+  if (page === "assistant") {
+    const chat = $("#chat"), msg = $("#as-msg"), EMO = {};
+    let current = null;
+    const scroll = () => { chat.scrollTop = chat.scrollHeight; };
+    function bubble(cls, html) { const d = document.createElement("div"); d.className = "bubble " + cls; d.innerHTML = html; const e = $("#chat-empty"); if (e) e.remove(); chat.appendChild(d); while (chat.children.length > 200) chat.firstChild.remove(); scroll(); return d; }
+    function emoColor(key) { return (EMO[key] || {}).color || "#2e9e44"; }
+    function setFace(e) { const info = typeof e === "string" ? EMO[e] : e; if (!info) return; $("#face").style.setProperty("--emo", info.color); $("#face-emoji").textContent = info.emoji; $("#face-label").textContent = info.label; }
+    function addUser(text, source, sensor) { current = null; bubble("user" + (sensor ? " sensor" : ""), `<span class="src">${sensor ? "sensore · " : ""}${esc(source || "utente")}</span>${esc(text)}`); }
+    function ensureCurrent(emotion) { if (!current) { current = bubble("assistant typing", ""); current.style.setProperty("--emo", emoColor(emotion)); } return current; }
+    function renderContext(c) { c = c || {}; $("#ctx-pants").textContent = c.pants_name || "-"; $("#ctx-color").textContent = c.color_name || "-"; $("#ctx-tile").textContent = c.tile_name || "-"; $("#ctx-gesture").textContent = c.gesture || "-"; $("#ctx-battery").textContent = c.battery !== null && c.battery !== undefined ? c.battery + " %" : "-"; }
+    function renderIntent(ev) { const ul = $("#intent-list"); if (ul.firstElementChild && ul.firstElementChild.classList.contains("muted")) ul.innerHTML = ""; const li = document.createElement("li"); li.textContent = `${hhmmss(ev.ts)} · ${ev.intent.source} → ${ev.outcome}`; ul.prepend(li); while (ul.children.length > 10) ul.lastChild.remove(); }
+    function behLog(ev) { const log = $("#beh-log"); log.textContent += `[${hhmmss(ev.ts)}] ${ev.text}\n`; log.scrollTop = log.scrollHeight; }
+    onEvent((ev) => {
+      if (ev.type !== "ASSISTANT") return;
+      switch (ev.kind) {
+        case "user": addUser(ev.text, ev.source, ev.sensor); break;
+        case "start": $("#as-backend").textContent = ev.backend; $("#face").classList.add("busy"); $("#face-sub").textContent = "sto pensando…"; break;
+        case "emotion": setFace(ev.emotion); if (current) current.style.setProperty("--emo", emoColor(ev.emotion)); break;
+        case "delta": { const b = ensureCurrent(ev.emotion); b.style.setProperty("--emo", emoColor(ev.emotion)); b.appendChild(document.createTextNode(ev.text)); scroll(); break; }
+        case "done": if (current) { current.classList.remove("typing"); current.textContent = ev.text; } else if (ev.text) bubble("assistant", esc(ev.text)); current = null; $("#face").classList.remove("busy"); $("#face-sub").textContent = `${ev.elapsed} s · ${(ev.emotions || []).join(", ") || "nessun tag"}`; break;
+        case "error": bubble("error", esc(ev.text)); current = null; $("#face").classList.remove("busy"); $("#face-sub").textContent = "errore"; break;
+        case "stopped": if (current) { current.classList.remove("typing"); current = null; } $("#face").classList.remove("busy"); break;
+        case "reset": chat.innerHTML = ""; current = null; break;
+        case "listening": $("#as-listen").checked = !!ev.on; flash(msg, ev.text); break;
+        case "intent": renderIntent(ev); break;
+        case "context": renderContext(ev.context); break;
+        case "behaviour": behLog(ev); break;
+      }
+    });
+    function renderSettings(s, speaker, llm) {
+      $("#set-backend").value = s.backend || "auto"; $("#set-model").value = s.model || ""; $("#set-base").value = s.base_url || "";
+      $("#set-max").value = s.max_tokens || 350; $("#set-temp").value = s.temperature || 0.8; $("#set-persona").value = s.persona || "";
+      $("#set-key-state").textContent = s.api_key_set ? "chiave salvata nel database" : (s.env_anthropic_key ? "chiave presa da ANTHROPIC_API_KEY" : "nessuna chiave: risponde il backend demo");
+      $("#set-resolved").textContent = "in uso: " + (llm ? llm.resolved_backend : s.resolved_backend);
+      $("#set-tts").checked = !!s.tts; $("#set-sounds").checked = !!s.sounds; $("#set-voice").value = s.voice || "";
+      $("#set-rate").value = s.rate || 0; $("#set-rate-v").textContent = s.rate || 0; $("#set-pitch").value = s.pitch || 0; $("#set-pitch-v").textContent = s.pitch || 0;
+      $("#set-engine").textContent = speaker && speaker.engine ? `motore: ${speaker.engine}, suoni: ${speaker.player || "nessun lettore"}` : "nessun motore vocale trovato (installa speech-dispatcher o espeak-ng)";
+      $("#set-beh").checked = !!s.behaviours; $("#set-vol").checked = !!s.volume_effects; $("#set-busy").checked = !!s.busy_indication; $("#set-ports").checked = !!s.port_writes;
+      $("#set-payloads").value = s.port_payloads && s.port_payloads !== "{}" ? s.port_payloads : "";
+    }
+    function renderRules(rules) {
+      const tb = $("#rules-table tbody"); tb.innerHTML = "";
+      rules.forEach((r) => { const tr = document.createElement("tr"); tr.dataset.name = r.name; tr.innerHTML = `<td><input type="checkbox" class="r-on" ${r.enabled ? "checked" : ""}></td><td><b>${esc(r.name)}</b></td><td class="muted">${esc(r.description)}</td><td>${esc(r.kind)}</td><td>${r.kind === "prompt" ? `<input type="text" class="r-text" value="${esc(r.text).replace(/"/g, "&quot;")}" style="width:100%">` : `<code>${esc(r.text)}</code>`}</td><td><input type="number" class="r-cd" value="${r.cooldown}" min="0" step="0.5" style="width:5em"></td>`; tb.appendChild(tr); });
+    }
+    async function load() {
+      const st = (await api("/api/assistant/status")).status;
+      (st.emotions || []).forEach((e) => { EMO[e.key] = e; });
+      setFace(st.emotion); $("#as-listen").checked = !!st.listening; renderContext(st.context);
+      $("#as-backend").textContent = st.backend || (st.llm.resolved_backend + (st.llm.model ? " · " + st.llm.model : ""));
+      if (st.busy) $("#face").classList.add("busy");
+      renderSettings(st.settings, st.speaker, st.llm); renderRules(st.rules || []);
+      (st.behaviours.last_actions || []).forEach((t) => { $("#beh-log").textContent += t + "\n"; });
+      const h = (await api("/api/assistant/history?limit=40")).messages;
+      h.forEach((m) => { if (m.role === "user") addUser(m.content, m.source, m.source && m.source !== "utente"); else { const b = bubble("assistant", esc(m.content)); b.style.setProperty("--emo", emoColor(m.emotion)); } });
+      current = null;
+    }
+    async function send() { const text = $("#as-text").value.trim(); if (!text) return; try { await api("/api/assistant/ask", "POST", { text }); $("#as-text").value = ""; flash(msg, ""); } catch (e) { flash(msg, e.message, true); } }
+    $("#as-send").addEventListener("click", send);
+    $("#as-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); send(); } });
+    $("#as-stop").addEventListener("click", () => api("/api/assistant/stop", "POST", {}).catch((e) => flash(msg, e.message, true)));
+    $("#as-repeat").addEventListener("click", () => api("/api/assistant/repeat", "POST", {}).then((r) => flash(msg, r.repeated ? "ripeto" : "niente da ripetere")).catch((e) => flash(msg, e.message, true)));
+    $("#as-reset").addEventListener("click", () => { if (confirm("Nuova conversazione? Il modello dimentica quanto detto finora (lo storico resta nel database).")) api("/api/assistant/reset", "POST", {}).catch((e) => flash(msg, e.message, true)); });
+    $("#as-listen").addEventListener("change", () => api("/api/assistant/listen", "POST", { on: $("#as-listen").checked ? 1 : 0 }).catch((e) => flash(msg, e.message, true)));
+    $("#say-send").addEventListener("click", () => { const text = $("#say-text").value.trim(); if (text) api("/api/assistant/say", "POST", { text }).catch((e) => flash(msg, e.message, true)); });
+    $("#set-rate").addEventListener("input", () => { $("#set-rate-v").textContent = $("#set-rate").value; });
+    $("#set-pitch").addEventListener("input", () => { $("#set-pitch-v").textContent = $("#set-pitch").value; });
+    document.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button"); if (!b) return;
+      if (b.dataset.emotion) { try { await api("/api/assistant/emotion", "POST", { emotion: b.dataset.emotion }); } catch (e) { flash(msg, e.message, true); } }
+      if (b.dataset.sim) { try { const r = await api("/api/assistant/simulate", "POST", { what: b.dataset.sim }); flash(msg, r.intents.length ? `simulato: ${r.intents.map((i) => i.source).join(", ")}` : "simulato: nessun intento (pausa attiva o regola spenta)"); } catch (e) { flash(msg, e.message, true); } }
+    });
+    $("#set-save").addEventListener("click", async () => {
+      let payloads = {};
+      try { payloads = $("#set-payloads").value.trim() ? JSON.parse($("#set-payloads").value) : {}; } catch (e) { flash($("#set-msg"), "JSON dei payload non valido", true); return; }
+      const data = { backend: $("#set-backend").value, model: $("#set-model").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads };
+      try { const r = await api("/api/assistant/settings", "POST", data); $("#set-key").value = ""; $("#set-key-clear").checked = false; renderSettings(r.settings, null, null); const st = (await api("/api/assistant/status")).status; renderSettings(st.settings, st.speaker, st.llm); flash($("#set-msg"), "impostazioni salvate"); } catch (e) { flash($("#set-msg"), e.message, true); }
+    });
+    $("#rules-save").addEventListener("click", async () => {
+      const rules = {};
+      $$("#rules-table tbody tr").forEach((tr) => { const t = $(".r-text", tr); rules[tr.dataset.name] = { enabled: $(".r-on", tr).checked, cooldown: Number($(".r-cd", tr).value), text: t ? t.value : undefined }; });
+      try { await api("/api/assistant/settings", "POST", { rules }); flash($("#rules-msg"), "regole salvate"); } catch (e) { flash($("#rules-msg"), e.message, true); }
+    });
+    load().catch((e) => flash(msg, e.message, true));
+    startStream();
+  }
+
+  if (page === "report") {
+    $("#report-refresh").addEventListener("click", async () => { try { $("#report-text").textContent = (await api("/api/report")).text; } catch (e) { alert(e.message); } });
+  }
+})();

@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% block title %}Accessori{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Accessori di Mario</h1>
+  <p class="muted">Pantaloni, basette con barcode e colori del terreno conosciuti dal software; spunta quelli che possiedi. Le colonne "visti" si aggiornano da sole quando il sensore di Mario li riconosce.</p>
+  <div class="actions">
+    {% for kind in kinds %}<button class="tab {{ 'active' if loop.first }}" data-tab="{{ kind }}">{{ kind_labels[kind] }} <small>{{ stats.get(kind, {}).get('owned', 0) }}/{{ stats.get(kind, {}).get('total', 0) }}</small></button>{% endfor %}
+    <span class="spacer"></span>
+    <label>Cerca <input type="text" id="acc-q" placeholder="nome, set, note"></label>
+    <label><input type="checkbox" id="acc-only-owned"> solo posseduti</label>
+  </div>
+  {% for kind in kinds %}
+  <div class="tabpane {{ '' if loop.first else 'hidden' }}" data-pane="{{ kind }}">
+    <table class="compact acc-table" data-kind="{{ kind }}">
+      <thead><tr><th>Codice</th><th>Nome</th><th>Posseduto</th><th>Qtà</th><th>Set</th><th>Note</th><th>Visto</th><th>Ultima volta</th><th></th></tr></thead>
+      <tbody>
+      {% for a in grouped[kind] %}
+        <tr data-id="{{ a.id }}" class="{{ 'owned' if a.owned }}">
+          <td><code>{% if a.code is not none %}0x{{ '%02X' % a.code if a.code < 256 else '%04X' % a.code }}{% endif %}</code></td>
+          <td class="name">{{ a.name }}{% if a.source == 'rilevato' %} <span class="badge warn">rilevato</span>{% endif %}</td>
+          <td><input type="checkbox" class="acc-owned" {{ 'checked' if a.owned }}></td>
+          <td><input type="number" class="acc-qty" value="{{ a.quantity }}" min="0" style="width:4em"></td>
+          <td><input type="text" class="acc-set" value="{{ a.set_number }}" style="width:6em"></td>
+          <td><input type="text" class="acc-notes" value="{{ a.notes }}"></td>
+          <td>{{ a.seen_count }}</td>
+          <td>{{ fmt_time(a.last_seen) if a.last_seen else '-' }}</td>
+          <td><button class="small acc-save">Salva</button> <button class="small ghost danger acc-del">×</button></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</section>
+<section class="card">
+  <h1>Aggiungi accessorio</h1>
+  <div class="actions">
+    <select id="new-kind">{% for kind in kinds %}<option value="{{ kind }}">{{ kind_labels[kind] }}</option>{% endfor %}</select>
+    <input type="text" id="new-name" placeholder="Nome">
+    <input type="text" id="new-code" placeholder="Codice (es. 0x3A, opzionale)" style="width:12em">
+    <input type="text" id="new-set" placeholder="Set" style="width:6em">
+    <input type="text" id="new-notes" placeholder="Note">
+    <label><input type="checkbox" id="new-owned" checked> posseduto</label>
+    <button class="primary" id="new-add">Aggiungi</button>
+    <span id="acc-msg" class="muted"></span>
+  </div>
+</section>
+{% endblock %}

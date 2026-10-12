@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}Funzioni{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Report delle funzioni</h1>
+  <div class="actions">
+    <button class="primary" data-action="discover">Scoperta completa (dispositivo connesso)</button>
+    <button id="report-refresh">Ricarica</button>
+    <span class="muted">{{ 'Fonte: ' ~ source if source else 'Nessun dato: connetti Mario oppure apri un dispositivo salvato.' }}</span>
+  </div>
+  <pre class="log" id="report-text">{{ text }}</pre>
+</section>
+{% endblock %}

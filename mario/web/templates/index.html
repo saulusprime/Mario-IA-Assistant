@@ -1,0 +1,46 @@
+{% extends "base.html" %}{% block title %}Panoramica{% endblock %}
+{% block content %}
+<div class="grid two">
+  <section class="card">
+    <h1>Stato</h1>
+    <dl class="kv" id="ov-status">
+      <dt>Collegamento</dt><dd id="ov-state">{{ status.state }}</dd>
+      <dt>Dispositivo</dt><dd id="ov-device">{{ status.device.name if status.device else '-' }}</dd>
+      <dt>Indirizzo</dt><dd id="ov-address">{{ status.device.address if status.device else '-' }}</dd>
+      <dt>Batteria</dt><dd id="ov-battery">{{ status.battery ~ ' %' if status.battery is not none else '-' }}</dd>
+      <dt>Porte attive</dt><dd id="ov-subs">-</dd>
+    </dl>
+    <div class="actions">
+      <button data-action="scan">Cerca Mario (8 s)</button>
+      <button data-action="connect" class="primary">Connetti</button>
+      <button data-action="discover">Scoperta completa</button>
+      <button data-action="disconnect" class="ghost">Disconnetti</button>
+      <button data-action="off" class="danger">Spegni Mario</button>
+    </div>
+    <p class="muted">Prima di connettere: accendi Mario e premi il tasto Bluetooth sulla schiena (icona lampeggiante).</p>
+    <pre id="ov-progress" class="log small"></pre>
+  </section>
+  <section class="card">
+    <h1>Menù</h1>
+    <ul class="menu-list">
+      <li><a href="/scan"><b>Scansione</b></a> — trova i Mario (e gli altri hub LEGO) nelle vicinanze.</li>
+      <li><a href="/devices"><b>Dispositivi</b></a> — catalogo dei dispositivi conosciuti: proprietà, funzioni, note.</li>
+      <li><a href="/monitor"><b>Monitor</b></a> — sensori in tempo reale: gesti, barcode, colori, pantaloni, eventi, batteria.</li>
+      <li><a href="/console"><b>Console</b></a> — proprietà, volume, nome, messaggi grezzi, comandi di uscita.</li>
+      <li><a href="/accessories"><b>Accessori</b></a> — pantaloni, basette con barcode, colori: posseduti e avvistati.</li>
+      <li><a href="/assistant"><b>Assistente</b></a> — Mario come ingresso e uscita di una sessione con un modello: sensori → prompt, risposta → voce ed emozioni.</li>
+      <li><a href="/report"><b>Funzioni</b></a> — report completo di porte e modalità scoperte.</li>
+      <li><a href="/docs"><b>Documentazione</b></a> — README, diario di lavoro, cose da fare.</li>
+    </ul>
+    <h2>Archivio</h2>
+    <p>Dispositivi conosciuti: <b>{{ devices|length }}</b>
+      {% if devices %}({% for d in devices %}<a href="/devices/{{ d.id }}">{{ d.name or d.identity }}</a>{{ ', ' if not loop.last }}{% endfor %}){% endif %}<br>
+      Accessori: {% for kind, s in acc_stats.items() %}{{ kind_labels[kind] }} {{ s.owned }}/{{ s.total }} posseduti, {{ s.seen }} visti{{ '; ' if not loop.last }}{% endfor %}<br>
+      Eventi salvati: <b>{{ ev_stats.total }}</b>{% if ev_stats.last %} (ultimo {{ fmt_time(ev_stats.last) }}){% endif %}</p>
+  </section>
+</div>
+<section class="card">
+  <h1>Ultimi eventi</h1>
+  <table class="events" id="ov-events"><thead><tr><th>Ora</th><th>Porta</th><th>Evento</th></tr></thead><tbody></tbody></table>
+</section>
+{% endblock %}

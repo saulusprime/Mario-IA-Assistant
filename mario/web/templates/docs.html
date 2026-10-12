@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Documentazione{% endblock %}
+{% block content %}
+{% for name, text in docs %}
+<section class="card">
+  <details {{ 'open' if loop.first }}><summary><h1 style="display:inline">{{ name }}</h1></summary>
+  <pre class="doc">{{ text }}</pre></details>
+</section>
+{% endfor %}
+{% endblock %}

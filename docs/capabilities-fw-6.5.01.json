@@ -1,0 +1,613 @@
+{
+  "address": "F4:60:77:5A:20:11",
+  "properties": {
+    "ADVERTISING_NAME": {
+      "id": "0x01",
+      "raw": "4d6172696f2035777a5a",
+      "value": "Mario 5wzZ"
+    },
+    "BUTTON": {
+      "id": "0x02",
+      "raw": "00",
+      "value": false
+    },
+    "FW_VERSION": {
+      "id": "0x03",
+      "raw": "00000165",
+      "value": "6.5.01.0000"
+    },
+    "HW_VERSION": {
+      "id": "0x04",
+      "raw": "00000004",
+      "value": "0.4.00.0000"
+    },
+    "RSSI": {
+      "id": "0x05",
+      "raw": "00",
+      "value": 0
+    },
+    "BATTERY_VOLTAGE": {
+      "id": "0x06",
+      "raw": "54",
+      "value": 84
+    },
+    "BATTERY_TYPE": {
+      "id": "0x07",
+      "raw": "01",
+      "value": 1
+    },
+    "MANUFACTURER_NAME": {
+      "id": "0x08",
+      "raw": "4c45474f2053797374656d20412f53",
+      "value": "LEGO System A/S"
+    },
+    "RADIO_FW_VERSION": {
+      "id": "0x09",
+      "raw": "312e322e3000",
+      "value": "1.2.0"
+    },
+    "LWP_VERSION": {
+      "id": "0x0A",
+      "raw": "0003",
+      "value": "3.0"
+    },
+    "SYSTEM_TYPE_ID": {
+      "id": "0x0B",
+      "raw": "40",
+      "value": 64
+    },
+    "HW_NETWORK_ID": {
+      "id": "0x0C",
+      "raw": "00",
+      "value": 0
+    },
+    "PRIMARY_MAC": {
+      "id": "0x0D",
+      "raw": "f460775a2011",
+      "value": "F4:60:77:5A:20:11"
+    },
+    "SECONDARY_MAC": {
+      "id": "0x0E",
+      "raw": "000000000000",
+      "value": "00:00:00:00:00:00"
+    },
+    "VOLUME": {
+      "id": "0x12",
+      "raw": "64",
+      "value": 100
+    }
+  },
+  "ports": {
+    "0": {
+      "io_type": "0x0047",
+      "io_name": "LEGO Mario: accelerometro e gesti",
+      "hw_version": "6.5.01.0000",
+      "sw_version": "0.0.00.0001",
+      "capabilities": [
+        "input",
+        "combinabile"
+      ],
+      "mode_count": 2,
+      "input_modes": [
+        0,
+        1
+      ],
+      "output_modes": [],
+      "combinations": [
+        [
+          0,
+          1
+        ]
+      ],
+      "modes": {
+        "0": {
+          "name": "RAW",
+          "symbol": "cnt",
+          "raw": [
+            0.0,
+            100.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            100.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 3,
+            "type": "int8",
+            "figures": 3,
+            "decimals": 0
+          }
+        },
+        "1": {
+          "name": "GEST",
+          "symbol": "cnt",
+          "raw": [
+            0.0,
+            100.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            100.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 2,
+            "type": "int16",
+            "figures": 3,
+            "decimals": 0
+          }
+        }
+      },
+      "hint": "modo 0 RAW = accelerometro x/y/z (int8); modo 1 GEST = gesti (bitfield, vedi tabella GESTURES)"
+    },
+    "1": {
+      "io_type": "0x0049",
+      "io_name": "LEGO Mario: scanner colore / barcode",
+      "hw_version": "6.5.01.0000",
+      "sw_version": "0.0.00.0001",
+      "capabilities": [
+        "input",
+        "combinabile"
+      ],
+      "mode_count": 2,
+      "input_modes": [
+        0,
+        1
+      ],
+      "output_modes": [],
+      "combinations": [
+        [
+          0,
+          1
+        ]
+      ],
+      "modes": {
+        "0": {
+          "name": "TAG",
+          "symbol": "idx",
+          "raw": [
+            0.0,
+            10.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            10.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 2,
+            "type": "int16",
+            "figures": 3,
+            "decimals": 0
+          }
+        },
+        "1": {
+          "name": "RGB",
+          "symbol": "raw",
+          "raw": [
+            0.0,
+            10.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            10.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 3,
+            "type": "int8",
+            "figures": 3,
+            "decimals": 0
+          }
+        }
+      },
+      "hint": "modo 0 TAG = [barcode LE16][colore LE16], 0xFFFF = niente; modo 1 RGB = r,g,b grezzi"
+    },
+    "2": {
+      "io_type": "0x004A",
+      "io_name": "LEGO Mario: sensore pantaloni",
+      "hw_version": "6.5.01.0000",
+      "sw_version": "0.0.00.0001",
+      "capabilities": [
+        "input"
+      ],
+      "mode_count": 1,
+      "input_modes": [
+        0
+      ],
+      "output_modes": [],
+      "combinations": [],
+      "modes": {
+        "0": {
+          "name": "PANT",
+          "symbol": "idx",
+          "raw": [
+            0.0,
+            63.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            63.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 1,
+            "type": "int8",
+            "figures": 3,
+            "decimals": 0
+          }
+        }
+      },
+      "hint": "modo 0 PANT = codice pantaloni a 6 bit (vedi tabella PANTS)"
+    },
+    "3": {
+      "io_type": "0x0046",
+      "io_name": "LEGO Mario: eventi di gioco / debug",
+      "hw_version": "6.5.01.0000",
+      "sw_version": "0.0.00.0001",
+      "capabilities": [
+        "input"
+      ],
+      "mode_count": 4,
+      "input_modes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "output_modes": [],
+      "combinations": [],
+      "modes": {
+        "0": {
+          "name": "CHAL",
+          "symbol": "na",
+          "raw": [
+            0.0,
+            65535.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            65535.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 2,
+            "type": "int16",
+            "figures": 3,
+            "decimals": 0
+          }
+        },
+        "1": {
+          "name": "VERS",
+          "symbol": "na",
+          "raw": [
+            0.0,
+            255.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            255.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 4,
+            "type": "int32",
+            "figures": 10,
+            "decimals": 0
+          }
+        },
+        "2": {
+          "name": "EVENTS",
+          "symbol": "na",
+          "raw": [
+            0.0,
+            65535.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            65535.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 2,
+            "type": "int16",
+            "figures": 10,
+            "decimals": 0
+          }
+        },
+        "3": {
+          "name": "DEBUG",
+          "symbol": "na",
+          "raw": [
+            0.0,
+            65535.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            65535.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 4,
+            "type": "int32",
+            "figures": 10,
+            "decimals": 0
+          }
+        }
+      },
+      "hint": "modo 0 CHAL, 1 VERS, 2 EVENTS (eventi di gioco: monete, livello...), 3 DEBUG"
+    },
+    "4": {
+      "io_type": "0x0055",
+      "io_name": "LEGO Mario: eventi alternativi",
+      "hw_version": "0.0.00.0001",
+      "sw_version": "6.5.01.0000",
+      "capabilities": [
+        "output",
+        "input"
+      ],
+      "mode_count": 1,
+      "input_modes": [
+        0
+      ],
+      "output_modes": [
+        0
+      ],
+      "combinations": [],
+      "modes": {
+        "0": {
+          "name": "Events",
+          "symbol": "na",
+          "raw": [
+            0.0,
+            65535.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            65535.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": [
+              "NULL",
+              "DIS"
+            ]
+          },
+          "value_format": {
+            "datasets": 2,
+            "type": "int16",
+            "figures": 5,
+            "decimals": 0
+          }
+        }
+      },
+      "hint": "modo 0 'FS Code', 1 'Events': significato non documentato, viene mostrato grezzo"
+    },
+    "6": {
+      "io_type": "0x0014",
+      "io_name": "Sensore tensione batteria",
+      "hw_version": "0.0.00.0001",
+      "sw_version": "6.5.01.0000",
+      "capabilities": [
+        "input"
+      ],
+      "mode_count": 2,
+      "input_modes": [
+        0,
+        1
+      ],
+      "output_modes": [],
+      "combinations": [],
+      "modes": {
+        "0": {
+          "name": "VLT L",
+          "symbol": "mV",
+          "raw": [
+            0.0,
+            2705.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            3300.0
+          ],
+          "mapping": {
+            "input": [
+              "ABS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 1,
+            "type": "int16",
+            "figures": 4,
+            "decimals": 0
+          }
+        },
+        "1": {
+          "name": "VLT S",
+          "symbol": "mV",
+          "raw": [
+            0.0,
+            2705.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            3300.0
+          ],
+          "mapping": {
+            "input": [
+              "ABS"
+            ],
+            "output": []
+          },
+          "value_format": {
+            "datasets": 1,
+            "type": "int16",
+            "figures": 4,
+            "decimals": 0
+          }
+        }
+      },
+      "hint": "tensione della batteria (raw in mV)"
+    },
+    "7": {
+      "io_type": "0x0060",
+      "io_name": "dispositivo sconosciuto 0x0060",
+      "hw_version": "0.0.00.0001",
+      "sw_version": "6.5.01.0000",
+      "capabilities": [
+        "output",
+        "input"
+      ],
+      "mode_count": 1,
+      "input_modes": [
+        0
+      ],
+      "output_modes": [
+        0
+      ],
+      "combinations": [],
+      "modes": {
+        "0": {
+          "name": "Telemetry",
+          "symbol": "na",
+          "raw": [
+            0.0,
+            255.0
+          ],
+          "pct": [
+            0.0,
+            100.0
+          ],
+          "si": [
+            0.0,
+            255.0
+          ],
+          "mapping": {
+            "input": [
+              "NULL",
+              "DIS"
+            ],
+            "output": [
+              "NULL",
+              "DIS"
+            ]
+          },
+          "value_format": {
+            "datasets": 16,
+            "type": "int8",
+            "figures": 3,
+            "decimals": 0
+          }
+        }
+      },
+      "hint": null
+    }
+  }
+}
