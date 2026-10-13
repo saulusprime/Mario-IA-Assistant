@@ -1,6 +1,6 @@
 # ASIS — stato attuale: cosa è fatto e verificato
 
-Fotografia del progetto LEGO Mario via Bluetooth LE al 13 ottobre 2026. Qui stanno le attività
+Fotografia del progetto LEGO Mario via Bluetooth LE al 13 ottobre 2026 (sera). Qui stanno le attività
 **completate** (spostate da [TODO.md](TODO.md), che ora contiene solo il lavoro aperto); il
 racconto di come ci si è arrivati è in [HANDOFF.md](HANDOFF.md), l'uso in [README.md](README.md).
 Le prove dal vivo citate hanno i log in `docs/sessioni/`.
@@ -72,10 +72,14 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 
 - Claude Code gira nel Flatpak di VS Code: BlueZ non è raggiungibile dal sandbox, `run.sh` salta
   sull'host con `flatpak-spawn`; venv dell'host in `.venv` (Python 3.13, bleak 3.0.2, dbus-fast 5.2,
-  Flask 3.1).
+  Flask 3.1, waitress 3.0).
 - MacBookPro12,1 con Bluetooth e Wi-Fi Broadcom sullo stesso modulo e senza firmware `.hcd`
   disponibile: la connessione regge con il Wi-Fi sulla rete a 5 GHz; autosospensione USB
-  disattivata.
+  disattivata (`/sys/bus/usb/devices/1-3/power/control` = `on`). Il 13/10 il PC risultava acceso
+  dall'11/10 alle 11:30, cioè mai riavviato dopo la creazione di `/etc/modprobe.d/btusb.conf`: la
+  persistenza dopo il riavvio resta da controllare; regola udev pronta in `tools/99-mario-btusb.rules`.
+- Firmware `BCM20703A1-05ac-8290.hcd` cercato di nuovo il 13/10: assente da linux-firmware e dai
+  pacchetti comunitari (confermato da altri utenti dello stesso MacBook su Launchpad).
 - Cause dei blocchi iniziali trovate con tre catture btmon: scansione al 100 % durante la
   connessione (supervision timeout), coesistenza radio a 2,4 GHz (0x3E), pairing negato
   dall'agente di GNOME (`Insufficient Authentication`). Tutte risolte nell'app.
@@ -84,49 +88,69 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 
 ## 4. Software realizzato
 
-- **Libreria** `mario/`: protocollo LWP3 completo (costruttori, parser, descrizioni, formati
-  valore, scaling SI), tabelle di Mario, `MarioDevice` con scansione, connessione con tentativi,
-  agente di pairing, richieste con attesa, scoperta delle funzioni, report testuale e JSON.
-- **CLI** `./run.sh`: `scan`, `info [--json] [--quick]`, `monitor`, `shell` (25 comandi), `assistant`,
-  `web`, `volume`, `name`, `prop`, `pair`, `unpair`, `off`, `raw`; log di sessione in `logs/`.
-- **Dashboard Flask** `mario/web/`: Panoramica, Scansione, Dispositivi (catalogo nel database),
-  Monitor (SSE), Console, Accessori (posseduti e "visti" automatici), Assistente, Funzioni,
-  Documentazione; database SQLite (`devices`, `accessories`, `events`, `settings`,
-  `assistant_messages`). Provata con Mario connesso.
+- **Libreria** `mario/`: protocollo LWP3 completo (costruttori, parser, descrizioni dei messaggi in
+  arrivo e in uscita, formati valore, scaling SI); `mario/hubstate.py` con lo stato dell'hub senza
+  bleak (porte, modi, formati, **valori combinati 0x46 ricomposti per modo**, evento unico per
+  dashboard, CLI e assistente, stato iniziale dal JSON delle funzioni); tabelle in
+  `mario/data/mario_codes.json` con fonte e data di verifica; `MarioDevice` con scansione,
+  connessione con tentativi, agente di pairing, richieste con attesa, scoperta, modalità combinata
+  con delta per modo, report (con stato del bond) e JSON.
+- **CLI** `./run.sh`: `scan`, `info` (salva `docs/capabilities-fw-<versione>.json`), `monitor`
+  (`--combined`, `--json`, `--duration`, `--no-battery`, riconnessione automatica), `shell`
+  (readline, `help <comando>`, `log`, riconnessione), `decode` (catture btsnoop, log, byte),
+  `assistant`, `adventure`, `web` (waitress, token), comandi rapidi, strumenti di `tools/` come
+  sottocomandi; log di sessione in `logs/`.
+- **Dashboard Flask** `mario/web/`: Panoramica, Scansione, Dispositivi (nome e volume dalla scheda),
+  Monitor (SSE), **Eventi** (filtri, esportazione CSV/JSON, grafici), Console, Accessori (con colonna
+  "verificato"), Assistente, **Avventure** (editor e schermo di gioco), Funzioni, Documentazione;
+  database SQLite (`devices`, `accessories`, `events`, `settings`, `assistant_messages`,
+  `assistant_memory`, `adventures`, `adventure_runs`); accesso con token oltre 127.0.0.1.
 - **Assistente** `mario/assistant/`: regole sensori → intenti con pause e filtro di stabilità,
-  parser delle emozioni in streaming, voce dal PC (speech-dispatcher / espeak-ng) con effetti
-  sonori, backend Claude (API Messages), compatibile OpenAI e demo, comportamenti su Mario
-  (volume relativo alla base, sincronizzati con la voce, allow-list), intenti in attesa finché
-  Mario parla, chiave API da `.env`. Provato con Claude e con Mario connesso.
-- **Strumenti dal vivo**: `tools/probe_port4.py` (scritture a scatola nera, osservazione di
-  standby, ripetizioni), `tools/catalog_tiles.py` (sessione con le basette: codici, eventi,
-  database), `tools/live_checks.py` (verifiche guidate a voce: pulsante, pantaloni, gesti, RGB,
-  RSSI, allarmi, disconnect, off).
-- **Test**: 54 senza Bluetooth né rete (`test_lwp3` 18, `test_db` 6, `test_assistant` 30), verdi nel
-  sandbox e nell'host.
-- **Documentazione**: README (uso, protocollo, funzioni verificate, eventi decodificati, problemi
-  di connessione), HANDOFF (diario con orari), TODO (lavoro aperto), ASIS (questo file),
-  `docs/sessioni/` (14 log delle prove, anonimizzati).
-- **Git**: repository inizializzato il 12/10 e pubblicato su GitHub
-  (`saulusprime/Mario-IA-Assistant`, pubblico), documenti anonimizzati (nessun nome di rete,
-  hostname, percorso di casa, email o soprannome del dispositivo); esclusi `.venv/`, `logs/`,
-  `data/`, `.env`, i cloni di terze parti.
+  parser delle emozioni in streaming, voce dal PC (speech-dispatcher / espeak-ng / piper) con
+  effetti sonori, backend Claude (API Messages), compatibile OpenAI e demo, comportamenti su Mario
+  (volume relativo, sincronizzati con la voce, allow-list), intenti in attesa finché Mario parla,
+  ricordi tra le sessioni, limite di tempo e parole bloccate, diario per i genitori, chiave API da
+  `.env`. Provato con Claude e con Mario connesso (prima versione, 11/10).
+- **Designer di avventure** `mario/adventures/` (prima versione, 13/10): modello JSON con
+  validazione, motore a stati con trigger (basetta, colore, pantaloni, gesto, pulsante, evento di
+  gioco, timer, sequenza, ripetizione) e azioni (punti, voce, suono, messaggio, volume, goto, fine,
+  webhook), timeout per passo e limite dell'avventura, stima della posizione dalle basette, log
+  della partita; libreria degli elementi; servizio collegato al worker; pagine editor e gioco;
+  comando `adventure` con simulazione da tastiera; tre avventure di esempio. Provato con eventi
+  simulati, non ancora con Mario.
+- **Strumenti dal vivo**: `tools/probe_port4.py`, `tools/catalog_tiles.py`, `tools/live_checks.py`
+  (anche come `./run.sh live-checks` ecc.), `tools/99-mario-btusb.rules`.
+- **Test**: 120 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+  SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
+  GitHub Actions su Python 3.11 e 3.13.
+- **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).
+- **Documentazione**: README (uso, protocollo, funzioni verificate, eventi decodificati, decode,
+  avventure, problemi di connessione), HANDOFF (diario con orari), TODO (lavoro aperto), ASIS
+  (questo file), `docs/sessioni/` (14 log delle prove, anonimizzati).
+- **Git**: repository pubblicato su GitHub (`saulusprime/Mario-IA-Assistant`), documenti
+  anonimizzati; esclusi `.venv/`, `/logs/`, `/data/`, `.env`, `third_party/` (cloni di riferimento).
 
 ## 5. Mario come I/O di un LLM: tappe fatte
 
-- **Ingresso**: salto, caduta, rotazione, urto (spento), scossa = ripeti, pulsante = ascolto
-  on/off, pantaloni con carattere, basette per famiglia (nemico, premio, start, traguardo, amico),
-  terreno, batteria scarica, moneta (ipotesi, spenta); pause minime e filtro di stabilità per
-  pantaloni e colore; regole modificabili dalla dashboard.
-- **Uscita indiretta**: voce dal PC con velocità e tono per emozione, effetti sonori, volume di
-  Mario che segue l'emozione e torna alla base; il nome non viene toccato.
+- **Ingresso**: salto, caduta, rotazione (solo con Mario appoggiato), urto (spento), scossa = ripeti
+  a riposo e stop mentre parla, pulsante = ascolto on/off, pantaloni con carattere, basette per
+  famiglia (nemico, premio, start, traguardo, amico), terreno, batteria scarica, moneta (ipotesi,
+  spenta); pause minime e filtro di stabilità per pantaloni e colore; regole modificabili dalla
+  dashboard; valori combinati accettati come valori singoli.
+- **Uscita indiretta**: voce dal PC con velocità e tono per emozione (piper se disponibile), effetti
+  sonori, volume di Mario che segue l'emozione e torna alla base; il nome non viene toccato.
+- **Memoria e sicurezza**: ricordi con il tag `[ricorda: …]` nel database, nel prompt delle sessioni
+  successive, gestibili da pagina, API e CLI; minuti per sessione, parole bloccate, diario per i
+  genitori con esportazione CSV.
 - **Architettura**: sessione con streaming, frasi pronunciate una alla volta, loop eventi →
-  prompt, intenti accumulati e uniti mentre Mario parla (scarto dopo 8 s), impostazioni e
-  cronologia nel database, allow-list dei comandi verso Mario.
-- **Prove fatte**: backend demo e voce (11/10), Claude `claude-sonnet-5-5` (risposte nel
-  personaggio con i tag emozione in 2–4 s), sessione con Mario connesso da terminale (sensori
-  veri → risposte coerenti; da lì il ritmo "aspetta la voce" e le pause più lunghe per rotazione
-  e colore), indicazione "occupato" (non supportata), scritture su porta 4 e 7 (inerti).
+  prompt, intenti accumulati e uniti mentre Mario parla (scarto dopo 8 s), impostazioni, cronologia
+  e ricordi nel database (anche dalla CLI), allow-list dei comandi verso Mario, tempo alla prima
+  frase misurato a ogni risposta.
+- **Prove fatte**: backend demo e voce (11/10), Claude `claude-sonnet-5-5` (risposte nel personaggio
+  con i tag emozione in 2–4 s), sessione con Mario connesso da terminale (sensori veri → risposte
+  coerenti), indicazione "occupato" (non supportata), scritture su porta 4 e 7 (inerti); latenza
+  misurata il 13/10: prima frase in 0,7–1,6 s con `claude-haiku-5-5`, 1,1–1,5 s con sonnet (8,8 s a
+  freddo una volta); backend HTTP provati contro un server SSE locale (errori, taglio, Stop).
 
 ## 6. Catalogo dell'utente
 

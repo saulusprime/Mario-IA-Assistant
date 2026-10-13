@@ -1,6 +1,6 @@
 # TODO — lavoro aperto e idee
 
-Lista di lavoro del progetto LEGO Mario via Bluetooth LE. Stato al 13 ottobre 2026.
+Lista di lavoro del progetto LEGO Mario via Bluetooth LE. Stato al 13 ottobre 2026 (sera).
 Qui c'è **solo ciò che resta da fare**: le attività completate e verificate sono in
 [ASIS.md](ASIS.md), il diario in [HANDOFF.md](HANDOFF.md). Le voci sono raggruppate per tipo;
 dentro ogni gruppo le prime sono le più utili.
@@ -21,6 +21,12 @@ dentro ogni gruppo le prime sono le più utili.
       `LOW_VOLTAGE` senza richiesta (gli allarmi sono abilitati e rispondono alla richiesta).
 - [ ] **Reset completo**: `./run.sh unpair` e nuovo pairing, per verificare che il flusso
       automatico funzioni da zero (voce anche in sezione 3).
+- [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
+      (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
+      `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON
+      delle funzioni, nome e volume dalla scheda dispositivo della dashboard, pagina Avventure con
+      Mario connesso (quiz con le basette dell'utente), rotazione ignorata quando Mario è in mano,
+      scossa che interrompe la voce, ricordi e diario della CLI nel database.
 
 ## 2. Reverse engineering ancora da fare
 
@@ -37,8 +43,9 @@ dentro ogni gruppo le prime sono le più utili.
       gioco (`monitor --sub 7:0`) per vedere se trasmette mai qualcosa in ingresso.
 - [ ] **Cattura del traffico dell'app ufficiale**: attivare l'HCI snoop log su un telefono
       Android, giocare con l'app LEGO Super Mario, estrarre il btsnoop e decodificarlo con
-      `lwp3.parse_all` + `describe`. È il modo più rapido per capire le porte 4 e 7 e il
-      significato degli eventi. Serve uno strumento (vedi punto software "decode").
+      `./run.sh decode btsnoop_hci.log --summary` (lo strumento c'è; il formato H4 di Android è
+      stato provato solo su file sintetici). È il modo più rapido per capire le porte 4 e 7 e il
+      significato degli eventi.
 - [ ] **System type 0x40**: la proprietà 0x0B risponde `0x40` mentre l'advertisement dice
       `0x43`. Verificare se Luigi (0x44) e Peach (0x45) fanno lo stesso.
 - [ ] **Mario come "central"**: l'advertisement dichiara capacità 0x03 (central e
@@ -49,15 +56,17 @@ dentro ogni gruppo le prime sono le più utili.
 
 ## 3. Sistema e Bluetooth del PC
 
-- [ ] **Firmware Broadcom** `BCM20703A1-05ac-8290.hcd`: non è nei pacchetti Debian né nei
-      repository comunitari. Estrarlo dal kext di macOS o dal driver Boot Camp con
-      `hex2hcd`, copiarlo in `/lib/firmware/brcm/`, ricaricare `btusb` e verificare con
+- [ ] **Firmware Broadcom** `BCM20703A1-05ac-8290.hcd`: ricercato di nuovo il 13/10, non è in
+      linux-firmware né nei repository comunitari (altri utenti dello stesso MacBook lo
+      confermano su Launchpad). Resta l'estrazione dal kext di macOS o dal driver Boot Camp con
+      `hex2hcd`, copia in `/lib/firmware/brcm/`, ricarica di `btusb` e verifica con
       `sudo dmesg | grep -i brcm`. Dovrebbe migliorare la coesistenza con il Wi-Fi a 2,4 GHz.
 - [ ] **Senza firmware**: tenere il Wi-Fi sui 5 GHz quando si usa Mario; in alternativa
       una chiavetta Bluetooth USB (`./run.sh -i hci1 …`).
-- [ ] **Rendere persistente** l'autosospensione disattivata dopo un riavvio: controllare
-      `cat /sys/bus/usb/devices/1-3/power/control` (atteso `on`); se torna `auto`, serve
-      una regola udev oltre al file in `/etc/modprobe.d/`.
+- [ ] **Rendere persistente** l'autosospensione disattivata dopo un riavvio: il 13/10 il PC non
+      era ancora stato riavviato dalla creazione di `/etc/modprobe.d/btusb.conf` (il parametro del
+      modulo diceva ancora `Y`). Al primo riavvio controllare `cat /sys/bus/usb/devices/1-3/power/control`
+      (atteso `on`); se torna `auto`, installare `tools/99-mario-btusb.rules` (istruzioni nel file).
 - [ ] **Parametri LE del kernel** (solo se il link torna instabile): supervision timeout e
       intervallo via debugfs, comandi nel README.
 - [ ] **Agente di pairing**: verificare che dopo l'uscita dell'app l'agente di GNOME torni
@@ -67,100 +76,57 @@ dentro ogni gruppo le prime sono le più utili.
 
 ## 4. Miglioramenti software
 
-- [ ] **Strumento `decode`**: comando CLI che legge un file btsnoop (`btmon -r`), un log
-      di `monitor`/`shell` o righe esadecimali e li decodifica con `lwp3.describe`,
-      riusando lo stato delle porte da `docs/capabilities-fw-6.5.01.json`. Serve per il
-      punto "cattura dal telefono".
-- [ ] **Valori combinati (0x46) decodificati nella libreria**: `MarioDevice` tiene lo stato per
-      dataset (maschera con byte alto per primo, multi-update parziale) e li passa ai listener
-      come valori normali; oggi lo fa solo `tools/live_checks.py`. Poi `monitor` può mostrare
-      accelerometro e gesti insieme.
-- [ ] **Strumenti dal vivo nella CLI**: `live_checks`, `catalog_tiles` e `probe_port4` come
-      sottocomandi di `./run.sh` (oggi vanno lanciati con il python del venv).
-- [ ] **Riconnessione automatica**: in `monitor` e `shell`, quando Mario si disconnette,
-      riprendere la scansione e riagganciarlo senza riavviare il comando.
-- [ ] **Test con un `BleakClient` finto**: coprire `request()` con i predicati di risposta,
-      la gestione degli errori generici, la scoperta e il flusso di pairing.
-- [ ] **Test dei backend HTTP dell'assistente**: `AnthropicBackend` e `OpenAICompatBackend` non
-      hanno test (solo la demo): avviare un server HTTP locale finto che risponde con eventi SSE
-      (`content_block_delta`, `[DONE]`, errori 400/401, connessione interrotta) e verificare il
-      parser, gli errori `LLMError` e la chiusura dello stream quando si preme Stop.
-- [ ] **Test di `assistant/service.py`**: thread che consuma il flusso del worker, salvataggio
-      dei messaggi, `update_settings` con regole e payload (oggi coperto solo via API Flask).
-- [ ] **Test di `tts.Speaker._command`**: riga di comando per `spd-say` ed `espeak-ng` con le
-      variazioni di velocità/tono per emozione e il blocco ai limiti ±100; sintesi dei file WAV.
-- [ ] **Test della CLI `assistant`**: `Printer` (righe laterali in coda durante lo streaming) e
-      comandi `/stop`, `/emozione`, `/ascolto` con sessione e voce finte.
-- [ ] **`monitor --json`**: una riga JSON per evento (porta, modo, valori grezzi,
-      decodifica), per collegare Mario ad altri programmi.
-- [ ] **`monitor --duration N`** e `--no-battery`.
-- [ ] **Shell**: cronologia e completamento con `readline`, `help <comando>`, comando
-      `log` per cambiare file di log al volo.
-- [ ] **`info`**: salvare automaticamente il JSON in `docs/capabilities-fw-<versione>.json`
-      e mostrare nel report se Mario è associato.
+- [ ] **`decode` su una cattura vera**: i formati btsnoop (monitor, H4 di Android, HCI) sono stati
+      provati solo con file costruiti nei test; verificare con una cattura `btmon -w` durante una
+      sessione reale e con un HCI snoop log di Android.
 - [ ] **Luigi e Peach**: stesso protocollo; verificare che tabelle e nomi reggano
       (system type 0x44/0x45, pantaloni Luigi/Peach già in tabella).
-- [ ] **Packaging**: `pyproject.toml` con entry point `mario`, versione, dipendenze
-      (`bleak>=3`, `dbus-fast` esplicito), e un test di fumo in CI che non usi il Bluetooth.
-- [ ] **Repository di riferimento**: i cloni `LEGO-Mario-Reveng/`, `legomario.py/` e
-      `pyLegoMario/` nella radice sono esclusi da git; restano da spostare in `third_party/`;
-      `logs/pylegomario-src/` è ridondante e si può cancellare.
-- [ ] **Pulizia**: rinominare i log vecchi; aggiungere `tools/gatt_notify_test.sh` al README o
-      toglierlo.
-- [ ] **Tabelle**: portare `GESTURES`, `BARCODES`, `COLORS`, `PANTS`, `GAME_EVENTS` in un
-      file dati (JSON) con campo "fonte" e "verificato dal vivo sì/no".
+- [ ] **`monitor --json` come sorgente per altri programmi**: documentare lo schema delle righe e
+      aggiungere un esempio di consumatore (MQTT o WebSocket, vedi sezione 8).
+- [ ] **Shell**: completamento anche dei nomi delle proprietà e dei numeri di porta; `history`.
+- [ ] **Pacchetto**: provare `pip install -e .` in un venv pulito e pubblicare una release su GitHub
+      (il workflow dei test è attivo; manca il badge nel README e il controllo che la CI sia verde).
+- [ ] **Tabelle JSON**: aggiungere le voci della community ancora mancanti (altri barcode di
+      pyLegoMario senza nome, pantaloni di Luigi/Peach) e una pagina della dashboard che mostri
+      fonte e verifica anche per gesti ed eventi di gioco (oggi solo accessori).
 
 ## 5. Dashboard web
 
 - [ ] **Console e "Aggiorna funzioni"** dalla scheda dispositivo: mai provate con Mario connesso.
 - [ ] **Pagina "Assistente" nel browser con Mario connesso**: provata solo con backend demo e
       simulazione dei sensori; checklist nella sezione 7.
-- [ ] Nessun test automatico del JavaScript (`static/app.js`): solo `node --check` per la
-      sintassi e il controllo che gli id usati esistano nei template. Provare le pagine a mano
-      dopo ogni modifica, oppure aggiungere un test con un browser headless (Playwright).
+- [ ] **Test con un browser headless** (Playwright): oggi il JavaScript ha solo il controllo di
+      sintassi con `node --check` e la coerenza id/azioni con i template (`tests/test_web_static.py`);
+      le pagine vanno provate a mano dopo ogni modifica.
 - [ ] Dispositivo attivo selezionabile quando ce n'è più d'uno (Mario, Luigi, Peach) e
       connessioni multiple in parallelo (un `MarioDevice` per personaggio).
-- [ ] Pagina "Eventi" dedicata con esportazione CSV/JSON e grafici (batteria nel tempo,
-      istogramma gesti).
-- [ ] Modifica di nome e volume direttamente dalla scheda dispositivo; foto o icona per
-      dispositivo e per accessorio.
-- [ ] Autenticazione minima se la dashboard viene esposta oltre `127.0.0.1`.
-- [ ] Sostituire il server di sviluppo Flask con `waitress` o `gunicorn` (SSE con thread).
+- [ ] **Pagina Eventi**: grafici con zoom e scelta dell'intervallo direttamente sul grafico;
+      esportazione anche dei valori combinati per modo.
+- [ ] Foto o icona per dispositivo e per accessorio.
+- [ ] **Token**: scadenza configurabile e revoca; HTTPS (oggi il token viaggia in chiaro sulla
+      rete locale).
 
-## 6. Designer di avventure (cosa serve per costruirlo)
+## 6. Designer di avventure (prima versione fatta il 13/10, cosa manca)
 
-Obiettivo: comporre nella dashboard un'avventura fatta di elementi del mondo di Mario
-(basette con barcode, colori del terreno, pantaloni, nemici, power-up) e farla "girare"
-con il Mario fisico: il PC riconosce dove si trova Mario, cosa indossa e cosa fa, e
-reagisce con suoni, immagini, punteggi e missioni. I contatori della porta 3 (monete, nemici,
-giri) e i codici delle basette dell'utente, già decodificati, sono la base di partenza.
+La prima versione è in `mario/adventures/` (vedi ASIS, sezione 4): modello JSON, motore a stati,
+libreria degli elementi, servizio, pagine editor e gioco, comando `adventure`, tre esempi.
+Provata solo con eventi simulati.
 
-- [ ] **Modello dati** (SQLite): `adventures` (nome, descrizione, autore, versione),
-      `adventure_steps` (ordine, tipo di trigger, condizione, azione, timeout, testo),
-      `adventure_runs` (partita: inizio, fine, punteggio, esito) e `run_events`
-      (collegamento agli eventi reali). Esportazione/importazione in JSON per condividere.
-- [ ] **Libreria di elementi** a partire dagli Accessori: basette (barcode), colori
-      terreno, pantaloni (poteri), nemici e power-up con icona, descrizione, "effetto"
-      nel gioco originale (monete, danno, velocità). Unire le tabelle `codes.*` e il DB.
-- [ ] **Trigger disponibili**: barcode letto, colore sotto i piedi, pantaloni indossati,
-      gesto (salto, scossa, urto, rotazione), pulsante, evento di gioco della porta 3
-      (monete, nemici, giri, tempo scaduto), timer, sequenze (A poi B entro N secondi), contatori.
-- [ ] **Azioni**: messaggio a schermo, suono sul PC, punteggio, avanzamento di missione,
-      cambio volume di Mario, notifica esterna (MQTT/WebSocket). Le porte 4 e 7 sono inerti con
-      i comandi standard: niente azioni verso Mario oltre al volume finché non si trova altro.
-- [ ] **Editor visuale**: griglia o percorso trascinabile con le basette (start, blocchi,
-      nemici, traguardo), proprietà per casella, anteprima del percorso; modalità
-      "registra" che costruisce il percorso facendo camminare Mario sulle basette reali.
-- [ ] **Motore di esecuzione**: macchina a stati che ascolta il flusso eventi del worker,
-      valuta le condizioni del passo corrente, applica le azioni, gestisce timeout e
-      ripetizioni; log della partita e replay.
-- [ ] **Schermo di gioco**: pagina a tutto schermo con mappa, posizione stimata di Mario,
-      missione corrente, punteggio, tempo, suoni; versione "bambino" con icone grandi.
-- [ ] **Contenuti**: 3 avventure di esempio (caccia al tesoro con colori, percorso a
-      ostacoli con gesti, quiz sui nemici), catalogo di immagini libere o icone generate.
-- [ ] **Prerequisiti tecnici**: stima della posizione (sequenza di basette), riconoscimento del
-      "salto riuscito" e del "colpito" dagli eventi della porta 3, latenza del flusso sotto i 200 ms.
+- [ ] **Prova dal vivo**: il "Quiz sulle basette" con le 8 basette dell'utente e il "Percorso a
+      ostacoli" con i gesti; tarare le pause dei gesti ripetuti (0,8 s) e i timeout.
+- [ ] **Editor visuale**: griglia o percorso trascinabile con le basette, proprietà per casella,
+      anteprima; oggi l'editor è a moduli (tabella dei passi) più il JSON per sequenze e azioni.
+- [ ] **Modalità "registra"**: costruire il percorso facendo camminare Mario sulle basette reali
+      (il motore già tiene la sequenza delle basette lette).
+- [ ] **Trigger mancanti**: "salto riuscito" e "colpito" dagli eventi della porta 3 (servono le
+      ipotesi confermate della sezione 2), contatori con soglie sul tempo, combinazioni "A oppure B".
+- [ ] **Azioni verso Mario**: oltre al volume non c'è nulla finché le porte 4 e 7 restano inerti
+      (sezione 7); notifica esterna oggi solo via webhook HTTP (ponte MQTT/WebSocket da scrivere).
+- [ ] **Schermo di gioco**: mappa del percorso disegnata, immagini per basette e colori (catalogo
+      di icone libere), versione a tutto schermo senza menù.
+- [ ] **Partite**: pagina di dettaglio con la cronaca completa e il replay degli eventi.
 - [ ] **Multigiocatore**: Mario + Luigi + Peach connessi insieme, turni e gare.
+- [ ] **Latenza del flusso** sotto i 200 ms: da misurare dal vivo (evento → voce del PC).
 
 ## 7. Mario come dispositivo di I/O per una sessione con un LLM
 
@@ -187,8 +153,13 @@ Servono Mario acceso, `./run.sh assistant` (o `./run.sh web` → pagina Assisten
       salto non deve produrre risposte.
 - [ ] **Cambio pantaloni**: con altri pantaloni, verificare che Mario si presenti nel nuovo
       carattere (dopo gli 0,8 s di stabilità) e che il carattere resti nel prompt di sistema.
-- [ ] **Scossa = ripeti**: scuotere Mario a riposo e sentire ripetuta l'ultima risposta; scuoterlo
-      mentre parla e decidere se deve invece fermarsi (voce "Interruzione fisica" sotto).
+- [ ] **Scossa = ripeti / stop**: scuotere Mario a riposo e sentire ripetuta l'ultima risposta;
+      scuoterlo mentre parla deve interromperla (fatto nel codice il 13/10, da sentire dal vivo).
+- [ ] **Rotazione in mano**: girare Mario sollevato non deve produrre risposte; sulla piattaforma
+      rotante (o su un colore) sì (filtro "solo a terra" del 13/10).
+- [ ] **Ricordi e sicurezza**: dire a Mario il proprio nome e verificare che compaia in Ricordi e
+      che venga usato nella sessione successiva; provare il limite di 2 minuti e una parola bloccata
+      dal vivo; controllare il diario e l'esportazione CSV.
 - [ ] **Caduta interrompe**: far "cadere" Mario (bit 0x0800) mentre parla: deve tagliare la voce e
       rispondere subito alla caduta (priorità 2).
 - [ ] **Batteria scarica**: con Mario sotto il 15 % verificare la frase "mi sento stanco" una
@@ -203,6 +174,9 @@ Servono Mario acceso, `./run.sh assistant` (o `./run.sh web` → pagina Assisten
       alla voce? disattivabili dalle impostazioni (già previsto) se fastidiosi.
 - [ ] **Voce configurata**: impostare voce (`Italian+Alex` o altra da `spd-say -L`), velocità e
       tono dalla pagina e verificare che cambino subito e che restino dopo il riavvio.
+- [ ] **Voce piper**: installare `piper` e un modello italiano (`it_IT-paola-medium.onnx` o
+      simile), indicarlo nelle impostazioni e confrontare la qualità con espeak-ng (il motore è
+      già supportato, mai sentito).
 - [ ] **Chiave API dalle impostazioni** (senza `.env`): rinominare temporaneamente `.env`,
       inserire la chiave nel campo della pagina, verificare "chiave salvata nel database", che
       il backend risolto sia `anthropic` e che il campo resti mascherato.
@@ -264,26 +238,18 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 
 ### Evoluzioni dell'assistente
 
-- [ ] **Rotazione "nervosa"**: tenendo Mario in mano la rotazione scatta spesso; idee: ignorarla
-      mentre Mario è sollevato, spegnerla di default o usarla solo come contesto (il colore e i
-      pantaloni hanno già il filtro di stabilità, da provare dal vivo).
-- [ ] **Voce migliore**: `piper` (voci neurali italiane, offline) al posto di espeak-ng;
-      la classe `Speaker` va estesa con un motore in più. In alternativa un TTS in rete.
 - [ ] **Ingresso vocale**: microfono del PC → riconoscimento (whisper.cpp / vosk, offline)
       così il bambino parla a Mario; il pulsante o la scossa avviano l'ascolto del microfono.
-- [ ] **Interruzione fisica**: scossa o urto durante una risposta = stop della voce
-      (oggi la scossa ripete e la caduta interrompe; valutare: scossa = ripeti a riposo,
-      stop mentre parla).
-- [ ] **Memoria tra sessioni**: nome del bambino, cose dette, preferenze (tabella nel DB,
-      riassunto nel prompt di sistema); comando "dimentica".
 - [ ] **Storia interattiva**: il modello propone azioni fisiche ("salta!", "trova la basetta
-      rossa") e la sessione le verifica con i sensori prima di continuare: è il ponte con il
-      designer di avventure (sezione 6). Serve uno schema di uscita strutturato (JSON) oltre ai tag.
-- [ ] **Sicurezza per bambini**: istruzioni nel prompt già prudenti; aggiungere limiti di
-      tempo per sessione, filtro delle parole, log consultabile dai genitori.
-- [ ] **Latenza**: con `claude-sonnet-5-5` la risposta completa arriva in 2–4 s; misurare il
-      tempo alla prima frase pronunciata e provare `claude-haiku-5-5`; pronuncia già per
-      frase, non a fine risposta.
+      rossa") e la sessione le verifica con i sensori prima di continuare: il motore delle avventure
+      (sezione 6) è il ponte; serve uno schema di uscita strutturato (JSON) oltre ai tag, o un tag
+      `[aspetta: salto]` sul modello di `[ricorda: …]`.
+- [ ] **Modello per i sensori**: usare `claude-haiku-5-5` per i turni dei sensori (prima frase in
+      circa 1 s) e sonnet per la conversazione; oggi il modello è unico.
+- [ ] **Sicurezza, seconda tappa**: filtro anche sui contenuti del modello oltre alle parole esatte
+      (lista di temi), riepilogo giornaliero per i genitori, limite di messaggi oltre che di minuti.
+- [ ] **Ricordi**: riassunto automatico quando superano i venti, data di scadenza, ricordi per
+      bambino (più profili).
 - [ ] **Clip di Mario come comportamento**: se una pista della sezione precedente funziona,
       collegare emozione → clip in `behaviours.py`.
 

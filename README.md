@@ -29,6 +29,9 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh web                  # dashboard web su http://127.0.0.1:8765
 ./run.sh assistant            # Mario come ingresso/uscita di una sessione con un modello (voce dal PC)
 ./run.sh assistant --no-mario # idem senza Bluetooth: tastiera, modello e voce (chiave Claude in .env)
+./run.sh adventure --list     # avventure del designer; --play quiz [--no-mario] per giocarne una
+./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
+./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect)
 ./run.sh volume 30            # imposta il volume (0-100)
 ./run.sh name "Mario Casa"    # cambia il nome Bluetooth
 ./run.sh prop battery         # legge una proprietà
@@ -41,6 +44,13 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 Opzioni globali, prima del comando: `-a INDIRIZZO` sceglie un Mario preciso, `-t SECONDI`
 il tempo di ricerca, `-i hci1` un altro adattatore, `--any-lego` accetta qualsiasi hub LEGO,
 `--no-pair` disattiva il pairing automatico, `-d` mostra i byte grezzi TX/RX.
+
+Opzioni utili di `monitor`: `--combined` (accelerometro + gesti e barcode + RGB insieme, in
+modalità combinata), `--json` (una riga JSON per evento, per collegare Mario ad altri programmi),
+`--duration 120`, `--no-battery`, `--rssi`, `--raw-accel`, `--sub 7:0`. Se Mario cade, `monitor`
+e `shell` aspettano che torni visibile e lo riagganciano (`--no-reconnect` per uscire subito).
+`info` salva la mappa delle funzioni in `docs/capabilities-fw-<versione>.json` (`--no-save` per
+evitarlo; il nome Bluetooth non viene scritto).
 
 **Pairing.** Mario pretende un pairing Bluetooth "Just Works" (lo stesso che fanno i
 telefoni, senza PIN) prima di permettere la scrittura dei descrittori GATT: senza,
@@ -76,8 +86,19 @@ Port Output Command, azioni e allarmi, log di tutte le risposte), **Accessori**
 (pantaloni, basette con barcode, colori terreno e altri accessori: posseduti, quantità,
 set, note; "visti" si aggiorna da solo quando il sensore li riconosce), **Assistente**
 (Mario come ingresso e uscita di una sessione con un modello: chat in streaming, voce dal
-PC, emozioni, regole sensori → intenti, sezione dedicata più sotto), **Funzioni**
-(report completo) e **Documentazione** (README, HANDOFF, TODO).
+PC, emozioni, regole sensori → intenti, sezione dedicata più sotto), **Eventi** (archivio con
+filtri per dispositivo, porta, tipo, testo e intervallo; esportazione CSV e JSON; grafici senza
+librerie esterne: batteria nel tempo, istogramma dei gesti, basette lette, eventi per tipo),
+**Avventure** (designer e schermo di gioco, sezione dedicata più sotto), **Funzioni** (report
+completo) e **Documentazione** (README, ASIS, TODO, HANDOFF). Dalla scheda di un dispositivo si
+cambiano nome e volume con Mario connesso.
+
+Server: `waitress` se installato nel venv (`.venv/bin/pip install waitress`), altrimenti quello
+di sviluppo di Flask (`--server flask|waitress`, `--threads`). Con `--host 0.0.0.0` la dashboard
+è raggiungibile dalla rete locale e l'accesso richiede un token: generato all'avvio e stampato,
+oppure scelto con `--token` o `MARIO_WEB_TOKEN` (`--no-token` per disattivarlo). Si entra con
+`?token=…` nell'URL, dalla pagina `/login` o con `Authorization: Bearer` per le API; il token
+resta in un cookie per trenta giorni.
 
 Architettura: un thread dedicato possiede il loop asyncio e il `MarioDevice`; le rotte
 Flask vi inoltrano le richieste con `run_coroutine_threadsafe`; gli eventi di Mario vanno
@@ -146,8 +167,37 @@ comportamenti, i pulsanti per simulare i sensori senza il Mario fisico, le impos
 (backend, modello, chiave, voce, comportamenti) e la tabella delle regole. Gli eventi
 viaggiano sullo stesso flusso SSE del monitor (`type` = `ASSISTANT`, campo `kind`:
 `user`, `start`, `emotion`, `delta`, `sentence`, `speaking`, `done`, `error`, `intent`,
-`context`, `behaviour`, `listening`). La conversazione è salvata nella tabella
-`assistant_messages`; le impostazioni nella tabella `settings` (chiavi `assistant.*`).
+`context`, `behaviour`, `listening`, `memory`, `memory_forgotten`, `blocked`, `time_up`). La
+conversazione è salvata nella tabella `assistant_messages`; le impostazioni nella tabella
+`settings` (chiavi `assistant.*`).
+
+**Ricordi.** Il modello può chiudere una risposta con `[ricorda: il bambino si chiama Leo]`: il
+tag non viene letto, finisce nella tabella `assistant_memory` e nelle sessioni successive entra
+nel prompt di sistema ("Cose che ricordi dalle volte scorse…"). I ricordi si vedono, si
+aggiungono e si cancellano dalla pagina (sezione Ricordi), dalle API `/api/assistant/memory` e
+dalla CLI (`/ricordi`, `/ricorda TESTO`, `/dimentica [N|tutto]`); la CLI usa lo stesso database
+della dashboard (`data/mario.sqlite3`, `--no-db` per evitarlo), dove salva anche il diario.
+
+**Sicurezza per i bambini.** Dalle impostazioni: minuti di gioco per sessione (allo scadere Mario
+saluta, smette di ascoltare i sensori e rifiuta nuovi messaggi finché non si preme "Nuova"), parole
+bloccate (un messaggio che le contiene non va al modello: Mario cambia discorso; nelle risposte
+vengono sostituite con "…"), memoria attivabile o no. La sezione "Diario per i genitori" mostra
+tutto ciò che è stato detto, con filtro per data ed esportazione CSV (`/api/assistant/history.csv`).
+Da CLI: `--minutes`, `--block`, `--no-memory`.
+
+**Gesti di controllo.** La scossa a riposo ripete l'ultima risposta; la scossa mentre Mario parla
+la interrompe. La rotazione vale solo se lo scanner vede qualcosa sotto i piedi (colore o
+basetta): girato in mano, Mario non reagisce (prima la rotazione scattava di continuo).
+
+**Latenza.** Misurata il 13/10/2026 con l'API (tre prompt per modello, rete di casa): tempo alla
+prima frase pronunciabile 0,7–1,6 s con `claude-haiku-5-5` (risposta completa 0,9–1,9 s) e
+1,1–1,5 s con `claude-sonnet-5-5` (una richiesta a freddo ha impiegato 8,8 s). Entrambi
+rispettano i tag emozione; haiku è una buona scelta per i turni dei sensori. L'evento `done`
+riporta `first_sentence` (la CLI lo stampa come "prima frase dopo N s").
+
+**Voce.** Oltre a `spd-say` ed `espeak-ng`, se nel PC ci sono il binario `piper` e un modello
+italiano `.onnx` (campo "Modello piper" nelle impostazioni, o `--piper-model`), le frasi vengono
+sintetizzate con piper (voce neurale, offline; l'emozione agisce solo sulla velocità).
 
 **Limiti noti.** Mario non ha un canale audio né comandi documentati per display e suoni:
 la voce esce dal PC. L'indicazione "occupato" dell'hub (azioni 0x05/0x06) su Mario risponde
@@ -163,6 +213,33 @@ per rotazione e colore (8 s: girare Mario in mano e appoggiarlo li attiva di con
 l'opzione `-v` del comando `assistant` per vedere i comportamenti riga per riga. Il resto del punto 7 (cattura del traffico
 dell'app ufficiale, firmware) resta nel TODO.
 
+## Designer di avventure
+
+Un'avventura è una sequenza di passi: ogni passo ha una missione detta e mostrata ("Trova
+qualcosa di verde"), un trigger che la completa e un'azione. I trigger sono gli elementi del mondo
+di Mario che il PC riconosce dai sensori: basetta (codice preciso o famiglia: partenza, traguardo,
+nemico, premio, amico, qualsiasi), colore del terreno, pantaloni, gesto, pulsante, evento di gioco
+della porta 3 (per esempio monete totali ≥ 5 o tre giri sulla piattaforma rotante), timer,
+sequenza di trigger entro N secondi, stesso trigger ripetuto N volte. Le azioni: punti, frase
+detta dal PC, effetto sonoro, messaggio a schermo, volume di Mario, salto a un altro passo, fine,
+webhook (POST JSON, solo se abilitati). Ogni passo può avere un timeout con frase e passo di
+ripiego; l'avventura un limite di tempo complessivo.
+
+```sh
+./run.sh web                      # pagina "Avventure": catalogo, editor, libreria degli elementi, partite giocate
+                                  # pagina "Gioca": missione grande, punti, barra del tempo, basette lette, cronaca
+./run.sh adventure --list         # le avventure nel database (o gli esempi)
+./run.sh adventure --play quiz    # con Mario connesso; --no-mario: eventi da tastiera (salto, basetta 0x02, colore 0x25…)
+```
+
+Il motore (`mario/adventures/engine.py`) è una macchina a stati che riceve gli stessi eventi del
+worker della dashboard e di `monitor --json`; si prova senza Mario con i pulsanti di simulazione
+della pagina o con la tastiera. Le avventure sono JSON (`mario/data/adventures/` contiene tre
+esempi: caccia al tesoro dei colori, percorso a ostacoli con i gesti, quiz con le basette dei set
+71360 e 71425), si importano ed esportano dalla pagina. Le partite finiscono nella tabella
+`adventure_runs` con esito, punti e cronaca. L'editor è a moduli (passo per passo) più il JSON
+per sequenze e azioni; la versione trascinabile e la modalità "registra" sono nel TODO.
+
 ## La shell interattiva
 
 `./run.sh shell` si connette, fa una scoperta rapida e poi accetta comandi mentre
@@ -177,9 +254,30 @@ mostra ogni messaggio in arrivo (prefisso `<-`). Comandi principali:
 | `combo 1 0 0:0 0:1 1:0 1:1 1:2` | modalità combinata sulle porte combinabili |
 | `alert low_voltage on`, `busy on`, `action 0x05` | allarmi e azioni dell'hub |
 | `msg 0x01 12 05`, `raw 05 00 01 12 05`, `out 0 1 00` | messaggi arbitrari verso Mario |
+| `log nome.txt`, `log off` | cambia o sospende il file di log della sessione |
 | `quiet`, `debug`, `off`, `quit` | utilità |
 
-Scrivi `help` nella shell per l'elenco completo.
+Scrivi `help` per l'elenco completo e `help sub` (o `combo`, `out`, `alert`, …) per i dettagli di
+un comando. Su un terminale la shell usa readline: frecce per la cronologia (salvata in
+`~/.local/state/mario/`), Tab per completare i comandi. I valori combinati (0x46) vengono
+ricomposti per modo e descritti come i valori singoli.
+
+## Decodifica offline (`decode`)
+
+```sh
+./run.sh decode logs/monitor-20261012-180642.txt --summary     # log di monitor/shell/strumenti
+./run.sh decode cattura.btsnoop --type 45,46 --port 3 --json   # btmon -w, HCI snoop di Android
+./run.sh decode "05 00 45 02 21" "-> 06 00 01 12 01 32"        # byte, anche in uscita (->)
+btmon -r cattura.btsnoop | ./run.sh decode -                    # testo di btmon da stdin
+```
+
+Legge catture btsnoop (formato "Linux monitor" di btmon, H4 dei telefoni Android, HCI puro) con
+riassemblaggio L2CAP, i log di testo del progetto (byte tra parentesi quadre in coda alla riga,
+righe `TX`/`RX` dell'opzione `-d`, uscita di `btmon -r`) e byte esadecimali. Lo stato delle porte
+parte da `docs/capabilities-fw-6.5.01.json` (ogni porta nel modo che `monitor` attiva di default,
+`--no-default-modes` per non presumerlo) ed evolve con le sottoscrizioni e le modalità combinate
+viste nel file. `--summary` conta i messaggi per tipo e porta ed elenca gli eventi della porta 3
+con i valori osservati: è lo strumento per la cattura del traffico dell'app ufficiale (TODO).
 
 ## Uso come libreria
 
@@ -428,6 +526,16 @@ connessione e stampa gli eventi HCI rilevanti; il log completo finisce in `logs/
 Poi `./run.sh info`. Fattore secondario: il Wi-Fi è collegato a 2,4 GHz (canale 11)
 sulla stessa scheda combo; se i problemi persistono prova una rete a 5 GHz.
 
+**Autosospensione USB.** `/etc/modprobe.d/btusb.conf` (`options btusb enable_autosuspend=0`)
+agisce al caricamento del driver; il 13/10/2026 il PC non era ancora stato riavviato dalla
+creazione del file, quindi `/sys/module/btusb/parameters/enable_autosuspend` diceva ancora `Y`
+mentre il dispositivo era già su `on` per via della scrittura manuale. Dopo il primo riavvio va
+controllato `cat /sys/bus/usb/devices/1-3/power/control`; se torna `auto`, c'è la regola udev
+pronta in `tools/99-mario-btusb.rules` (istruzioni nel file). Il firmware
+`BCM20703A1-05ac-8290.hcd` è stato cercato di nuovo il 13/10: non è in linux-firmware né nei
+pacchetti comunitari (altri proprietari di MacBookPro12,1 riportano lo stesso), resta la via
+dell'estrazione dal driver macOS o Boot Camp.
+
 ## File di log
 
 `monitor` e `shell` scrivono tutto quello che mostrano (con i byte grezzi) in
@@ -437,42 +545,56 @@ catture HCI. La cartella è ignorata da git.
 ## Test
 
 ```sh
-python3 -m unittest tests.test_lwp3 tests.test_db tests.test_assistant -v
+python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Cinquantaquattro test senza Bluetooth né rete: codec LWP3, decodificatori e tabelle di Mario
-(`test_lwp3`, 18), database della dashboard (`test_db`, 6), assistente (`test_assistant`, 30:
-parser delle emozioni, regole sensori → intenti con filtro di stabilità, backend demo, sessione
-completa con intenti in attesa, sicurezza dei comportamenti, caricatore `.env`, API Flask).
-Girano anche senza bleak e Flask, tranne i tre test delle API che vengono saltati nel sandbox e
-girano nel venv dell'host.
+Centoventi test senza Bluetooth né rete esterna, raggruppati per file:
+
+| File | Cosa copre |
+|---|---|
+| `test_lwp3` (18) | codec LWP3, decodificatori e tabelle di Mario |
+| `test_hubstate` (5) | stato dell'hub da `capabilities`, valori combinati con i dati reali del 12/10 |
+| `test_decode` (4) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), log di testo, filtri |
+| `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, notifiche, modalità combinata |
+| `test_db` (6) | database della dashboard |
+| `test_assistant` (30), `test_assistant_ext` (11) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, API |
+| `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
+| `test_service` (3), `test_tts` (4) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
+| `test_adventures` (6), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
+| `test_web_pages` (6), `test_web_static` (5) | pagina Eventi, esportazioni, grafici, token; sintassi del JavaScript e coerenza id/azioni con i template |
+| `test_cli` (7), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, `decode`; importazione senza Bluetooth |
+
+I test che importano Flask o bleak vengono saltati dove mancano (per esempio nel sandbox) e
+girano nel venv dell'host e in GitHub Actions (`.github/workflows/tests.yml`, Python 3.11 e 3.13).
 
 ## Struttura del progetto
 
 ```
 run.sh                  avvio (salta sull'host se in Flatpak, crea il venv)
-mario/lwp3.py           protocollo LWP3: messaggi, parser, descrizioni, formati valore
-mario/codes.py          tabelle Mario: pantaloni, gesti, barcode, colori, eventi, modi di default
+pyproject.toml          pacchetto `mario-ble` con entry point `mario` (pip install -e .)
+mario/lwp3.py           protocollo LWP3: messaggi, parser, descrizioni (anche in uscita), formati valore
+mario/hubstate.py       stato dell'hub senza bleak: porte, modi, formati, valori combinati, eventi
+mario/codes.py          tabelle Mario caricate da mario/data/mario_codes.json (fonte e verifica), modi di default
 mario/device.py         MarioDevice (bleak), agente di pairing BlueZ, scoperta, report
-mario/cli.py            comandi scan/info/monitor/shell/assistant/web/volume/name/prop/pair/unpair/off/raw
-mario/web/              dashboard Flask: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
-mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, session, service
+mario/decode.py         decodifica offline: btsnoop, log di testo, byte esadecimali, riepilogo
+mario/cli.py            comandi scan/info/monitor/shell/decode/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
+                        e gli strumenti di tools/ come sottocomandi
+mario/web/              dashboard: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
+mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, memory, session, service
+mario/adventures/       designer di avventure: model, engine, library, service
+mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
-tools/                  capture_btmon.sh (cattura HCI), diag_connect.py, gatt_notify_test.sh,
-                        probe_port4.py (scritture a scatola nera su porte 4 e 7), catalog_tiles.py
-                        (sessione guidata con le basette), live_checks.py (verifiche guidate a voce)
-tests/                  test offline (54)
+tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
+                        probe_port4.py, catalog_tiles.py, live_checks.py, 99-mario-btusb.rules (udev)
+tests/                  test offline (120)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), sessioni/ (log delle prove dal vivo)
+third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), ignorati da git
 data/                   database SQLite della dashboard (ignorato da git)
-logs/                   catture btmon, log di monitor/shell/assistente/prove (ignorato da git)
+logs/                   catture btmon, log di monitor/shell/assistente/avventure/prove (ignorato da git)
 .env                    ANTHROPIC_API_KEY=... (ignorato da git)
 ASIS.md, TODO.md        stato attuale (fatto e verificato) e lavoro aperto
 HANDOFF.md              diario di lavoro con orari
 ```
-
-Nella cartella del progetto sono stati clonati anche tre repository di riferimento
-(`LEGO-Mario-Reveng/`, `legomario.py/`, `pyLegoMario/`): sono sorgenti di terze parti,
-esclusi da git tramite `.gitignore`; andrebbero spostati in `third_party/`.
 
 ## Diario di lavoro e cose da fare
 
@@ -491,3 +613,6 @@ Cosa è fatto e verificato è in [ASIS.md](ASIS.md); i punti aperti e le idee so
 - bricklife/LEGO-Mario-Reveng: https://github.com/bricklife/LEGO-Mario-Reveng
 - djipko/legomario.py: https://github.com/djipko/legomario.py
 - node-poweredup: https://github.com/nathankellenicki/node-poweredup
+- Firmware Broadcom del MacBook (05ac:8290), segnalazione su Launchpad con il file mancante:
+  https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1065400 ; pacchetto comunitario
+  broadcom-bt-firmware: https://github.com/winterheart/broadcom-bt-firmware

@@ -458,20 +458,64 @@ Conseguenze pratiche:
   filtro di stabilità con l'assistente e la pagina Assistente con Mario connesso (sezione 7),
   cattura del traffico dell'app ufficiale (sezione 2).
 
+### 13/10 pomeriggio e sera — Attività del TODO senza Mario (sessione autonoma)
+
+Richiesta dell'utente: "porta avanti le attività in TODO per cui non si rende necessario
+utilizzare Mario". Fatto, in cinque commit:
+
+- **Libreria**: nuovo `mario/hubstate.py` (stato dell'hub senza bleak) con la decodifica dei
+  valori combinati 0x46 ricomposti per modo, verificata offline sui messaggi reali della sessione
+  del 12/10 (`00 1f` = dataset 0..4, aggiornamenti parziali `00 06`); `MarioDevice`, il worker della
+  dashboard e l'assistente usano lo stesso evento; `lwp3.describe_downstream` per i messaggi in
+  uscita; `set_combined_mode` con delta per modo.
+- **`decode`** (`mario/decode.py`): btsnoop (formato monitor di btmon, H4 di Android, HCI puro) con
+  riassemblaggio L2CAP, log di testo del progetto, uscita di `btmon -r`, byte esadecimali; stato
+  iniziale da `docs/capabilities-fw-6.5.01.json` con i modi di default di `monitor`; riepilogo degli
+  eventi della porta 3. Riletti i log di `docs/sessioni/`: le tabelle tornano.
+- **CLI**: `monitor --combined/--json/--duration/--no-battery` e riconnessione automatica; shell con
+  readline, `help <comando>`, `log`; `info` salva il JSON delle funzioni (nome Bluetooth omesso);
+  strumenti di `tools/` come sottocomandi; `web --server waitress --token`; `adventure`.
+- **Dashboard**: pagina Eventi (filtri, CSV/JSON, grafici SVG senza librerie), accesso con token
+  oltre 127.0.0.1 (cookie, `?token=`, Bearer), nome e volume dalla scheda dispositivo, colonna
+  "verificato" negli Accessori, pagina Avventure e schermo di gioco.
+- **Tabelle** in `mario/data/mario_codes.json` con fonte e data di verifica (nomi invariati).
+  Scoperto che `.gitignore` con `data/` escludeva anche `mario/data/`: ora `/data/` e `/logs/`.
+- **Assistente**: ricordi `[ricorda: …]` nel database e nel prompt, limite di minuti, parole
+  bloccate, diario per i genitori con CSV, scossa = stop mentre parla, rotazione solo a terra,
+  tempo alla prima frase, motore piper; la CLI usa il database per ricordi e diario.
+- **Latenza misurata con l'API** (tre prompt per modello): haiku prima frase 0,7–1,6 s, sonnet
+  1,1–1,5 s con un caso a freddo da 8,8 s; tag emozione corretti in entrambi.
+- **Designer di avventure, prima versione**: modello JSON, motore a stati (trigger basetta,
+  colore, pantaloni, gesto, pulsante, evento di gioco, timer, sequenza, ripetizione; azioni punti,
+  voce, suono, messaggio, volume, goto, fine, webhook), libreria degli elementi, servizio, editor a
+  moduli + JSON, schermo di gioco, comando `adventure` con simulazione da tastiera, tre esempi
+  (colori, gesti, quiz con le basette dell'utente). Partita simulata del quiz: 80 punti, 7 passi.
+- **Test**: da 54 a 120 (BleakClient finto per `MarioDevice` e `BleWorker`, server SSE locale per i
+  backend HTTP, servizio, voce, CLI, pagine, token, avventure, controlli statici del JavaScript,
+  fumo); `pyproject.toml`, workflow GitHub Actions; cloni di terze parti in `third_party/`;
+  `logs/pylegomario-src` rimosso; regola udev in `tools/`.
+- **Sistema**: autosospensione ancora su `on` ma il PC non è mai stato riavviato dall'11/10
+  (parametro del modulo `Y`): la persistenza resta da verificare al primo riavvio; firmware
+  Broadcom cercato di nuovo, non disponibile pubblicamente.
+- Non toccato perché serve Mario: sezione 1 del TODO, porte 4/7, cattura dell'app, prove dal vivo
+  di assistente e avventure. Tutte le novità hanno una voce "da provare dal vivo" nel TODO.
+
 ## 4. Stato del codice
 
 | File | Ruolo |
 |---|---|
 | `run.sh` | avvio; salta sull'host se in Flatpak; crea il venv se manca |
-| `mario/lwp3.py` | protocollo LWP3: enumerazioni, costruttori di messaggi, parser, `describe`, formati valore, versioni, scaling SI |
-| `mario/codes.py` | tabelle Mario: pantaloni, gesti, barcode (58), colori, eventi osservati, IO type 0x46/0x47/0x49/0x4A/0x55/0x60, modi di default per nome, delta |
-| `mario/device.py` | `MarioDevice` (scansione, connessione con retry, agente di pairing, bonding, notifiche, richieste con attesa, stato hub, scoperta, report, JSON), `BlueZAgent`, `remove_bluez_device` |
-| `mario/cli.py` | comandi `scan`, `info [--json] [--quick]`, `monitor [--sub P:M[:D]] [--raw-accel] [--rssi]`, `shell`, `assistant`, `web`, `volume`, `name`, `prop`, `pair`, `unpair`, `off`, `raw`; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
+| `mario/lwp3.py` | protocollo LWP3: enumerazioni, costruttori di messaggi, parser, `describe` e `describe_downstream`, formati valore, versioni, scaling SI |
+| `mario/hubstate.py` | stato dell'hub senza bleak: porte, modi, formati, valori combinati ricomposti per modo, evento unico (`event`), stato iniziale da JSON |
+| `mario/codes.py`, `mario/data/mario_codes.json` | tabelle Mario (pantaloni, gesti, barcode 61, colori, eventi 22) con fonte e verifica; IO type; modi di default per nome; delta |
+| `mario/device.py` | `MarioDevice` (scansione, connessione con retry, agente di pairing, bonding, notifiche, richieste con attesa, scoperta, modalità combinata con delta per modo, report, JSON), `BlueZAgent`, `remove_bluez_device` |
+| `mario/decode.py` | decodifica offline: btsnoop (monitor/H4/HCI, riassemblaggio L2CAP), log di testo, btmon -r, hex; riepilogo |
+| `mario/cli.py` | comandi `scan`, `info [--json] [--quick] [--no-save]`, `monitor [--sub] [--combined] [--json] [--duration] [--no-battery] [--rssi] [--raw-accel] [--no-reconnect]`, `shell [--no-reconnect]`, `decode`, `assistant [--minutes] [--block] [--no-memory] [--no-db] [--piper-model]`, `adventure [--list] [--play] [--no-mario]`, `web [--server] [--token] [--threads]`, comandi rapidi, strumenti di tools/ come sottocomandi; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
-| `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `session.py`, `service.py` (vedi README, sezione Assistente) |
-| `tests/test_lwp3.py` | 18 test senza Bluetooth |
-| `tests/test_db.py` | 6 test del database della dashboard |
-| `tests/test_assistant.py` | 30 test dell'assistente e del caricatore `.env` (3 API Flask solo sull'host) |
+| `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py` (vedi README, sezione Assistente) |
+| `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
+| `tests/` | 120 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
 | `mario/web/db.py` | SQLite: dispositivi, accessori, eventi, impostazioni, messaggi dell'assistente |
@@ -482,9 +526,11 @@ Conseguenze pratiche:
 | `tools/catalog_tiles.py` | sessione guidata con le basette reali: annunci vocali, eventi porta 3 per basetta, aggiornamento del database |
 | `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
+| `tools/99-mario-btusb.rules` | regola udev contro l'autosospensione dell'adattatore Broadcom (da installare con sudo, istruzioni nel file) |
 | `docs/capabilities-fw-6.5.01.json` | mappa completa delle funzioni letta dal dispositivo |
 | `docs/sessioni/` | copie anonimizzate dei log delle prove dal vivo (11 e 12/10) con indice |
-| `logs/` | catture btmon, log di monitor/shell, sorgente pyLegoMario (ignorata da git) |
+| `third_party/` | cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), ignorati da git |
+| `logs/` | catture btmon, log di monitor/shell/assistente/avventure (ignorata da git) |
 
 Nel README: uso, comandi della shell, protocollo, tabella porte verificata, osservazioni
 dal vivo, sezione "Problemi di connessione" con tutte e tre le catture.
@@ -498,17 +544,19 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-python3 -m unittest tests.test_lwp3 tests.test_db tests.test_assistant -v   # test offline (54)
-./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario
-./run.sh monitor                             # eventi in tempo reale, log in logs/
-./run.sh shell                               # console bidirezionale, log in logs/
-./run.sh web                                 # dashboard su http://127.0.0.1:8765 (pagina Assistente inclusa)
+.venv/bin/python -m unittest discover -s tests   # test offline (120); nel sandbox: python3 -m unittest discover -s tests
+./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
+./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
+./run.sh shell                               # console bidirezionale con readline, log in logs/
+./run.sh decode docs/sessioni/tiles-20261012-182334.txt --summary   # rilettura offline di un log
+./run.sh web                                 # dashboard su http://127.0.0.1:8765 (Assistente, Eventi, Avventure)
 ./run.sh assistant --no-mario                # assistente senza Bluetooth: tastiera, modello (demo), voce
 ./run.sh assistant                           # con Claude: la chiave è in .env (o nelle impostazioni della pagina)
+./run.sh adventure --play quiz --no-mario    # avventura con eventi da tastiera; senza --no-mario con Mario
+./run.sh live-checks --steps gesti           # verifiche guidate a voce (sezione 1 del TODO)
+./run.sh catalog-tiles                       # sessione con le basette: codici, eventi, database
+./run.sh probe-port4 --help                  # prove a scatola nera su porte 4 e 7
 ./tools/capture_btmon.sh                     # se la connessione torna a fallire
-.venv/bin/python tools/live_checks.py        # verifiche guidate a voce (sezione 1 del TODO)
-.venv/bin/python tools/catalog_tiles.py      # sessione con le basette: codici, eventi, database
-.venv/bin/python tools/probe_port4.py --help # prove a scatola nera su porte 4 e 7
 git pull && git push                         # remote: github.com/saulusprime/Mario-IA-Assistant (SSH)
 ```
 
@@ -518,8 +566,9 @@ deve dire `on`), Mario con l'icona Bluetooth che lampeggia, bond presente
 (`bluetoothctl devices Bonded`). Se qualcosa resta appeso, ogni fase dell'app ha un
 timeout e stampa dove si trova; i log di `monitor`, `shell` e `btmon` sono in `logs/`.
 
-Per i prossimi sviluppi partire da [TODO.md](TODO.md): prime verifiche dal vivo
-(pantaloni, barcode, gesti), poi designer di avventure e Mario come I/O per un LLM.
+Per i prossimi sviluppi partire da [TODO.md](TODO.md): la sezione 1 raccoglie le verifiche dal
+vivo (comprese le novità del 13/10 scritte senza Mario), la 6 e la 7 le prove di avventure e
+assistente con il Mario fisico, la 2 la cattura del traffico dell'app ufficiale con `decode`.
 
 ## 7. Fonti consultate
 
