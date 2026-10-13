@@ -9,12 +9,16 @@ verificato, `[x]` fatto.
 
 Sessione guidata del 12/10 alle 19:16 (`tools/live_checks.py`, log `logs/live-checks-20261012-191602.txt`).
 
-- [~] **Pantaloni (porta 2, modo PANT)**: cambio dal vivo verificato (sequenza con 0x00 "nessun
-      pantalone" tra un paio e l'altro); confermati `0x21` Mario normale e `0x18` Peach; **codice
-      nuovo `0x01`** da identificare con l'utente (quale paio è) e aggiungere a `codes.PANTS`.
-- [~] **Barcode (porta 1, modo TAG)**: verificati `0xB8` Start Mario, `0x02` Goomba, `0x2E` Nuvola,
-      `0x14` Rotazione; aggiunti `0x00F5` Clown Koopa, `0x0160` aereo e `0x015B` carrello minerario
-      (set 71425). Resta la seconda basetta con codice Goomba (quale nemico è).
+- [x] **Pantaloni (porta 2, modo PANT)**: cambio dal vivo verificato il 12/10 con i soli pantaloni
+      blu (0x21): sfilati → 0x00, infilati → di nuovo 0x21, ma durante l'inserimento i contatti
+      danno **codici transitori** (visti 0x18 "Peach" e 0x01). Conseguenza: l'assistente ora
+      considera un valore di pantaloni (e di colore) solo se resta stabile per 0,8 s. Da rifare con
+      altri pantaloni veri quando ci saranno, per confrontare i codici con `codes.PANTS`.
+- [x] **Barcode (porta 1, modo TAG)**: verificati `0xB8` Start Mario, `0x02` Goomba (due basette
+      uguali), `0x2E` Nuvola, `0x14` Rotazione; aggiunti `0x00F5` Clown Koopa (71360), `0x0160`
+      aereo e `0x015B` carrello minerario (71425). Le 8 basette dell'utente sono catalogate nella
+      tabella e nella pagina Accessori. Resta da capire se `0x0099` della community è un altro
+      Bowser Jr.
 - [~] **Gesti**: osservati con accelerometro e gesti insieme (modalità combinata): salto `0x8000`
       scatta anche sollevando, appoggiando o colpendo Mario; la scossa produce `0xA111` (urto +
       scossa + rotazione + inversione + salto); girare Mario in piedi dà `0x0100` + salto + il **bit
@@ -327,10 +331,10 @@ via LWP3 non si scrive la flash (tranne nome e proprietà); mai l'azione 0x2F n�
       dai comandi trovati o dalle basette virtuali (da integrare come comportamento in
       `behaviours.py`, emozione → clip).
 
-- [ ] **Terreno e rotazione "nervosi"**: tenendo Mario in mano il colore cambia di continuo
-      (bianco/nero del tavolo) e la rotazione scatta spesso. Idee: considerare il colore solo
-      se stabile per 1 s (serve un timer, lo scanner manda solo i cambi), ignorare i colori
-      mentre arrivano gesti, rotazione spenta di default o solo come contesto.
+- [~] **Terreno e rotazione "nervosi"**: fatto per il colore (e i pantaloni): un valore conta
+      solo se resta stabile per 0,8 s (`IntentMapper.tick`, chiamato ogni mezzo secondo dal
+      servizio e dalla CLI). Da provare dal vivo. Per la rotazione restano le idee: ignorarla
+      mentre Mario è sollevato, spegnerla di default o usarla solo come contesto.
 - [ ] **Voce migliore**: `piper` (voci neurali italiane, offline) al posto di espeak-ng;
       la classe `Speaker` va estesa con un motore in più. In alternativa un TTS in rete.
 - [ ] **Ingresso vocale**: microfono del PC → riconoscimento (whisper.cpp / vosk, offline)

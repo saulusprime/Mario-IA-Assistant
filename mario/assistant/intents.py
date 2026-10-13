@@ -152,6 +152,12 @@ class IntentMapper:
         self._tile_prev: Optional[int] = None
         self._color_prev: Optional[int] = None
         self._pants_prev: Optional[int] = None
+        # Pantaloni e colore devono restare uguali per `settle` secondi prima di valere: durante il
+        # cambio dei pantaloni i contatti danno codici transitori (visti 0x18 e 0x01 per i pantaloni
+        # blu 0x21, 12/10/2026) e il colore oscilla quando Mario viene appoggiato o sollevato.
+        self.settle = 0.8
+        self._pants_candidate: Optional[tuple[int, float]] = None
+        self._color_candidate: Optional[tuple[int, float]] = None
         self._battery_warned = False
         self._coins: Optional[int] = None
 
@@ -213,9 +219,9 @@ class IntentMapper:
             if io_type == codes.IO_MARIO_ACCELEROMETER and mode == 1 and len(data) >= 2:
                 out += self._gesture(le16(data), ts)
             elif io_type == codes.IO_MARIO_PANTS and mode in (None, 0) and data:
-                out += self._pants(data[0] & 0x3F, ts)
+                out += self._pants(data[0] & 0x3F, ts, bool(ev.get("settled")))
             elif io_type == codes.IO_MARIO_SCANNER and mode == 0 and len(data) >= 4:
-                out += self._scanner(le16(data[0:2]), le16(data[2:4]), ts)
+                out += self._scanner(le16(data[0:2]), le16(data[2:4]), ts, bool(ev.get("settled")))
             elif io_type == codes.IO_MARIO_EVENTS and mode == 2 and len(data) >= 4:
                 out += self._game_event(le16(data[0:2]), le16(data[2:4]), ts)
         elif etype == "HUB_PROPERTIES":
@@ -229,8 +235,20 @@ class IntentMapper:
                     self._battery_warned = True
                     intent = self._fire("batteria", ts, source=f"batteria {value} %")
                     out += [intent] if intent else []
+        out += self.tick(ts)
         if out:
             self.context["updated"] = ts
+        return out
+
+    def tick(self, now: Optional[float] = None) -> list[Intent]:
+        """Promuove i valori in attesa (pantaloni, colore) rimasti stabili abbastanza a lungo.
+        Va chiamata periodicamente anche senza eventi (la sessione lo fa ogni mezzo secondo)."""
+        now = now or time.time()
+        out: list[Intent] = []
+        if self._pants_candidate and now - self._pants_candidate[1] >= self.settle:
+            out += self._settle_pants(self._pants_candidate[0], now)
+        if self._color_candidate and now - self._color_candidate[1] >= self.settle:
+            out += self._settle_color(self._color_candidate[0], now)
         return out
 
     def _gesture(self, bits: int, ts: float) -> list[Intent]:
@@ -245,18 +263,28 @@ class IntentMapper:
                     out.append(intent)
         return out
 
-    def _pants(self, code: int, ts: float) -> list[Intent]:
+    def _pants(self, code: int, ts: float, settled: bool = False) -> list[Intent]:
+        if code == self._pants_prev:
+            self._pants_candidate = None  # tornato al valore noto: il transitorio è finito
+            return []
+        if self._pants_prev is None or settled:
+            return self._settle_pants(code, ts)  # primo valore (alla sottoscrizione) o simulazione
+        if self._pants_candidate is None or self._pants_candidate[0] != code:
+            self._pants_candidate = (code, ts)
+        return []
+
+    def _settle_pants(self, code: int, ts: float) -> list[Intent]:
+        self._pants_candidate = None
+        first = self._pants_prev is None
+        self._pants_prev = code
         name = short_name(codes.PANTS.get(code, f"pantaloni sconosciuti 0x{code:02X}"))
         self.context.update(pants=code, pants_name=name)
-        first = self._pants_prev is None
-        changed = self._pants_prev != code
-        self._pants_prev = code
-        if first or not changed:
+        if first:
             return []  # il primo valore arriva alla sottoscrizione: non è un cambio
         intent = self._fire("pantaloni", ts, name=name, hint=PANTS_PERSONA.get(code, ""), source=f"pantaloni: {name}")
         return [intent] if intent else []
 
-    def _scanner(self, barcode: int, color: int, ts: float) -> list[Intent]:
+    def _scanner(self, barcode: int, color: int, ts: float, settled: bool = False) -> list[Intent]:
         out = []
         if barcode != 0xFFFF and barcode != self._tile_prev:
             name = short_name(codes.BARCODES.get(barcode, f"basetta sconosciuta 0x{barcode:04X}"))
@@ -266,15 +294,25 @@ class IntentMapper:
             if intent:
                 out.append(intent)
         self._tile_prev = barcode
-        if color != 0xFFFF and color != self._color_prev:
-            name = short_name(codes.COLORS.get(color, f"colore sconosciuto 0x{color:04X}"))
-            self.context.update(color=color, color_name=name)
-            if self._color_prev is not None:  # il primo colore (alla sottoscrizione) aggiorna solo lo stato
-                intent = self._fire("terreno", ts, name=name, hint=COLOR_HINTS.get(color, ""), source=f"terreno: {name}")
-                if intent:
-                    out.append(intent)
-            self._color_prev = color
+        if color != 0xFFFF:
+            if color == self._color_prev:
+                self._color_candidate = None
+            elif self._color_prev is None or settled:
+                out += self._settle_color(color, ts)
+            elif self._color_candidate is None or self._color_candidate[0] != color:
+                self._color_candidate = (color, ts)
         return out
+
+    def _settle_color(self, color: int, ts: float) -> list[Intent]:
+        self._color_candidate = None
+        first = self._color_prev is None
+        self._color_prev = color
+        name = short_name(codes.COLORS.get(color, f"colore sconosciuto 0x{color:04X}"))
+        self.context.update(color=color, color_name=name)
+        if first:
+            return []  # il primo colore (alla sottoscrizione) aggiorna solo lo stato
+        intent = self._fire("terreno", ts, name=name, hint=COLOR_HINTS.get(color, ""), source=f"terreno: {name}")
+        return [intent] if intent else []
 
     def _game_event(self, code: int, value: int, ts: float) -> list[Intent]:
         if code == 0x3861:

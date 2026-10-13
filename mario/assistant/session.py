@@ -128,11 +128,22 @@ class AssistantSession:
         intents = self.mapper.feed(ev)
         if ev.get("type") == "PORT_VALUE_SINGLE" and ev.get("io_type") in (0x4A, 0x49) or intents:
             self.emit("context", context=self.mapper.context, text=self.mapper.context_text())
+        self._dispatch(intents)
+        return intents
+
+    def tick(self) -> list[Intent]:
+        """Da chiamare ogni mezzo secondo circa: promuove pantaloni e colore rimasti stabili."""
+        intents = self.mapper.tick()
+        if intents:
+            self.emit("context", context=self.mapper.context, text=self.mapper.context_text())
+            self._dispatch(intents)
+        return intents
+
+    def _dispatch(self, intents: list[Intent]) -> None:
         for intent in intents:
             self.intents.append(intent)
             outcome = self._apply(intent)
             self.emit("intent", intent=intent.to_dict(), outcome=outcome, text=f"{intent.source}: {outcome}")
-        return intents
 
     def _apply(self, intent: Intent) -> str:
         if intent.kind == "control":

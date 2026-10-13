@@ -110,12 +110,27 @@ class IntentTests(unittest.TestCase):
         self.assertEqual([i.name for i in self.m.feed(port_event(0x47, 1, b"\x01\x00", time.time() + 10))], ["urto"])
 
     def test_pants_first_value_is_context_only(self):
-        self.assertEqual(self.m.feed(port_event(0x4A, 0, b"\x21")), [])
+        t0 = 1000.0
+        self.assertEqual(self.m.feed(port_event(0x4A, 0, b"\x21", t0)), [])
         self.assertEqual(self.m.context["pants_name"], "Mario normale")
-        change = self.m.feed(port_event(0x4A, 0, b"\x12"))
+        self.assertEqual(self.m.feed(port_event(0x4A, 0, b"\x12", t0 + 1)), [])  # non ancora stabile
+        self.assertEqual(self.m.context["pants_name"], "Mario normale")
+        change = self.m.tick(t0 + 2)
         self.assertEqual(len(change), 1)
         self.assertIn("Fuoco", change[0].text)
         self.assertIn("Sei Mario Fuoco", self.m.context_text())
+
+    def test_pants_transient_codes_are_ignored(self):
+        # cambio dei pantaloni blu (0x21): contatti transitori 0x18 e 0x01 visti dal vivo il 12/10
+        t0 = 1000.0
+        self.m.feed(port_event(0x4A, 0, b"\x21", t0))
+        for dt, code in ((1.0, 0x00), (1.3, 0x18), (1.5, 0x01), (1.6, 0x21)):
+            self.assertEqual(self.m.feed(port_event(0x4A, 0, bytes([code]), t0 + dt)), [])
+        self.assertEqual(self.m.tick(t0 + 5), [])
+        self.assertEqual(self.m.context["pants_name"], "Mario normale")
+        # simulazione: il flag settled salta l'attesa
+        ev = port_event(0x4A, 0, b"\x11", t0 + 6); ev["settled"] = True
+        self.assertEqual([i.name for i in self.m.feed(ev)], ["pantaloni"])
 
     def test_scanner_tile_and_color(self):
         tile = self.m.feed(port_event(0x49, 0, bytes([0xB8, 0x00, 0x25, 0x00])))
@@ -123,12 +138,18 @@ class IntentTests(unittest.TestCase):
         self.assertIn("Start Mario", tile[0].text)
         self.assertIn("Si parte", tile[0].text)
         self.assertEqual(self.m.context["color_name"], "verde")
-        lava = self.m.feed(port_event(0x49, 0, bytes([0xFF, 0xFF, 0x15, 0x00])))
+        t = time.time()
+        self.assertEqual(self.m.feed(port_event(0x49, 0, bytes([0xFF, 0xFF, 0x15, 0x00]), t)), [])  # attende
+        lava = self.m.tick(t + 1)
         self.assertEqual([i.name for i in lava], ["terreno"])
         self.assertIn("lava", lava[0].text)
-        # stesso colore di nuovo: niente; basetta sconosciuta dopo la pausa: prompt generico
-        self.assertEqual(self.m.feed(port_event(0x49, 0, bytes([0xFF, 0xFF, 0x15, 0x00]))), [])
-        later = self.m.feed(port_event(0x49, 0, bytes([0xCD, 0xAB, 0xFF, 0xFF]), time.time() + 10))
+        # stesso colore di nuovo: niente; un colore che dura 0,3 s non conta; basetta sconosciuta: prompt generico
+        self.assertEqual(self.m.feed(port_event(0x49, 0, bytes([0xFF, 0xFF, 0x15, 0x00]), t + 2)), [])
+        self.m.feed(port_event(0x49, 0, bytes([0xFF, 0xFF, 0x1A, 0x00]), t + 3))
+        self.assertEqual(self.m.feed(port_event(0x49, 0, bytes([0xFF, 0xFF, 0x15, 0x00]), t + 3.3)), [])
+        self.assertEqual(self.m.tick(t + 5), [])
+        self.assertEqual(self.m.context["color_name"], "rosso")
+        later = self.m.feed(port_event(0x49, 0, bytes([0xCD, 0xAB, 0xFF, 0xFF]), t + 10))
         self.assertIn("sconosciuta 0xABCD", later[0].text)
 
     def test_worker_style_raw_event(self):
@@ -297,7 +318,7 @@ class SessionTests(unittest.TestCase):
         self.assertEqual([s for s, _ in speaker.spoken][-3:][0][:3], "Mmm")  # la storia parte da "Mmm, vediamo."
 
     def test_sensor_turn_and_context_prefix(self):
-        self.session.handle_event(port_event(0x4A, 0, b"\x21"))
+        self.session.handle_event(port_event(0x4A, 0, b"\x21", time.time() - 5))
         self.session.handle_event(port_event(0x47, 1, b"\x00\x80"))
         self.assertTrue(wait_idle(self.session))
         self.assertIn("intent", self.kinds())

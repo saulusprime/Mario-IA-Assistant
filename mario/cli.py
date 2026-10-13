@@ -580,6 +580,12 @@ async def cmd_assistant(args) -> int:
             await dev.disconnected.wait()
             queue.put_nowait(None)
         loop.create_task(watch())
+
+        async def ticker():  # pantaloni e colore valgono solo se stabili: serve un orologio
+            while dev.connected:
+                await asyncio.sleep(0.5)
+                session.tick()
+        loop.create_task(ticker())
     print("mario> ", end="", flush=True)
     try:
         while True:

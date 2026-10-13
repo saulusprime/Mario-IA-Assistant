@@ -167,9 +167,17 @@ class AssistantService:
             log.debug("salvataggio messaggio fallito: %s", exc)
 
     def _consume(self) -> None:
+        import queue as _queue
         q = self.worker.open_stream()
         while True:
-            ev = q.get()
+            try:
+                ev = q.get(timeout=0.5)
+            except _queue.Empty:
+                try:
+                    self.session.tick()
+                except Exception as exc:
+                    log.debug("tick dell'assistente fallito: %s", exc)
+                continue
             if ev.get("type") not in ("PORT_VALUE_SINGLE", "HUB_PROPERTIES"):
                 continue
             try:

@@ -296,8 +296,10 @@ porte o modalità in più rispetto a questa tabella le vedrai nel report.
   `WILL_SWITCH_OFF` e chiudono il link.
 - Modalità combinata (porte 0 e 1): funziona, ma la maschera dei dataset arriva con il byte alto
   per primo e, con multi-update, solo i dataset cambiati vengono inviati.
-- Pantaloni: codici 0x21 e 0x18 confermati, 0x01 nuovo. Colori del modo TAG confermati per sette
-  colori. Basette: sette codici letti, tre nuovi aggiunti (Clown Koopa, aereo, carrello minerario).
+- Pantaloni: con i soli pantaloni blu (0x21) il cambio dà 0x00 da sfilati e, infilandoli, codici
+  transitori (0x18, 0x01) prima di tornare a 0x21: l'assistente aspetta che il valore sia stabile.
+  Colori del modo TAG confermati per sette colori. Basette: otto basette catalogate (sette codici,
+  tre nuovi: Clown Koopa, aereo, carrello minerario).
 - Gesti: il salto scatta anche sollevando o appoggiando Mario; la scossa accende cinque bit insieme;
   bit nuovo 0x0002 girando Mario in piedi.
 

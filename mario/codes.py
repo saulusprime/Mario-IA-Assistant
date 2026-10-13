@@ -26,7 +26,10 @@ IO_MARIO_TELEMETRY = 0x60     # porta 7: "Telemetry", 16 byte, ingresso e uscita
 
 MARIO_SYSTEM_TYPES = {0x43: "Mario", 0x44: "Luigi", 0x45: "Peach"}
 
-# Porta 2, modo PANT: codice a 6 bit dei pantaloni (fonte: bricklife)
+# Porta 2, modo PANT: codice a 6 bit dei pantaloni (fonte: bricklife). Verificato dal vivo il 12/10/2026 con i
+# pantaloni blu di Mario (0x21): sfilandoli arriva 0x00, infilandoli i contatti danno per un attimo codici
+# transitori (visti 0x18 e 0x01) prima di tornare a 0x21. Chi usa questi valori deve aspettare che restino
+# stabili per quasi un secondo (lo fa `assistant.intents.IntentMapper`).
 PANTS = {
     0x00: "nessun pantalone",
     0x03: "Ape (Bee)",
@@ -37,7 +40,7 @@ PANTS = {
     0x11: "Gatto (Cat)",
     0x12: "Fuoco (Fire)",
     0x14: "Pinguino (Penguin)",
-    0x18: "Peach (verificati dal vivo il 12/10/2026)",
+    0x18: "Peach",
     0x21: "Mario normale",
     0x22: "Costruttore (Builder)",
     0x23: "Ghiaccio (Ice)",
@@ -47,8 +50,7 @@ PANTS = {
 # (tools/live_checks.py): salto 0x8000 anche sollevando/appoggiando/colpendo Mario; scossa = 0xA111
 # (urto+scossa+rotazione+inversione+salto insieme); girare Mario in piedi = 0x0100 + 0x8000 + bit 0x0002;
 # inclinarlo = 0x0100; cadere da pochi cm = 0x2100; fermo in mano = nessun gesto. Bit 0x0040 visto
-# con l'urto quando Mario viene appoggiato su una basetta (atterraggio?). Pantaloni: codice 0x01 visto
-# il 12/10, da identificare.
+# con l'urto quando Mario viene appoggiato su una basetta (atterraggio?).
 GESTURES = {
     0x0001: "urto (bump)",
     0x0010: "scossa (shake)",
@@ -64,7 +66,7 @@ GESTURES = {
 # Porta 1, modo TAG: primi 2 byte = barcode (little endian), 0xFFFF = nessuno.
 # Fonti: pyLegoMario ALL_RGB_CODES.json (131 codici, 60 con nome) + legomario.py; nomi italiani dove certi.
 BARCODES = {
-    0x0002: 'Goomba (stesso codice: Fly Guy, Foo, Ant Trooper, Ninji, Para-Goomba, Goombrat, Bone Goomba, Bullet Bill, Swoop, Scuttlebug)',
+    0x0002: 'Goomba (verificato dal vivo il 12/10/2026 con due basette; stesso codice: Fly Guy, Foo, Ant Trooper, Ninji, Para-Goomba, Goombrat, Bone Goomba, Bullet Bill, Swoop, Scuttlebug)',
     0x0003: 'Shy Guy / Tipo Timido (secondo legomario.py)',
     0x0004: 'Womp (Whomp)',
     0x000B: 'LEGO NES',

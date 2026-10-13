@@ -546,6 +546,7 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
             if base and first:  # il primo valore vale come stato iniziale: lo simuliamo prima
                 assistant.session.handle_event({**spec, "ts": time.time(), "data": bytes.fromhex(base)})
             spec["data"] = bytes.fromhex(spec.pop("hex"))
+            spec["settled"] = True  # simulazione: niente attesa di stabilità
         spec["ts"] = time.time()
         intents = assistant.session.handle_event(spec)
         return ok(intents=[i.to_dict() for i in intents])

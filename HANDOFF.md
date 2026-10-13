@@ -429,6 +429,16 @@ Conseguenze pratiche:
   rosso, blu: l'utente ha superfici rosse e blu). Del modo RGB si aggiorna solo il primo canale
   (0..189, più alto sul chiaro); gli altri due restano 117 e 130: da riprovare in modo singolo.
 
+### 13/10 — Risposte dell'utente e filtro di stabilità
+
+- Pantaloni: l'utente ha solo i pantaloni blu di Mario. Quindi 0x18 "Peach" e 0x01 visti il 12/10
+  erano **letture transitorie dei contatti** durante il cambio, non pantaloni veri: corrette tabella
+  e documenti. Mario si è spento regolarmente alla fine della sessione. La seconda basetta con
+  codice Goomba è un secondo Goomba (quantità 2 nel database): le 8 basette sono catalogate.
+- Conseguenza nel codice: `IntentMapper` accetta un nuovo valore di pantaloni o di colore solo se
+  resta stabile per 0,8 s (`tick()` chiamato ogni mezzo secondo dal servizio della dashboard e dalla
+  CLI; la simulazione passa `settled`). Nuovi test (54 in tutto).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
