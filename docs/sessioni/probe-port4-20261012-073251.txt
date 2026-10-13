@@ -1,0 +1,151 @@
+[07:33:56] Connesso a MarioCasa; log in ~/Sviluppo/Mario/logs/probe-port4-20261012-073251.txt
+[07:33:56] <- Proprietà ADVERTISING_NAME (0x01) [UPDATE]: MarioCasa   [0b 00 01 01 06 4c 65 6f 54 65 6f]
+[07:33:56] <- Proprietà BUTTON (0x02) [UPDATE]: rilasciato   [06 00 01 02 06 00]
+[07:33:57] <- Proprietà FW_VERSION (0x03) [UPDATE]: 6.5.01.0000   [09 00 01 03 06 00 00 01 65]
+[07:33:57] <- Proprietà HW_VERSION (0x04) [UPDATE]: 0.4.00.0000   [09 00 01 04 06 00 00 00 04]
+[07:33:57] <- Proprietà RSSI (0x05) [UPDATE]: 0 dBm   [06 00 01 05 06 00]
+[07:33:57] <- Proprietà BATTERY_VOLTAGE (0x06) [UPDATE]: 83 %   [06 00 01 06 06 53]
+[07:33:57] <- Proprietà BATTERY_TYPE (0x07) [UPDATE]: ricaricabile   [06 00 01 07 06 01]
+[07:33:57] <- Proprietà MANUFACTURER_NAME (0x08) [UPDATE]: LEGO System A/S   [14 00 01 08 06 4c 45 47 4f 20 53 79 73 74 65 6d 20 41 2f 53]
+[07:33:57] <- Proprietà RADIO_FW_VERSION (0x09) [UPDATE]: 1.2.0   [0b 00 01 09 06 31 2e 32 2e 30 00]
+[07:33:57] <- Proprietà LWP_VERSION (0x0A) [UPDATE]: 3.0   [07 00 01 0a 06 00 03]
+[07:33:57] <- Proprietà SYSTEM_TYPE_ID (0x0B) [UPDATE]: 0x40 (Boost Move Hub (anche LEGO Mario firmware 6.x riporta 0x40 in questa proprietà))   [06 00 01 0b 06 40]
+[07:33:57] <- Proprietà HW_NETWORK_ID (0x0C) [UPDATE]: 0   [06 00 01 0c 06 00]
+[07:33:57] <- Proprietà PRIMARY_MAC (0x0D) [UPDATE]: F4:60:77:5A:20:11   [0b 00 01 0d 06 f4 60 77 5a 20 11]
+[07:33:57] <- Proprietà SECONDARY_MAC (0x0E) [UPDATE]: 00:00:00:00:00:00   [0b 00 01 0e 06 00 00 00 00 00 00]
+[07:33:59] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[07:33:59] <- Info porta 0: capacità=['input', 'combinabile'], modalità=2, input=[0, 1], output=[]   [0b 00 43 00 01 06 02 03 00 00 00]
+[07:33:59] <- Info porta 0: combinazioni possibili [[0, 1]]   [07 00 43 00 02 03 00]
+[07:33:59] <- Porta 0 modo 0 NAME: RAW   [11 00 44 00 00 00 52 41 57 00 00 00 00 00 00 00 00]
+[07:33:59] <- Porta 0 modo 0 VALUE_FORMAT: 3 x int8, 3 cifre, 0 decimali   [0a 00 44 00 00 80 03 00 03 00]
+[07:33:59] <- Porta 0 modo 1 NAME: GEST   [11 00 44 00 01 00 47 45 53 54 00 00 00 00 00 00 00]
+[07:33:59] <- Porta 0 modo 1 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 00 01 80 02 01 03 00]
+[07:33:59] <- Info porta 1: capacità=['input', 'combinabile'], modalità=2, input=[0, 1], output=[]   [0b 00 43 01 01 06 02 03 00 00 00]
+[07:33:59] <- Info porta 1: combinazioni possibili [[0, 1]]   [07 00 43 01 02 03 00]
+[07:34:00] <- Porta 1 modo 0 NAME: TAG   [11 00 44 01 00 00 54 41 47 00 00 00 00 00 00 00 00]
+[07:34:00] <- Porta 1 modo 0 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 01 00 80 02 01 03 00]
+[07:34:00] <- Porta 1 modo 1 NAME: RGB   [11 00 44 01 01 00 52 47 42 00 00 00 00 00 00 00 00]
+[07:34:00] <- Porta 1 modo 1 VALUE_FORMAT: 3 x int8, 3 cifre, 0 decimali   [0a 00 44 01 01 80 03 00 03 00]
+[07:34:00] <- Info porta 2: capacità=['input'], modalità=1, input=[0], output=[]   [0b 00 43 02 01 02 01 01 00 00 00]
+[07:34:00] <- Porta 2 modo 0 NAME: PANT   [11 00 44 02 00 00 50 41 4e 54 00 00 00 00 00 00 00]
+[07:34:00] <- Porta 2 modo 0 VALUE_FORMAT: 1 x int8, 3 cifre, 0 decimali   [0a 00 44 02 00 80 01 00 03 00]
+[07:34:00] <- Info porta 3: capacità=['input'], modalità=4, input=[0, 1, 2, 3], output=[]   [0b 00 43 03 01 02 04 0f 00 00 00]
+[07:34:00] <- Porta 3 modo 0 NAME: CHAL   [11 00 44 03 00 00 43 48 41 4c 00 00 00 00 00 00 00]
+[07:34:00] <- Porta 3 modo 0 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 03 00 80 02 01 03 00]
+[07:34:00] <- Porta 3 modo 1 NAME: VERS   [11 00 44 03 01 00 56 45 52 53 00 00 00 00 00 00 00]
+[07:34:00] <- Porta 3 modo 1 VALUE_FORMAT: 4 x int32, 10 cifre, 0 decimali   [0a 00 44 03 01 80 04 02 0a 00]
+[07:34:00] <- Porta 3 modo 2 NAME: EVENTS   [11 00 44 03 02 00 45 56 45 4e 54 53 00 00 00 00 00]
+[07:34:00] <- Porta 3 modo 2 VALUE_FORMAT: 2 x int16, 10 cifre, 0 decimali   [0a 00 44 03 02 80 02 01 0a 00]
+[07:34:00] <- Porta 3 modo 3 NAME: DEBUG   [11 00 44 03 03 00 44 45 42 55 47 00 00 00 00 00 00]
+[07:34:00] <- Porta 3 modo 3 VALUE_FORMAT: 4 x int32, 10 cifre, 0 decimali   [0a 00 44 03 03 80 04 02 0a 00]
+[07:34:01] <- Info porta 4: capacità=['output', 'input'], modalità=1, input=[0], output=[0]   [0b 00 43 04 01 03 01 01 00 01 00]
+[07:34:01] <- Porta 4 modo 0 NAME: Events   [11 00 44 04 00 00 45 76 65 6e 74 73 00 00 00 00 00]
+[07:34:01] <- Porta 4 modo 0 VALUE_FORMAT: 2 x int16, 5 cifre, 0 decimali   [0a 00 44 04 00 80 02 01 05 00]
+[07:34:01] <- Info porta 6: capacità=['input'], modalità=2, input=[0, 1], output=[]   [0b 00 43 06 01 02 02 03 00 00 00]
+[07:34:01] <- Porta 6 modo 0 NAME: VLT L   [11 00 44 06 00 00 56 4c 54 20 4c 00 00 00 00 00 00]
+[07:34:01] <- Porta 6 modo 0 VALUE_FORMAT: 1 x int16, 4 cifre, 0 decimali   [0a 00 44 06 00 80 01 01 04 00]
+[07:34:01] <- Porta 6 modo 1 NAME: VLT S   [11 00 44 06 01 00 56 4c 54 20 53 00 00 00 00 00 00]
+[07:34:01] <- Porta 6 modo 1 VALUE_FORMAT: 1 x int16, 4 cifre, 0 decimali   [0a 00 44 06 01 80 01 01 04 00]
+[07:34:01] <- Info porta 7: capacità=['output', 'input'], modalità=1, input=[0], output=[0]   [0b 00 43 07 01 03 01 01 00 01 00]
+[07:34:01] <- Porta 7 modo 0 NAME: Telemetry   [11 00 44 07 00 00 54 65 6c 65 6d 65 74 72 79 00 00]
+[07:34:01] <- Porta 7 modo 0 VALUE_FORMAT: 16 x int8, 3 cifre, 0 decimali   [0a 00 44 07 00 80 10 00 03 00]
+[07:34:01] <- Formato input porta 3: modo 2, delta 1, notifiche ON   [0a 00 47 03 02 01 00 00 00 01]
+[07:34:01] notifiche attive: porta 3 modo 2
+[07:34:01] <- Valore porta 3 modo 2: 00 00 00 00 = [0, 0] -> evento classe 0x00 codice 0x00 (0x0000 = evento nullo 0x00/0x00) valore 0   [08 00 45 03 00 00 00 00]
+[07:34:01] <- Formato input porta 4: modo 0, delta 1, notifiche ON   [0a 00 47 04 00 01 00 00 00 01]
+[07:34:01] notifiche attive: porta 4 modo 0
+[07:34:01] <- Formato input porta 7: modo 0, delta 1, notifiche ON   [0a 00 47 07 00 01 00 00 00 01]
+[07:34:01] notifiche attive: porta 7 modo 0
+[07:34:01] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[07:34:01] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[07:34:01] volume: era 100, ora 100
+[07:34:08] === PROVA 1: porta 4, WriteDirectModeData (0x51), basetta Start Mario letta: codice 0x0113, valore 0xB8
+[07:34:10] -> inviato 0b 00 81 04 11 51 00 13 01 b8 00
+[07:34:10] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:13] === PROVA 2: porta 4, WriteDirectModeData (0x51), basetta Goomba letta: codice 0x0113, valore 0x02
+[07:34:15] -> inviato 0b 00 81 04 11 51 00 13 01 02 00
+[07:34:15] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:18] === PROVA 3: porta 4, WriteDirectModeData (0x51), contatore monete uno: codice 0x3861
+[07:34:20] -> inviato 0b 00 81 04 11 51 00 61 38 01 00
+[07:34:20] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:23] === PROVA 4: porta 4, WriteDirectModeData (0x51), contatore monete cinque: codice 0x3861
+[07:34:25] -> inviato 0b 00 81 04 11 51 00 61 38 05 00
+[07:34:25] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:28] === PROVA 5: porta 4, WriteDirectModeData (0x51), codice 0x3004 valore 601
+[07:34:32] -> inviato 0b 00 81 04 11 51 00 04 30 59 02
+[07:34:32] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:35] === PROVA 6: porta 4, WriteDirectModeData (0x51), codice 0x3803 valore 100
+[07:34:39] -> inviato 0b 00 81 04 11 51 00 03 38 64 00
+[07:34:39] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:42] === PROVA 7: porta 4, WriteDirectModeData (0x51), codice 0x200E valore 2
+[07:34:45] -> inviato 0b 00 81 04 11 51 00 0e 20 02 00
+[07:34:45] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:48] === PROVA 8: porta 4, WriteDirectModeData (0x51), codice 0x1802 valore 1
+[07:34:51] -> inviato 0b 00 81 04 11 51 00 02 18 01 00
+[07:34:51] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:34:54] === PROVA 9: porta 4, WriteDirectModeData (0x51), codice 0x1801 valore 1
+[07:34:57] -> inviato 0b 00 81 04 11 51 00 01 18 01 00
+[07:34:57] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:00] === PROVA 10: porta 4, WriteDirectModeData (0x51), codice 0x1803 valore 2
+[07:35:04] -> inviato 0b 00 81 04 11 51 00 03 18 02 00
+[07:35:04] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:07] === PROVA 11: porta 4, WriteDirectModeData (0x51), codice 0x2009 valore 1
+[07:35:10] -> inviato 0b 00 81 04 11 51 00 09 20 01 00
+[07:35:10] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:13] === PROVA 12: porta 4, WriteDirectModeData (0x51), codice 0x200C valore 2
+[07:35:16] -> inviato 0b 00 81 04 11 51 00 0c 20 02 00
+[07:35:16] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:19] === PROVA 13: porta 4, WriteDirectModeData (0x51), codice 0x3812 valore 1
+[07:35:23] -> inviato 0b 00 81 04 11 51 00 12 38 01 00
+[07:35:23] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:26] === PROVA 14: porta 4, WriteDirectModeData (0x51), codice 0x3857 valore 1
+[07:35:30] -> inviato 0b 00 81 04 11 51 00 57 38 01 00
+[07:35:30] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:33] === PROVA 15: porta 4, WriteDirectModeData (0x51), codice 0x3862 valore 2
+[07:35:37] -> inviato 0b 00 81 04 11 51 00 62 38 02 00
+[07:35:37] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:40] === PROVA 16: porta 4, WriteDirectModeData (0x51), codice 0x3866 valore 1
+[07:35:44] -> inviato 0b 00 81 04 11 51 00 66 38 01 00
+[07:35:44] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:47] === PROVA 17: porta 4, WriteDirectModeData (0x51), codice 0x386B valore 3
+[07:35:51] -> inviato 0b 00 81 04 11 51 00 6b 38 03 00
+[07:35:51] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:35:54] === PROVA 18: porta 4, WriteDirectModeData (0x51), codice 0x386E valore 0
+[07:35:58] -> inviato 0b 00 81 04 11 51 00 6e 38 00 00
+[07:35:58] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:36:01] === PROVA 19: porta 4, WriteDirectModeData (0x51), codice 0x3852 valore 0
+[07:36:05] -> inviato 0b 00 81 04 11 51 00 52 38 00 00
+[07:36:05] <- Feedback comando output: porta 4: buffer vuoto, comando completato, inattivo   [05 00 82 04 0a]
+[07:36:08] === PROVA 20: porta 4, WriteDirect (0x50), basetta Start Mario letta: codice 0x0113, valore 0xB8
+[07:36:11] -> inviato 0a 00 81 04 11 50 13 01 b8 00
+[07:36:11] <- ERRORE per il comando PORT_OUTPUT_COMMAND: INVALID_USE   [05 00 05 81 06]
+[07:36:14] === PROVA 21: porta 4, WriteDirect (0x50), basetta Goomba letta: codice 0x0113, valore 0x02
+[07:36:16] -> inviato 0a 00 81 04 11 50 13 01 02 00
+[07:36:16] <- ERRORE per il comando PORT_OUTPUT_COMMAND: INVALID_USE   [05 00 05 81 06]
+[07:36:19] === PROVA 22: porta 4, WriteDirect (0x50), contatore monete uno: codice 0x3861
+[07:36:21] -> inviato 0a 00 81 04 11 50 61 38 01 00
+[07:36:21] <- ERRORE per il comando PORT_OUTPUT_COMMAND: INVALID_USE   [05 00 05 81 06]
+[07:36:24] === PROVA 23: porta 4, WriteDirect (0x50), contatore monete cinque: codice 0x3861
+[07:36:27] -> inviato 0a 00 81 04 11 50 61 38 05 00
+[07:36:27] <- ERRORE per il comando PORT_OUTPUT_COMMAND: INVALID_USE   [05 00 05 81 06]
+[07:36:30] === PROVA 24: porta 4, sottocomando zero (0x00), basetta Start Mario letta: codice 0x0113, valore 0xB8
+[07:36:32] -> inviato 0a 00 81 04 11 00 13 01 b8 00
+[07:36:32] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[07:36:35] === PROVA 25: porta 4, sottocomando zero (0x00), basetta Goomba letta: codice 0x0113, valore 0x02
+[07:36:38] -> inviato 0a 00 81 04 11 00 13 01 02 00
+[07:36:38] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[07:36:41] === PROVA 26: porta 4, sottocomando zero (0x00), contatore monete uno: codice 0x3861
+[07:36:43] -> inviato 0a 00 81 04 11 00 61 38 01 00
+[07:36:43] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[07:36:46] === PROVA 27: porta 4, sottocomando zero (0x00), contatore monete cinque: codice 0x3861
+[07:36:48] -> inviato 0a 00 81 04 11 00 61 38 05 00
+[07:36:48] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[07:36:51] === PROVA 28: azione hub ACTIVATE_BUSY (0x05)
+[07:36:54] -> inviato 04 00 02 05
+[07:36:54] <- ERRORE per il comando HUB_ACTIONS: INVALID_USE   [05 00 05 02 06]
+[07:37:00] === PROVA 29: azione hub RESET_BUSY (0x06)
+[07:37:03] -> inviato 04 00 02 06
+[07:37:03] <- ERRORE per il comando HUB_ACTIONS: INVALID_USE   [05 00 05 02 06]
+[07:37:08] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[07:37:08] volume riportato a 100
+[07:37:10] disconnesso

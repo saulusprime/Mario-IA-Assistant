@@ -1,0 +1,77 @@
+[17:50:42] Connesso a MarioCasa; log in ~/Sviluppo/Mario/logs/probe-port4-20261012-175026.txt
+[17:50:42] <- Proprietà ADVERTISING_NAME (0x01) [UPDATE]: MarioCasa   [0b 00 01 01 06 4c 65 6f 54 65 6f]
+[17:50:42] <- Proprietà BUTTON (0x02) [UPDATE]: rilasciato   [06 00 01 02 06 00]
+[17:50:42] <- Proprietà FW_VERSION (0x03) [UPDATE]: 6.5.01.0000   [09 00 01 03 06 00 00 01 65]
+[17:50:42] <- Proprietà HW_VERSION (0x04) [UPDATE]: 0.4.00.0000   [09 00 01 04 06 00 00 00 04]
+[17:50:42] <- Proprietà RSSI (0x05) [UPDATE]: 0 dBm   [06 00 01 05 06 00]
+[17:50:42] <- Proprietà BATTERY_VOLTAGE (0x06) [UPDATE]: 78 %   [06 00 01 06 06 4e]
+[17:50:42] <- Proprietà BATTERY_TYPE (0x07) [UPDATE]: ricaricabile   [06 00 01 07 06 01]
+[17:50:43] <- Proprietà MANUFACTURER_NAME (0x08) [UPDATE]: LEGO System A/S   [14 00 01 08 06 4c 45 47 4f 20 53 79 73 74 65 6d 20 41 2f 53]
+[17:50:43] <- Proprietà RADIO_FW_VERSION (0x09) [UPDATE]: 1.2.0   [0b 00 01 09 06 31 2e 32 2e 30 00]
+[17:50:43] <- Proprietà LWP_VERSION (0x0A) [UPDATE]: 3.0   [07 00 01 0a 06 00 03]
+[17:50:43] <- Proprietà SYSTEM_TYPE_ID (0x0B) [UPDATE]: 0x40 (Boost Move Hub (anche LEGO Mario firmware 6.x riporta 0x40 in questa proprietà))   [06 00 01 0b 06 40]
+[17:50:43] <- Proprietà HW_NETWORK_ID (0x0C) [UPDATE]: 0   [06 00 01 0c 06 00]
+[17:50:43] <- Proprietà PRIMARY_MAC (0x0D) [UPDATE]: F4:60:77:5A:20:11   [0b 00 01 0d 06 f4 60 77 5a 20 11]
+[17:50:43] <- Proprietà SECONDARY_MAC (0x0E) [UPDATE]: 00:00:00:00:00:00   [0b 00 01 0e 06 00 00 00 00 00 00]
+[17:50:45] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[17:50:45] <- Info porta 0: capacità=['input', 'combinabile'], modalità=2, input=[0, 1], output=[]   [0b 00 43 00 01 06 02 03 00 00 00]
+[17:50:45] <- Info porta 0: combinazioni possibili [[0, 1]]   [07 00 43 00 02 03 00]
+[17:50:45] <- Porta 0 modo 0 NAME: RAW   [11 00 44 00 00 00 52 41 57 00 00 00 00 00 00 00 00]
+[17:50:45] <- Porta 0 modo 0 VALUE_FORMAT: 3 x int8, 3 cifre, 0 decimali   [0a 00 44 00 00 80 03 00 03 00]
+[17:50:45] <- Porta 0 modo 1 NAME: GEST   [11 00 44 00 01 00 47 45 53 54 00 00 00 00 00 00 00]
+[17:50:45] <- Porta 0 modo 1 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 00 01 80 02 01 03 00]
+[17:50:45] <- Info porta 1: capacità=['input', 'combinabile'], modalità=2, input=[0, 1], output=[]   [0b 00 43 01 01 06 02 03 00 00 00]
+[17:50:45] <- Info porta 1: combinazioni possibili [[0, 1]]   [07 00 43 01 02 03 00]
+[17:50:45] <- Porta 1 modo 0 NAME: TAG   [11 00 44 01 00 00 54 41 47 00 00 00 00 00 00 00 00]
+[17:50:45] <- Porta 1 modo 0 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 01 00 80 02 01 03 00]
+[17:50:45] <- Porta 1 modo 1 NAME: RGB   [11 00 44 01 01 00 52 47 42 00 00 00 00 00 00 00 00]
+[17:50:45] <- Porta 1 modo 1 VALUE_FORMAT: 3 x int8, 3 cifre, 0 decimali   [0a 00 44 01 01 80 03 00 03 00]
+[17:50:45] <- Info porta 2: capacità=['input'], modalità=1, input=[0], output=[]   [0b 00 43 02 01 02 01 01 00 00 00]
+[17:50:45] <- Porta 2 modo 0 NAME: PANT   [11 00 44 02 00 00 50 41 4e 54 00 00 00 00 00 00 00]
+[17:50:45] <- Porta 2 modo 0 VALUE_FORMAT: 1 x int8, 3 cifre, 0 decimali   [0a 00 44 02 00 80 01 00 03 00]
+[17:50:45] <- Info porta 3: capacità=['input'], modalità=4, input=[0, 1, 2, 3], output=[]   [0b 00 43 03 01 02 04 0f 00 00 00]
+[17:50:46] <- Porta 3 modo 0 NAME: CHAL   [11 00 44 03 00 00 43 48 41 4c 00 00 00 00 00 00 00]
+[17:50:46] <- Porta 3 modo 0 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 03 00 80 02 01 03 00]
+[17:50:46] <- Porta 3 modo 1 NAME: VERS   [11 00 44 03 01 00 56 45 52 53 00 00 00 00 00 00 00]
+[17:50:46] <- Porta 3 modo 1 VALUE_FORMAT: 4 x int32, 10 cifre, 0 decimali   [0a 00 44 03 01 80 04 02 0a 00]
+[17:50:46] <- Porta 3 modo 2 NAME: EVENTS   [11 00 44 03 02 00 45 56 45 4e 54 53 00 00 00 00 00]
+[17:50:46] <- Porta 3 modo 2 VALUE_FORMAT: 2 x int16, 10 cifre, 0 decimali   [0a 00 44 03 02 80 02 01 0a 00]
+[17:50:46] <- Porta 3 modo 3 NAME: DEBUG   [11 00 44 03 03 00 44 45 42 55 47 00 00 00 00 00 00]
+[17:50:46] <- Porta 3 modo 3 VALUE_FORMAT: 4 x int32, 10 cifre, 0 decimali   [0a 00 44 03 03 80 04 02 0a 00]
+[17:50:46] <- Info porta 4: capacità=['output', 'input'], modalità=1, input=[0], output=[0]   [0b 00 43 04 01 03 01 01 00 01 00]
+[17:50:46] <- Porta 4 modo 0 NAME: Events   [11 00 44 04 00 00 45 76 65 6e 74 73 00 00 00 00 00]
+[17:50:46] <- Porta 4 modo 0 VALUE_FORMAT: 2 x int16, 5 cifre, 0 decimali   [0a 00 44 04 00 80 02 01 05 00]
+[17:50:46] <- Info porta 6: capacità=['input'], modalità=2, input=[0, 1], output=[]   [0b 00 43 06 01 02 02 03 00 00 00]
+[17:50:46] <- Porta 6 modo 0 NAME: VLT L   [11 00 44 06 00 00 56 4c 54 20 4c 00 00 00 00 00 00]
+[17:50:46] <- Porta 6 modo 0 VALUE_FORMAT: 1 x int16, 4 cifre, 0 decimali   [0a 00 44 06 00 80 01 01 04 00]
+[17:50:46] <- Porta 6 modo 1 NAME: VLT S   [11 00 44 06 01 00 56 4c 54 20 53 00 00 00 00 00 00]
+[17:50:46] <- Porta 6 modo 1 VALUE_FORMAT: 1 x int16, 4 cifre, 0 decimali   [0a 00 44 06 01 80 01 01 04 00]
+[17:50:47] <- Info porta 7: capacità=['output', 'input'], modalità=1, input=[0], output=[0]   [0b 00 43 07 01 03 01 01 00 01 00]
+[17:50:47] <- Porta 7 modo 0 NAME: Telemetry   [11 00 44 07 00 00 54 65 6c 65 6d 65 74 72 79 00 00]
+[17:50:47] <- Porta 7 modo 0 VALUE_FORMAT: 16 x int8, 3 cifre, 0 decimali   [0a 00 44 07 00 80 10 00 03 00]
+[17:50:47] <- Formato input porta 3: modo 2, delta 1, notifiche ON   [0a 00 47 03 02 01 00 00 00 01]
+[17:50:47] notifiche attive: porta 3 modo 2
+[17:50:47] <- Valore porta 3 modo 2: 62 38 00 00 = [14434, 0] -> evento classe 0x38 codice 0x62 (0x3862 = evento 0x38/0x62 (valori 0, 2 e 4; 0 all'uscita dal livello, 4 alla connessione delle 17:39 del 12/10)) valore 0   [08 00 45 03 62 38 00 00]
+[17:50:47] <- Formato input porta 4: modo 0, delta 1, notifiche ON   [0a 00 47 04 00 01 00 00 00 01]
+[17:50:47] notifiche attive: porta 4 modo 0
+[17:50:47] <- Formato input porta 7: modo 0, delta 1, notifiche ON   [0a 00 47 07 00 01 00 00 00 01]
+[17:50:47] notifiche attive: porta 7 modo 0
+[17:50:47] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[17:50:47] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[17:50:47] volume: era 100, ora 100
+[17:50:47] <- Formato input porta 1: modo 0, delta 1, notifiche ON   [0a 00 47 01 00 01 00 00 00 01]
+[17:50:47] <- Valore porta 1 modo 0: ff ff 13 00 = [-1, 19] -> colore 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[17:50:47] <- Formato input porta 0: modo 1, delta 1, notifiche ON   [0a 00 47 00 01 01 00 00 00 01]
+[17:50:47] === OSSERVAZIONE: nessun comando per 180 secondi. Lascia Mario fermo.
+[17:50:52] <- Valore porta 0 modo 1: 00 00 00 00 = [0, 0] -> gesto: nessuno (0x0000)   [08 00 45 00 00 00 00 00]
+[17:51:07] <- Valore porta 1 modo 0: ff ff ff ff = [-1, -1] -> nessun barcode/colore (sensore sollevato)   [08 00 45 01 ff ff ff ff]
+[17:51:22] --- marcatore 30 secondi
+[17:51:52] --- marcatore 60 secondi
+[17:52:22] --- marcatore 90 secondi
+[17:52:53] --- marcatore 120 secondi
+[17:53:23] --- marcatore 150 secondi
+[17:53:52] --- marcatore 180 secondi
+[17:53:54] === fine osservazione
+[17:53:56] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[17:53:56] volume riportato a 100
+[17:53:58] disconnesso

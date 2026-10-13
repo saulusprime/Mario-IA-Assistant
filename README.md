@@ -1,8 +1,10 @@
 # LEGO Mario via Bluetooth LE
 
 Applicazione Python 3 per parlare con LEGO Mario (e Luigi / Peach) dal PC: scoperta
-automatica di tutte le funzioni esposte dal dispositivo e comunicazione bidirezionale
-grezza o decodificata.
+automatica di tutte le funzioni esposte dal dispositivo, comunicazione bidirezionale grezza
+o decodificata, dashboard web e un assistente che usa Mario come ingresso e uscita di una
+sessione con un modello di linguaggio. Repository: https://github.com/saulusprime/Mario-IA-Assistant
+(stato al 13 ottobre 2026; diario in [HANDOFF.md](HANDOFF.md), lavoro aperto in [TODO.md](TODO.md)).
 
 Mario è un hub LEGO che usa il **LEGO Wireless Protocol 3.0** (LWP3), lo stesso dei
 Powered Up / Boost / Technic. L'app implementa il protocollo generico (quindi scopre
@@ -224,13 +226,19 @@ prodotto da `./run.sh info --json` l'11 ottobre 2026.
 
 | Porta | IO type | Modalità (formato) | Contenuto |
 |---|---|---|---|
-| 0 | 0x47 | 0 `RAW` (3 × int8), 1 `GEST` (2 × int16); combinabili | accelerometro x/y/z; gesti (bitfield) |
-| 1 | 0x49 | 0 `TAG` (2 × int16), 1 `RGB` (3 × int8); combinabili | `[barcode LE16][colore LE16]`, `FFFF` = nulla; colore RGB grezzo |
-| 2 | 0x4A | 0 `PANT` (1 × int8, 0..63) | codice pantaloni a 6 bit |
-| 3 | 0x46 | 0 `CHAL` (2 × int16), 1 `VERS` (4 × int32), 2 `EVENTS` (2 × int16), 3 `DEBUG` (4 × int32) | eventi di gioco e debug, in parte non documentati |
-| 4 | 0x55 | 0 `Events` (2 × int16), ingresso **e uscita** | eventi; accetta Port Output Command, significato non documentato |
+| 0 | 0x47 | 0 `RAW` (3 × int8), 1 `GEST` (2 × int16); combinabili (verificato) | accelerometro x/y/z (fermo in mano y ≈ 17..60, scossa fino a ±98); gesti (bitfield) |
+| 1 | 0x49 | 0 `TAG` (2 × int16), 1 `RGB` (3 × int8); combinabili (verificato) | `[barcode LE16][colore LE16]`, `FFFF` = nulla; in modo RGB combinato si muove solo il primo canale (0..189) |
+| 2 | 0x4A | 0 `PANT` (1 × int8, 0..63) | codice pantaloni a 6 bit; codici transitori durante il cambio |
+| 3 | 0x46 | 0 `CHAL` (2 × int16), 1 `VERS` (4 × int32), 2 `EVENTS` (2 × int16), 3 `DEBUG` (4 × int32) | eventi di gioco: basetta letta, monete, nemici, giri, stato del livello (sotto) |
+| 4 | 0x55 | 0 `Events` (2 × int16), ingresso **e uscita** | mai trasmesso; accetta solo WriteDirectModeData (0x51) con feedback "completato", ma non conserva il valore e non reagisce |
 | 6 | 0x14 | 0 `VLT L`, 1 `VLT S` (1 × int16, raw 0..2705 = 0..3300 mV) | tensione batteria |
-| 7 | 0x60 | 0 `Telemetry` (16 × int8), ingresso **e uscita** | nuova dal firmware 6.x, non documentata |
+| 7 | 0x60 | 0 `Telemetry` (16 × int8), ingresso **e uscita** | nuova dal firmware 6.x; mai trasmesso; ignora le scritture in silenzio |
+
+Modalità combinata: la maschera dei dataset nel messaggio 0x46 arriva con il byte alto per primo
+(`00 1f` = dataset 0..4) e con multi-update Mario manda solo i dataset cambiati. Proprietà:
+`RSSI` risponde sempre 0 (non implementata); `BUTTON` manda premuto/rilasciato; i quattro allarmi
+dell'hub rispondono; le azioni `DISCONNECT` e `SWITCH_OFF` annunciano `WILL_DISCONNECT` /
+`WILL_SWITCH_OFF`; le azioni busy 0x05/0x06 sono rifiutate (`INVALID_USE`).
 
 Proprietà lette: nome `Mario 5wzZ`, firmware 6.5.01, hardware 0.4, LWP 3.0, batteria in
 percentuale, volume 100, MAC identità `F4:60:77:5A:20:11`. Curiosità: la proprietà
@@ -238,19 +246,43 @@ percentuale, volume 100, MAC identità `F4:60:77:5A:20:11`. Curiosità: la propr
 
 Gesti (porta 0 modo 1): `0x0001` urto, `0x0010` scossa, `0x0100` rotazione,
 `0x0200` movimento rapido, `0x0400` traslazione, `0x0800` caduta/impatto,
-`0x1000` cambio direzione, `0x2000` inversione, `0x8000` salto.
+`0x1000` cambio direzione, `0x2000` inversione, `0x8000` salto. Dal vivo: il salto scatta anche
+sollevando, appoggiando o colpendo Mario; la scossa accende `0xA111`; girare Mario in piedi dà
+`0x8102` (bit `0x0002` senza nome); inclinarlo `0x0100`; cadere da pochi cm `0x2100`; il bit
+`0x0040` compare con l'urto quando Mario atterra su una basetta. Senza nome: `0x0008`, `0x0020`, `0x0080`.
 
 Pantaloni (porta 2): `0x00` nessuno, `0x03` Ape, `0x05` Luigi, `0x06` Rana,
 `0x0A` Tanuki, `0x0C` Elica, `0x11` Gatto, `0x12` Fuoco, `0x14` Pinguino,
-`0x18` Peach, `0x21` Mario, `0x22` Costruttore, `0x23` Ghiaccio.
+`0x18` Peach, `0x21` Mario, `0x22` Costruttore, `0x23` Ghiaccio. Verificato dal vivo solo `0x21`
+(pantaloni blu): sfilandoli arriva `0x00`, infilandoli i contatti danno per un attimo codici
+transitori (`0x18`, `0x01`): chi reagisce ai pantaloni deve aspettare che il valore sia stabile.
 
-Barcode (porta 1): la tabella `codes.BARCODES` ha 58 tile con nome (fonte principale il file
-`ALL_RGB_CODES.json` di pyLegoMario, 131 codici di cui 60 identificati), per esempio `0x02`
-Goomba, `0x29` Blocco ?, `0x2E` Nuvola, `0x63` Super Fungo, `0x7B` Super Stella, `0x88` Re Boo,
-`0x99` Bowser Jr., `0xB7` Traguardo, `0xB8` Start Mario, `0xAF` Start Luigi, `0x14D` Start Peach,
-`0x1D` Bowser, `0x15E` Bowser gigante. I codici non in tabella vengono mostrati in esadecimale.
+Barcode (porta 1): la tabella `codes.BARCODES` ha 61 basette con nome (fonte principale il file
+`ALL_RGB_CODES.json` di pyLegoMario, più tre lette dal vivo: `0xF5` Bowser Jr. nel Clown Koopa,
+`0x160` aereo e `0x15B` carrello minerario del set 71425). Verificate dal vivo: `0xB8` Start Mario,
+`0x02` Goomba, `0x2E` Nuvola, `0x14` Rotazione, oltre alle tre nuove. Altri esempi: `0x29`
+Blocco ?, `0x63` Super Fungo, `0x7B` Super Stella, `0x88` Re Boo, `0x99` Bowser Jr. (community),
+`0xB7` Traguardo, `0xAF` Start Luigi, `0x14D` Start Peach, `0x1D` Bowser, `0x15E` Bowser gigante.
+I codici non in tabella vengono mostrati in esadecimale.
 Colori: `0x13` bianco, `0x15` rosso, `0x17` blu, `0x18` giallo, `0x1A` nero,
-`0x25` verde, `0x6A` marrone, `0x10C` viola, `0x138` nougat, `0x142` ciano.
+`0x25` verde, `0x6A` marrone, `0x10C` viola, `0x138` nougat, `0x142` ciano (i primi sette e il
+nougat verificati dal vivo).
+
+Eventi di gioco (porta 3 modo 2, `[codice LE16][valore LE16]`), significato ricavato dal vivo il
+12 ottobre con le basette reali (ipotesi solide, in `codes.GAME_EVENTS`):
+
+| Codice | Significato |
+|---|---|
+| `0x0113` | basetta letta: il valore è il codice del barcode |
+| `0x386B` | totale monete del livello (1 dopo un Goomba, +6 dopo l'aereo) |
+| `0x20C2` | monete date dall'ultima basetta (6 o 8 con l'aereo, come una roulette) |
+| `0x2042` | nemici sconfitti nel livello (1, 2, 3 a ogni Goomba) |
+| `0x3712` | = 1 circa un secondo dopo ogni nemico sconfitto |
+| `0x2022` | giri contati sulla piattaforma rotante |
+| `0x1803` | 4 subito dopo lo Start, 3 a fine livello, 0 fuori dal livello |
+| `0x3812` | 2 in livello / a fine livello, 1 fuori dal livello |
+| `0x3004`, `0x3852`, `0x386E`, `0x3803=100` | sequenza del "tempo scaduto" (conto alla rovescia sul petto) |
+| `0x3862` | 0 quasi a ogni basetta letta o sollevata; 4 alla connessione |
 
 ### Osservazioni dal vivo (sessione `monitor` dell'11 ottobre 2026, 3 minuti e 40 secondi)
 
@@ -407,11 +439,12 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest tests.test_lwp3 tests.test_db tests.test_assistant -v
 ```
 
-Quarantanove test senza Bluetooth né rete: codec LWP3, decodificatori e tabelle di Mario
-(`test_lwp3`, 18), database della dashboard (`test_db`, 6), assistente (`test_assistant`,
-25: parser delle emozioni, regole sensori → intenti, backend demo, sessione completa,
-sicurezza dei comportamenti, API Flask). Girano anche senza bleak e Flask, tranne i tre
-test delle API che vengono saltati nel sandbox e girano nel venv dell'host.
+Cinquantaquattro test senza Bluetooth né rete: codec LWP3, decodificatori e tabelle di Mario
+(`test_lwp3`, 18), database della dashboard (`test_db`, 6), assistente (`test_assistant`, 30:
+parser delle emozioni, regole sensori → intenti con filtro di stabilità, backend demo, sessione
+completa con intenti in attesa, sicurezza dei comportamenti, caricatore `.env`, API Flask).
+Girano anche senza bleak e Flask, tranne i tre test delle API che vengono saltati nel sandbox e
+girano nel venv dell'host.
 
 ## Struttura del progetto
 
@@ -423,17 +456,21 @@ mario/device.py         MarioDevice (bleak), agente di pairing BlueZ, scoperta, 
 mario/cli.py            comandi scan/info/monitor/shell/assistant/web/volume/name/prop/pair/unpair/off/raw
 mario/web/              dashboard Flask: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
 mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, session, service
-tools/                  capture_btmon.sh (cattura HCI), diag_connect.py, gatt_notify_test.sh, probe_port4.py (prove sulla porta 4)
-tests/                  test offline
-docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni letta dal dispositivo)
+mario/env.py            caricamento di .env (chiave API) senza dipendenze
+tools/                  capture_btmon.sh (cattura HCI), diag_connect.py, gatt_notify_test.sh,
+                        probe_port4.py (scritture a scatola nera su porte 4 e 7), catalog_tiles.py
+                        (sessione guidata con le basette), live_checks.py (verifiche guidate a voce)
+tests/                  test offline (54)
+docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), sessioni/ (log delle prove dal vivo)
 data/                   database SQLite della dashboard (ignorato da git)
-logs/                   catture btmon, log di monitor/shell, sorgente pyLegoMario (ignorato da git)
+logs/                   catture btmon, log di monitor/shell/assistente/prove (ignorato da git)
+.env                    ANTHROPIC_API_KEY=... (ignorato da git)
 HANDOFF.md, TODO.md     diario di lavoro e lista delle cose da fare
 ```
 
 Nella cartella del progetto sono stati clonati anche tre repository di riferimento
 (`LEGO-Mario-Reveng/`, `legomario.py/`, `pyLegoMario/`): sono sorgenti di terze parti,
-non fanno parte dell'app e andrebbero spostati in `third_party/` o esclusi da git.
+esclusi da git tramite `.gitignore`; andrebbero spostati in `third_party/`.
 
 ## Diario di lavoro e cose da fare
 

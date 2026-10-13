@@ -1,0 +1,124 @@
+[18:25:24] connesso a MarioCasa; log ~/Sviluppo/Mario/logs/tiles-20261012-182334.txt
+[18:25:29] pronto: appoggia Mario su una basetta alla volta (360 s, Ctrl+C per finire prima)
+[18:25:36] gesto: rotazione (turning), inversione (reverse)   [08 00 45 00 00 21 00 21]
+[18:25:38] gesto: rotazione (turning), inversione (reverse)   [08 00 45 00 00 21 00 21]
+[18:25:38] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:25:38] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:25:39] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:25:39] === BASETTA 1: 0x00B8 = Start Mario (tubo di partenza)   [08 00 45 01 b8 00 ff ff]
+[18:25:40] evento porta 3: 0x0113 = 184  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 b8 00]
+[18:25:40] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:25:40] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:25:43] gesto: rotazione (turning), inversione (reverse)   [08 00 45 00 00 21 00 21]
+[18:25:43] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:25:43] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:25:44] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:25:44] === BASETTA 2: 0x00F5 = Bowser Jr. nel Clown Koopa (letta dal vivo il 12/10/2026: icona del Clown Koopa; pyLegoMario dà Bowser Jr. = 0x99, forse basetta di un altro set)   [08 00 45 01 f5 00 ff ff]
+[18:25:44] evento porta 3: 0x0113 = 245  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 f5 00]
+[18:25:44] evento porta 3: 0x3803 = 0  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 00 00]
+[18:25:48] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:25:48] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:25:48] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:25:48] === BASETTA 3: 0x0002 = Goomba (stesso codice: Fly Guy, Foo, Ant Trooper, Ninji, Para-Goomba, Goombrat, Bone Goomba, Bullet Bill, Swoop, Scuttlebug)   [08 00 45 01 02 00 ff ff]
+[18:25:48] evento porta 3: 0x0113 = 2  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 02 00]
+[18:25:48] evento porta 3: 0x3803 = 100  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 64 00]
+[18:25:49] gesto: urto (bump), bit sconosciuti 0x0040   [08 00 45 00 41 00 41 00]
+[18:25:49] evento porta 3: 0x386B = 1  (contatore 0x38/0x6B (valori 0, 1, 3, 5 osservati))   [08 00 45 03 6b 38 01 00]
+[18:25:49] evento porta 3: 0x2042 = 1  (contatore legato al Goomba: 1, 2, 3 a ogni basetta Goomba letta (nemici sconfitti?))   [08 00 45 03 42 20 01 00]
+[18:25:50] evento porta 3: 0x3712 = 1  (evento 0x37/0x12 = 1 circa 1 s dopo ogni basetta Goomba (nemico sconfitto?))   [08 00 45 03 12 37 01 00]
+[18:25:51] gesto: rotazione (turning), inversione (reverse)   [08 00 45 00 00 21 00 21]
+[18:25:51] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:25:51] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:25:51] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:25:51] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:25:51] === BASETTA 4: 0x0160 = SCONOSCIUTA (non in tabella)   [08 00 45 01 60 01 ff ff]
+[18:25:51] evento porta 3: 0x0113 = 352  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 60 01]
+[18:25:51] gesto: urto (bump), bit sconosciuti 0x0040   [08 00 45 00 41 00 41 00]
+[18:25:51] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:25:54] evento porta 3: 0x386B = 7  (contatore 0x38/0x6B (valori 0, 1, 3, 5 osservati))   [08 00 45 03 6b 38 07 00]
+[18:25:54] evento porta 3: 0x20C2 = 6  (contatore legato alla basetta 0x0160: 6 poi 8, circa 3 s dopo la lettura (monete raccolte?))   [08 00 45 03 c2 20 06 00]
+[18:25:55] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:25:55] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:25:55] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:25:55] === BASETTA 5: 0x015B = SCONOSCIUTA (non in tabella)   [08 00 45 01 5b 01 ff ff]
+[18:25:55] evento porta 3: 0x0113 = 347  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 5b 01]
+[18:25:56] evento porta 3: 0x3803 = 0  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 00 00]
+[18:25:59] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:25:59] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:25:59] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:25:59] === BASETTA 3: 0x0002 = Goomba (stesso codice: Fly Guy, Foo, Ant Trooper, Ninji, Para-Goomba, Goombrat, Bone Goomba, Bullet Bill, Swoop, Scuttlebug)   [08 00 45 01 02 00 ff ff]
+[18:25:59] evento porta 3: 0x0113 = 2  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 02 00]
+[18:25:59] gesto: urto (bump), bit sconosciuti 0x0040   [08 00 45 00 41 00 41 00]
+[18:26:00] evento porta 3: 0x386B = 8  (contatore 0x38/0x6B (valori 0, 1, 3, 5 osservati))   [08 00 45 03 6b 38 08 00]
+[18:26:00] evento porta 3: 0x2042 = 2  (contatore legato al Goomba: 1, 2, 3 a ogni basetta Goomba letta (nemici sconfitti?))   [08 00 45 03 42 20 02 00]
+[18:26:01] evento porta 3: 0x3712 = 1  (evento 0x37/0x12 = 1 circa 1 s dopo ogni basetta Goomba (nemico sconfitto?))   [08 00 45 03 12 37 01 00]
+[18:26:01] evento porta 3: 0x3803 = 100  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 64 00]
+[18:26:02] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:26:02] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:26:03] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:26:03] gesto: rotazione (turning), inversione (reverse)   [08 00 45 00 00 21 00 21]
+[18:26:03] gesto: rotazione (turning), inversione (reverse)   [08 00 45 00 00 21 00 21]
+[18:26:03] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:26:04] gesto: urto (bump), bit sconosciuti 0x0040   [08 00 45 00 41 00 41 00]
+[18:26:04] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:26:04] === BASETTA 6: 0x002E = Nuvola   [08 00 45 01 2e 00 ff ff]
+[18:26:04] evento porta 3: 0x0113 = 46  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 2e 00]
+[18:26:06] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:26:06] === BASETTA 7: 0x0014 = Rotazione (per legomario.py: Refresh)   [08 00 45 01 14 00 ff ff]
+[18:26:06] evento porta 3: 0x0113 = 20  (basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario))   [08 00 45 03 13 01 14 00]
+[18:26:07] evento porta 3: 0x3803 = 0  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 00 00]
+[18:26:08] evento porta 3: 0x1803 = 4  (evento 0x18/0x03 (12/10: 4 subito dopo Start, 3 a fine livello, 0 fuori dal livello: forse fase di gioco o vite))   [08 00 45 03 03 18 04 00]
+[18:26:13] scanner sollevato   [08 00 45 01 ff ff 13 00]
+[18:26:13] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:26:13] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:26:13] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:26:14] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:26:14] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:26:14] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:26:14] evento porta 3: 0x3803 = 100  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 64 00]
+[18:26:18] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:26:19] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:26:20] evento porta 3: 0x3862 = 4  (evento 0x38/0x62 (valori 0, 2 e 4; 0 quasi a ogni basetta letta o sollevata, 4 alla connessione delle 17:39 del 12/10))   [08 00 45 03 62 38 04 00]
+[18:26:20] colore: 0x0013 = bianco   [08 00 45 01 ff ff 13 00]
+[18:26:21] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:26:23] evento porta 3: 0x3803 = 100  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 64 00]
+[18:26:23] evento porta 3: 0x3004 = 601  (evento 0x30/0x04 (sempre 601: visto al tempo scaduto del 12/10 17:33 e 8 s dopo la basetta Clown Koopa alle 18:10 senza fine livello; significato da chiarire))   [08 00 45 03 04 30 59 02]
+[18:26:23] evento porta 3: 0x3812 = 2  (evento 0x38/0x12 (12/10: 2 a fine livello, 1 fuori dal livello: forse stato del gioco))   [08 00 45 03 12 38 02 00]
+[18:26:24] evento porta 3: 0x3852 = 0  (evento 0x38/0x52 (valore 0, nella sequenza di fine livello))   [08 00 45 03 52 38 00 00]
+[18:26:24] evento porta 3: 0x1803 = 3  (evento 0x18/0x03 (12/10: 4 subito dopo Start, 3 a fine livello, 0 fuori dal livello: forse fase di gioco o vite))   [08 00 45 03 03 18 03 00]
+[18:26:24] evento porta 3: 0x386E = 0  (evento 0x38/0x6E (valore 0, nella sequenza di fine livello))   [08 00 45 03 6e 38 00 00]
+[18:26:24] evento porta 3: 0x3803 = 100  (evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione))   [08 00 45 03 03 38 64 00]
+[18:26:32] evento porta 3: 0x1801 = 0  (evento 0x18/0x01 (valori 0 e 1; 0 all'uscita dal livello, 12/10))   [08 00 45 03 01 18 00 00]
+[18:26:33] evento porta 3: 0x1803 = 0  (evento 0x18/0x03 (12/10: 4 subito dopo Start, 3 a fine livello, 0 fuori dal livello: forse fase di gioco o vite))   [08 00 45 03 03 18 00 00]
+[18:26:33] evento porta 3: 0x3812 = 1  (evento 0x38/0x12 (12/10: 2 a fine livello, 1 fuori dal livello: forse stato del gioco))   [08 00 45 03 12 38 01 00]
+[18:26:33] evento porta 3: 0x3862 = 0  (evento 0x38/0x62 (valori 0, 2 e 4; 0 quasi a ogni basetta letta o sollevata, 4 alla connessione delle 17:39 del 12/10))   [08 00 45 03 62 38 00 00]
+[18:26:37] gesto: rotazione (turning), inversione (reverse)   [08 00 45 00 00 21 00 21]
+[18:26:37] colore: 0x001A = nero   [08 00 45 01 ff ff 1a 00]
+[18:26:37] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+[18:26:37] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:26:37] gesto: rotazione (turning)   [08 00 45 00 00 01 00 01]
+[18:26:39] gesto: salto (jump)   [08 00 45 00 00 80 00 80]
+
+=== RIEPILOGO BASETTE ===
+1. 0x00B8  Start Mario (tubo di partenza)  (letta 1 volte)
+     eventi porta 3: +0.0s 0x0113=184
+     Mario ha fatto: ______________________
+2. 0x00F5  Bowser Jr. nel Clown Koopa (letta dal vivo il 12/10/2026: icona del Clown Koopa; pyLegoMario dà Bowser Jr. = 0x99, forse basetta di un altro set)  (letta 1 volte)
+     eventi porta 3: +0.0s 0x0113=245, +0.0s 0x3803=0
+     Mario ha fatto: ______________________
+3. 0x0002  Goomba (stesso codice: Fly Guy, Foo, Ant Trooper, Ninji, Para-Goomba, Goombrat, Bone Goomba, Bullet Bill, Swoop, Scuttlebug)  (letta 2 volte)
+     eventi porta 3: +0.0s 0x0113=2, +0.0s 0x3803=100, +0.6s 0x386B=1, +0.7s 0x2042=1, +1.6s 0x3712=1, +0.0s 0x0113=2, +0.7s 0x386B=8, +0.7s 0x2042=2, +1.6s 0x3712=1, +1.8s 0x3803=100
+     Mario ha fatto: ______________________
+4. 0x0160  SCONOSCIUTA: da aggiungere a codes.BARCODES  (letta 1 volte)
+     eventi porta 3: +0.0s 0x0113=352, +2.8s 0x386B=7, +2.9s 0x20C2=6
+     Mario ha fatto: ______________________
+5. 0x015B  SCONOSCIUTA: da aggiungere a codes.BARCODES  (letta 1 volte)
+     eventi porta 3: +0.0s 0x0113=347, +0.5s 0x3803=0
+     Mario ha fatto: ______________________
+6. 0x002E  Nuvola  (letta 1 volte)
+     eventi porta 3: +0.0s 0x0113=46
+     Mario ha fatto: ______________________
+7. 0x0014  Rotazione (per legomario.py: Refresh)  (letta 1 volte)
+     eventi porta 3: +0.0s 0x0113=20, +0.2s 0x3803=0, +2.0s 0x1803=4
+     Mario ha fatto: ______________________
+[18:26:47] database: 7 basette segnate come possedute e viste

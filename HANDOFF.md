@@ -439,6 +439,22 @@ Conseguenze pratiche:
   resta stabile per 0,8 s (`tick()` chiamato ogni mezzo secondo dal servizio della dashboard e dalla
   CLI; la simulazione passa `settled`). Nuovi test (54 in tutto).
 
+### 13/10 — Documentazione allineata e stato del progetto
+
+- README riscritto nelle parti "Funzioni di Mario" (porte 4 e 7, modalità combinata, RSSI,
+  allarmi, azioni), gesti, pantaloni, barcode (61), colori, nuova tabella degli eventi di gioco
+  decodificati; test 54; struttura con i nuovi strumenti e `docs/sessioni/`.
+- `docs/sessioni/`: copie anonimizzate dei log delle prove dal vivo (monitor, shell, porte 4/7,
+  basette, verifiche), con indice: sono la prova documentale delle tabelle.
+- Stato: connessione e pairing stabili; sensori decodificati (gesti con bit ancora senza nome,
+  scanner con colori verificati, pantaloni con filtro di stabilità, eventi di gioco con contatori
+  di monete/nemici/giri); dashboard con pagina Assistente; assistente provato con Claude e con Mario
+  connesso; porte 4 e 7 scrivibili ma inerti; nessuna via per far suonare Mario via Bluetooth
+  con i comandi standard. Repository pubblico su GitHub, 4 commit.
+- Prossimi passi consigliati (dal TODO): modo RGB da solo e gesti isolati (sezione 1), prova del
+  filtro di stabilità con l'assistente e la pagina Assistente con Mario connesso (sezione 7),
+  cattura del traffico dell'app ufficiale (sezione 2).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -452,7 +468,7 @@ Conseguenze pratiche:
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `session.py`, `service.py` (vedi README, sezione Assistente) |
 | `tests/test_lwp3.py` | 18 test senza Bluetooth |
 | `tests/test_db.py` | 6 test del database della dashboard |
-| `tests/test_assistant.py` | 29 test dell'assistente e del caricatore `.env` (3 API Flask solo sull'host) |
+| `tests/test_assistant.py` | 30 test dell'assistente e del caricatore `.env` (3 API Flask solo sull'host) |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
 | `mario/web/db.py` | SQLite: dispositivi, accessori, eventi, impostazioni, messaggi dell'assistente |
@@ -464,6 +480,7 @@ Conseguenze pratiche:
 | `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
 | `docs/capabilities-fw-6.5.01.json` | mappa completa delle funzioni letta dal dispositivo |
+| `docs/sessioni/` | copie anonimizzate dei log delle prove dal vivo (11 e 12/10) con indice |
 | `logs/` | catture btmon, log di monitor/shell, sorgente pyLegoMario (ignorata da git) |
 
 Nel README: uso, comandi della shell, protocollo, tabella porte verificata, osservazioni
@@ -478,7 +495,7 @@ reverse engineering, sistema, software, idee).
 
 ```sh
 cd ~/Sviluppo/Mario
-python3 -m unittest tests.test_lwp3 tests.test_db tests.test_assistant -v   # test offline (53)
+python3 -m unittest tests.test_lwp3 tests.test_db tests.test_assistant -v   # test offline (54)
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario
 ./run.sh monitor                             # eventi in tempo reale, log in logs/
 ./run.sh shell                               # console bidirezionale, log in logs/
@@ -486,6 +503,10 @@ python3 -m unittest tests.test_lwp3 tests.test_db tests.test_assistant -v   # te
 ./run.sh assistant --no-mario                # assistente senza Bluetooth: tastiera, modello (demo), voce
 ./run.sh assistant                           # con Claude: la chiave è in .env (o nelle impostazioni della pagina)
 ./tools/capture_btmon.sh                     # se la connessione torna a fallire
+.venv/bin/python tools/live_checks.py        # verifiche guidate a voce (sezione 1 del TODO)
+.venv/bin/python tools/catalog_tiles.py      # sessione con le basette: codici, eventi, database
+.venv/bin/python tools/probe_port4.py --help # prove a scatola nera su porte 4 e 7
+git pull && git push                         # remote: github.com/saulusprime/Mario-IA-Assistant (SSH)
 ```
 
 Checklist prima di cercare bug nell'app: Wi-Fi su 5 GHz (`nmcli -t -f ACTIVE,SSID,FREQ dev

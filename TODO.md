@@ -1,6 +1,6 @@
 # TODO — punti aperti e idee
 
-Lista di lavoro del progetto LEGO Mario via Bluetooth LE. Stato al 12 ottobre 2026.
+Lista di lavoro del progetto LEGO Mario via Bluetooth LE. Stato al 13 ottobre 2026.
 Le voci sono raggruppate per tipo; dentro ogni gruppo le prime sono le più utili.
 Il contesto di ogni punto è in [HANDOFF.md](HANDOFF.md). Legenda: `[ ]` da fare, `[~]` in parte
 verificato, `[x]` fatto.
@@ -56,11 +56,12 @@ Sessione guidata del 12/10 alle 19:16 (`tools/live_checks.py`, log `logs/live-ch
       gli eventi (moneta, nemico, caduta, traguardo) con l'orario.
 - [ ] **Porta 3, modi CHAL / VERS / DEBUG**: mai letti. `sub 3 0`, `sub 3 1`, `sub 3 3`
       nella shell (uno alla volta: una porta ha un solo modo attivo per volta).
-- [ ] **Porta 4 (0x55, modo Events, 2 × int16, anche in uscita)**: non ha mai trasmesso.
-      Capire cosa scrive l'app ufficiale: idea sotto (cattura dal telefono).
-- [ ] **Porta 7 (0x60, modo Telemetry, 16 byte, anche in uscita)**: nuova dal firmware 6.x,
-      non documentata da nessuno. `monitor --sub 7:0` durante il gioco; poi provare scritture
-      prudenti con `out 7 0 <hex>`.
+- [~] **Porta 4 (0x55, modo Events, 2 × int16, anche in uscita)**: non ha mai trasmesso; le
+      scritture (12/10, 39 prove) sono accettate con WriteDirectModeData ma non conservate e senza
+      effetto. Resta da capire cosa vi scrive l'app ufficiale (cattura dal telefono, sotto).
+- [~] **Porta 7 (0x60, modo Telemetry, 16 byte, anche in uscita)**: nuova dal firmware 6.x,
+      non documentata; le scritture (70 prove) vengono ignorate in silenzio. Resta da leggerla a
+      lungo durante il gioco (`monitor --sub 7:0`) per vedere se trasmette mai qualcosa.
 - [ ] **Cattura del traffico dell'app ufficiale**: attivare l'HCI snoop log su un telefono
       Android, giocare con l'app LEGO Super Mario, estrarre il btsnoop e decodificarlo con
       `lwp3.parse_all` + `describe`. È il modo più rapido per capire le porte 4 e 7 e il
@@ -111,6 +112,12 @@ Sessione guidata del 12/10 alle 19:16 (`tools/live_checks.py`, log `logs/live-ch
       variazioni di velocità/tono per emozione e il blocco ai limiti ±100; sintesi dei file WAV.
 - [ ] **Test della CLI `assistant`**: `Printer` (righe laterali in coda durante lo streaming) e
       comandi `/stop`, `/emozione`, `/ascolto` con sessione e voce finte.
+- [ ] **Valori combinati (0x46) decodificati nella libreria**: `MarioDevice` tiene lo stato per
+      dataset (maschera con byte alto per primo, multi-update parziale) e li passa ai listener
+      come valori normali; oggi lo fa solo `tools/live_checks.py`. Poi `monitor` può mostrare
+      accelerometro e gesti insieme.
+- [ ] **Strumenti dal vivo nella CLI**: `live_checks`, `catalog_tiles` e `probe_port4` come
+      sottocomandi di `./run.sh` (oggi vanno lanciati con il python del venv).
 - [ ] **`monitor --json`**: una riga JSON per evento (porta, modo, valori grezzi,
       decodifica), per collegare Mario ad altri programmi.
 - [ ] **`monitor --duration N`** e `--no-battery`.
@@ -233,8 +240,10 @@ Servono Mario acceso, `./run.sh assistant` (o `./run.sh web` → pagina Assisten
 - [ ] **Pulsante sulla schiena**: una pressione deve sospendere l'ascolto (suono "listen_off",
       riga "ascolto dei sensori sospeso"), una seconda riattivarlo; con l'ascolto sospeso un
       salto non deve produrre risposte.
-- [ ] **Cambio pantaloni**: mettere i pantaloni Fuoco/Gatto/… e verificare che Mario si presenti
-      nel nuovo carattere e che il carattere resti nel prompt di sistema nelle risposte dopo.
+- [ ] **Cambio pantaloni**: per ora l'utente ha solo i pantaloni blu; con altri pantaloni
+      verificare che Mario si presenti nel nuovo carattere (dopo gli 0,8 s di stabilità) e che il
+      carattere resti nel prompt di sistema. Intanto: sfilare e rinfilare i blu non deve produrre
+      nessuna risposta.
 - [ ] **Scossa = ripeti**: scuotere Mario a riposo e sentire ripetuta l'ultima risposta; scuoterlo
       mentre parla e decidere se deve invece fermarsi (voce "Interruzione fisica" sotto).
 - [ ] **Caduta interrompe**: far "cadere" Mario (bit 0x0800) mentre parla: deve tagliare la voce e
