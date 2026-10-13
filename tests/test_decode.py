@@ -120,3 +120,126 @@ class BtsnoopTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def btsnooz_blob(records, version=2, last_ts=1_700_000_000_000_000):
+    """records: [(tipo btsnooz, delta µs, dati senza il byte H4)] -> sezione btsnooz (prima del base64)."""
+    import zlib
+    body = b""
+    for kind, delta, data in records:
+        if version == 1:
+            body += struct.pack("<HIb", len(data) + 1, delta, kind) + data
+        else:
+            body += struct.pack("<HHIb", len(data) + 1, len(data) + 1, delta, kind) + data
+    return struct.pack("<bQ", version, last_ts) + zlib.compress(body)
+
+
+def bugreport_text(blob):
+    import base64
+    b64 = base64.b64encode(blob).decode()
+    lines = [b64[i:i + 76] for i in range(0, len(b64), 76)]
+    return ("== dumpstate: 2026-10-13\n--- BEGIN:BTSNOOP_LOG_SUMMARY (%d bytes in) ---\n" % len(blob)
+            + "\n".join(lines) + "\n--- END:BTSNOOP_LOG_SUMMARY ---\n")
+
+
+class AndroidBugreportTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_btsnooz_v1_and_v2_sections(self):
+        value = bytes.fromhex("05 00 45 02 21")
+        recs = [(0x21, 0, acl(0x40, att_write(lwp3.hub_action(0x02)))),      # ACL in uscita
+                (0x11, 1500, acl(0x40, att_notify(value))),                    # ACL in ingresso
+                (0x10, 20, b"\x0e\x04\x01\x00\x00\x00")]                      # evento HCI: ignorato
+        for version in (1, 2):
+            path = self.dir / f"bugreport-v{version}.txt"
+            path.write_text(bugreport_text(btsnooz_blob(recs, version)), encoding="utf-8")
+            notes = []
+            frames = list(decode.read_any(path, notes))
+            self.assertEqual([(f.direction, f.msg.type_name) for f in frames],
+                             [("->", "HUB_ACTIONS"), ("<-", "PORT_VALUE_SINGLE")], f"versione {version}")
+            self.assertEqual(frames[1].when, "0.002s")  # delta µs ricostruito dall'ultimo timestamp
+            self.assertEqual(notes, [])
+
+    def test_zip_with_full_snoop_and_truncated_summary(self):
+        import zipfile
+        value = bytes.fromhex("05 00 45 02 21")
+        full = btsnoop([(1, b"\x02" + acl(0x40, att_notify(value)))], datalink=1002)
+        # btsnooz "riassunto": l'intestazione ACL dichiara 9 byte ma ne seguono 4 (dati tagliati)
+        cut = acl(0x40, att_notify(value))[:8]
+        summary = bugreport_text(btsnooz_blob([(0x11, 0, cut)]))
+        zpath = self.dir / "bugreport-pixel.zip"
+        with zipfile.ZipFile(zpath, "w") as zf:
+            zf.writestr("FS/data/misc/bluetooth/logs/btsnoop_hci.log", full)
+            zf.writestr("bugreport-pixel-2026-10-13.txt", summary)
+        notes = []
+        frames = list(decode.read_any(zpath, notes))
+        self.assertEqual([(f.direction, f.msg.type_name, f.source) for f in frames],
+                         [("<-", "PORT_VALUE_SINGLE", "bugreport-pixel.zip:btsnoop_hci.log")])
+        self.assertEqual(notes, [])  # con la cattura completa il riassunto non viene letto
+        # solo il riassunto: niente messaggi e una nota che spiega il troncamento
+        tpath = self.dir / "bugreport-solo-riassunto.txt"
+        tpath.write_text(summary, encoding="utf-8")
+        notes = []
+        self.assertEqual(list(decode.read_any(tpath, notes)), [])
+        self.assertEqual(len(notes), 1)
+        self.assertIn("1 pacchetti ACL troncati", notes[0])
+        # zip senza nulla di Bluetooth
+        empty = self.dir / "vuoto.zip"
+        with zipfile.ZipFile(empty, "w") as zf:
+            zf.writestr("version.txt", "x")
+        notes = []
+        self.assertEqual(list(decode.read_any(empty, notes)), [])
+        self.assertIn("nessuna cattura Bluetooth", notes[0])
+
+    def test_gzip_btsnoop(self):
+        import gzip
+        value = bytes.fromhex("05 00 45 02 12")
+        path = self.dir / "btsnoop_hci.log.gz"
+        path.write_bytes(gzip.compress(btsnoop([(5, acl(0x40, att_notify(value)))])))
+        frames = list(decode.read_any(path))
+        self.assertEqual([(f.direction, f.msg.type_name) for f in frames], [("<-", "PORT_VALUE_SINGLE")])
+
+
+def pklg(records, order=">"):
+    """records: [(tipo, secondi, µs, dati)] -> file PacketLogger."""
+    out = b""
+    for kind, secs, usecs, data in records:
+        payload = bytes([kind]) + data
+        out += struct.pack(order + "III", 8 + len(payload), secs, usecs) + payload
+    return out
+
+
+class PacketLoggerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_both_byte_orders(self):
+        value = bytes.fromhex("05 00 45 02 21")
+        recs = [(0xFC, 1_700_000_000, 10, b"nota di PacketLogger"),
+                (0x02, 1_700_000_000, 500, acl(0x40, att_write(lwp3.hub_action(0x02)))),
+                (0x03, 1_700_000_001, 500, acl(0x40, att_notify(value))),
+                (0x01, 1_700_000_001, 600, b"\x13\x05\x01\x40\x00\x01\x00")]
+        for order in (">", "<"):
+            path = self.dir / f"cattura-{'be' if order == '>' else 'le'}.pklg"
+            path.write_bytes(pklg(recs, order))
+            self.assertEqual(decode.pklg_byte_order(path.read_bytes()), order)
+            frames = list(decode.read_any(path))
+            self.assertEqual([(f.direction, f.msg.type_name, f.when) for f in frames],
+                             [("->", "HUB_ACTIONS", "0.000s"), ("<-", "PORT_VALUE_SINGLE", "1.000s")], order)
+
+    def test_text_logs_are_not_mistaken_for_pklg(self):
+        path = self.dir / "monitor.txt"
+        path.write_text("[17:08:32] <- Valore porta 3   [08 00 45 03 61 38 05 00]\n", encoding="utf-8")
+        self.assertIsNone(decode.pklg_byte_order(path.read_bytes()))
+        frames = list(decode.read_any(path))
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0].msg.type_name, "PORT_VALUE_SINGLE")

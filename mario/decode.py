@@ -5,6 +5,12 @@ Sorgenti accettate:
   - catture btsnoop (`btmon -w file`, HCI snoop log di Android): formato "Linux monitor" (2001),
     H4/UART (1002) e HCI puro (1001); vengono estratti gli ATT Write (PC -> Mario) e le
     Handle Value Notification (Mario -> PC) sulla caratteristica LEGO, con riassemblaggio L2CAP;
+  - bugreport di Android (`adb bugreport`): lo zip con dentro `FS/data/misc/bluetooth/logs/btsnoop_hci.log`
+    (o il percorso Samsung `/data/log/bt/`), oppure il solo `bugreport-*.txt` con le sezioni
+    btsnooz (base64 + zlib, versioni 1 e 2) che Android scrive anche senza HCI snoop log attivo:
+    in quel caso i dati ACL sono troncati e lo strumento lo segnala;
+  - catture PacketLogger di Apple (`.pklg`, da iOS con il profilo "Bluetooth logging" o da macOS),
+    big o little endian; file compressi gzip;
   - log di testo di `monitor`, `shell`, `assistant` e degli strumenti (`[... ]` con i byte grezzi
     in coda alla riga), l'uscita di `btmon -r` e le righe `TX ..`/`RX ..` dell'opzione -d;
   - righe o argomenti esadecimali.
@@ -14,10 +20,15 @@ poi evolve con i messaggi letti (sottoscrizioni, modalità combinata), come dal 
 """
 from __future__ import annotations
 
+import base64
+import gzip
+import io
 import json
 import re
 import struct
 import sys
+import zipfile
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional
@@ -31,6 +42,13 @@ DEFAULT_CAPS = PROJECT_DIR / "docs" / "capabilities-fw-6.5.01.json"
 
 ATT_NOTIFY, ATT_INDICATE, ATT_WRITE_REQ, ATT_WRITE_CMD, ATT_READ_RSP = 0x1B, 0x1D, 0x12, 0x52, 0x0B
 MONITOR_ACL_TX, MONITOR_ACL_RX = 4, 5
+BTSNOOP_MAGIC, ZIP_MAGIC, GZIP_MAGIC = b"btsnoop\x00", b"PK\x03\x04", b"\x1f\x8b"
+BTSNOOZ_BEGIN, BTSNOOZ_END = "--- BEGIN:BTSNOOP_LOG_SUMMARY", "--- END:BTSNOOP_LOG_SUMMARY"
+BTSNOOZ_EPOCH_US = 0x00DCDDB30F2F8000          # microsecondi tra l'anno 0 (epoca btsnoop) e il 1970
+BTSNOOZ_IN = {0x10, 0x11, 0x12, 0x17}           # evento, ACL, SCO, ISO ricevuti
+BTSNOOZ_H4 = {0x20: 0x01, 0x11: 0x02, 0x21: 0x02, 0x12: 0x03, 0x22: 0x03, 0x10: 0x04, 0x17: 0x05, 0x2D: 0x05}
+PKLG_TYPES = {0x00, 0x01, 0x02, 0x03, 0x08, 0x09, 0x0A, 0x0B, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE}
+PKLG_SENT_ACL, PKLG_RECV_ACL = 0x02, 0x03
 
 _BRACKET_HEX = re.compile(r"\[((?:[0-9a-fA-F]{2}[ :]?){3,})\]\s*$")
 _TXRX = re.compile(r"\b(TX|RX)\s+((?:[0-9a-fA-F]{2}\s?){3,})\s*$")
@@ -127,13 +145,39 @@ class _L2capReassembler:
         return None
 
 
-def read_btsnoop(path: Path | str) -> Iterator[Frame]:
-    data = Path(path).read_bytes()
-    if not data.startswith(b"btsnoop\x00"):
-        raise ValueError("non è un file btsnoop (manca l'intestazione)")
+def _acl_frames(packets: Iterator[tuple[bytes, str, str]], source: str,
+                notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    """(ACL HCI, direzione, orario) -> messaggi LWP3 degli ATT sulla caratteristica LEGO, con riassemblaggio
+    L2CAP. I pacchetti ACL più corti di quanto dichiara la loro intestazione (btsnooz, snaplen) vengono
+    contati e scartati: la nota finale spiega perché la cattura è vuota."""
+    counter, reasm, truncated = [0], _L2capReassembler(), 0
+    for acl, direction, when in packets:
+        if len(acl) < 4:
+            continue
+        if struct.unpack("<H", acl[2:4])[0] > len(acl) - 4:
+            truncated += 1
+            continue
+        done = reasm.feed(acl)
+        if done is None:
+            continue
+        cid, l2 = done
+        if cid != 0x0004 or not l2:  # solo ATT
+            continue
+        op = l2[0]
+        if op in (ATT_NOTIFY, ATT_INDICATE) and len(l2) > 3:
+            yield from _split_messages(l2[3:], "<-", when, source, counter)
+        elif op in (ATT_WRITE_REQ, ATT_WRITE_CMD) and len(l2) > 3:
+            yield from _split_messages(l2[3:], "->", when, source, counter)
+        elif op == ATT_READ_RSP and len(l2) > 1:
+            yield from _split_messages(l2[1:], "<-", when, source, counter)
+    if truncated and notes is not None:
+        notes.append(f"{source}: {truncated} pacchetti ACL troncati (log 'riassunto' btsnooz o snaplen): "
+                     "per vedere i messaggi serve l'HCI snoop log completo del telefono")
+
+
+def _btsnoop_packets(data: bytes) -> Iterator[tuple[bytes, str, str]]:
     _version, datalink = struct.unpack(">II", data[8:16])
-    pos, counter, reasm, t0 = 16, [0], _L2capReassembler(), None
-    source = Path(path).name
+    pos, t0 = 16, None
     while pos + 24 <= len(data):
         _orig, incl, flags, _drops, ts = struct.unpack(">IIIIq", data[pos:pos + 24])
         pkt = data[pos + 24:pos + 24 + incl]
@@ -154,21 +198,202 @@ def read_btsnoop(path: Path | str) -> Iterator[Frame]:
         elif datalink == 1001:  # HCI puro: bit 1 dei flag = comando/evento, altrimenti dati
             if not flags & 2:
                 acl, direction = pkt, "<-" if flags & 1 else "->"
-        if acl is None:
+        if acl is not None:
+            yield acl, direction, when
+
+
+def read_btsnoop_bytes(data: bytes, source: str, notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    if not data.startswith(BTSNOOP_MAGIC):
+        raise ValueError("non è un file btsnoop (manca l'intestazione)")
+    return _acl_frames(_btsnoop_packets(data), source, notes)
+
+
+def read_btsnoop(path: Path | str, notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    return read_btsnoop_bytes(Path(path).read_bytes(), Path(path).name, notes)
+
+
+# ----- bugreport Android: sezioni btsnooz, zip ------------------------------------------
+
+def decode_btsnooz(blob: bytes) -> bytes:
+    """Sezione btsnooz di un bugreport (già decodificata dal base64) -> file btsnoop H4 (datalink 1002).
+
+    Formato AOSP (tools/scripts/btsnooz.py): [versione 1 byte][timestamp dell'ultimo pacchetto, 8 byte]
+    + zlib di record `[len LE16][len originale LE16 (solo v2)][delta µs LE32][tipo 1 byte][dati]`, dove
+    `len` conta anche il byte del tipo e il tipo distingue ingresso (0x1x) e uscita (0x2x)."""
+    if len(blob) < 9:
+        raise ValueError("sezione btsnooz troppo corta")
+    version, last_ts = struct.unpack_from("<bQ", blob)
+    if version not in (1, 2):
+        raise ValueError(f"versione btsnooz {version} non supportata")
+    body = zlib.decompress(blob[9:])
+    head = "<HIb" if version == 1 else "<HHIb"
+    size = struct.calcsize(head)
+    records: list[tuple[int, int, int, bytes]] = []
+    offset = 0
+    while offset + size <= len(body):
+        fields = struct.unpack_from(head, body, offset)
+        length, delta, kind = fields[0], fields[-2], fields[-1] & 0xFF
+        orig = fields[1] if version == 2 else length
+        offset += size
+        payload = body[offset:offset + max(length - 1, 0)]
+        offset += max(length - 1, 0)
+        records.append((kind, delta, orig, payload))
+    ts = last_ts + BTSNOOZ_EPOCH_US - sum(r[1] for r in records)  # i record portano solo il delta dal precedente
+    out = bytearray(BTSNOOP_MAGIC + struct.pack(">II", 1, 1002))
+    for kind, delta, orig, payload in records:
+        ts += delta
+        h4 = BTSNOOZ_H4.get(kind)
+        if h4 is None:
             continue
-        done = reasm.feed(acl)
-        if done is None:
+        flags = (1 if kind in BTSNOOZ_IN else 0) | (2 if h4 in (0x01, 0x04) else 0)
+        data = bytes([h4]) + payload
+        out += struct.pack(">IIIIq", max(orig, len(data)), len(data), flags, 0, ts) + data
+    return bytes(out)
+
+
+def _bugreport_text_frames(text: str, source: str, notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    """Sezioni `--- BEGIN:BTSNOOP_LOG_SUMMARY ... --- END:BTSNOOP_LOG_SUMMARY` di un bugreport-*.txt."""
+    found, pos = 0, 0
+    while True:
+        a = text.find(BTSNOOZ_BEGIN, pos)
+        if a < 0:
+            break
+        b = text.find(BTSNOOZ_END, a)
+        if b < 0:
+            break
+        line_end = text.find("\n", a)
+        pos = b + len(BTSNOOZ_END)
+        b64 = "".join(text[line_end:b].split()) if 0 <= line_end < b else ""
+        try:
+            snoop = decode_btsnooz(base64.b64decode(b64))
+        except Exception as exc:  # base64 o zlib rovinati: si passa alla sezione successiva
+            if notes is not None:
+                notes.append(f"{source}: sezione btsnooz non decodificabile ({exc})")
             continue
-        cid, l2 = done
-        if cid != 0x0004 or not l2:  # solo ATT
+        found += 1
+        yield from read_btsnoop_bytes(snoop, f"{source}#btsnooz{found}", notes)
+    if not found and notes is not None:
+        notes.append(f"{source}: nessuna sezione btsnooz decodificata")
+
+
+def read_bugreport_text(path: Path | str, notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return _bugreport_text_frames(text, Path(path).name, notes)
+
+
+def _is_capture_name(name: str) -> bool:
+    base = Path(name).name.lower()
+    return ("btsnoop" in base and not base.endswith(".txt")) or base.endswith((".pklg", ".cfa", ".btsnoop"))
+
+
+def read_zip(path: Path | str, notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    """Bugreport Android (.zip): prima le catture complete (btsnoop_hci.log, .cfa, .pklg, anche .gz),
+    altrimenti le sezioni btsnooz del bugreport-*.txt."""
+    name = Path(path).name if isinstance(path, (str, Path)) else getattr(path, "name", "archivio.zip")
+    found = 0
+    with zipfile.ZipFile(path) as zf:
+        entries = zf.namelist()
+        for entry in entries:
+            if not _is_capture_name(entry):
+                continue
+            frames = _frames_from_bytes(zf.read(entry), f"{name}:{Path(entry).name}", notes)
+            if frames is not None:
+                found += 1
+                yield from frames
+        if not found:
+            for entry in entries:
+                base = Path(entry).name.lower()
+                if base.startswith("bugreport") and base.endswith(".txt"):
+                    text = zf.read(entry).decode("utf-8", "replace")
+                    if BTSNOOZ_BEGIN in text:
+                        found += 1
+                        yield from _bugreport_text_frames(text, f"{name}:{Path(entry).name}", notes)
+    if not found and notes is not None:
+        notes.append(f"{name}: nessuna cattura Bluetooth nell'archivio (atteso FS/data/misc/bluetooth/logs/"
+                     "btsnoop_hci.log oppure una sezione btsnooz nel bugreport-*.txt)")
+
+
+# ----- PacketLogger di Apple (.pklg) ----------------------------------------------------
+
+def pklg_byte_order(data: bytes) -> Optional[str]:
+    """'>' o '<' se i primi record sembrano PacketLogger (nessun magic number: stessa euristica di Wireshark:
+    lunghezza 8..65535, microsecondi < 1e6, tipo di pacchetto noto), altrimenti None."""
+    for order in (">", "<"):
+        pos, ok = 0, 0
+        while pos + 12 <= len(data) and ok < 5:
+            length, _secs, usecs = struct.unpack_from(order + "III", data, pos)
+            if length < 8 or length >= 65536 or usecs >= 1_000_000:
+                ok = 0
+                break
+            if length > 8 and (pos + 12 >= len(data) or data[pos + 12] not in PKLG_TYPES):
+                ok = 0
+                break
+            pos += 4 + length
+            ok += 1
+        if ok:
+            return order
+    return None
+
+
+def _pklg_packets(data: bytes, order: str) -> Iterator[tuple[bytes, str, str]]:
+    pos, t0 = 0, None
+    while pos + 12 <= len(data):
+        length, secs, usecs = struct.unpack_from(order + "III", data, pos)
+        if length < 8:
+            break
+        payload = data[pos + 12:pos + 4 + length]
+        pos += 4 + length
+        if not payload:
             continue
-        op = l2[0]
-        if op in (ATT_NOTIFY, ATT_INDICATE) and len(l2) > 3:
-            yield from _split_messages(l2[3:], "<-", when, source, counter)
-        elif op in (ATT_WRITE_REQ, ATT_WRITE_CMD) and len(l2) > 3:
-            yield from _split_messages(l2[3:], "->", when, source, counter)
-        elif op == ATT_READ_RSP and len(l2) > 1:
-            yield from _split_messages(l2[1:], "<-", when, source, counter)
+        ts = secs * 1_000_000 + usecs
+        if t0 is None:
+            t0 = ts
+        when = f"{(ts - t0) / 1e6:.3f}s"
+        if payload[0] == PKLG_SENT_ACL:
+            yield payload[1:], "->", when
+        elif payload[0] == PKLG_RECV_ACL:
+            yield payload[1:], "<-", when
+
+
+def read_pklg_bytes(data: bytes, source: str, notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    order = pklg_byte_order(data)
+    if order is None:
+        raise ValueError("non sembra un file PacketLogger")
+    return _acl_frames(_pklg_packets(data, order), source, notes)
+
+
+def _frames_from_bytes(data: bytes, source: str, notes: Optional[list[str]] = None) -> Optional[Iterator[Frame]]:
+    """Riconosce il formato dal contenuto; None se non è una cattura (sarà trattato come testo)."""
+    if data.startswith(GZIP_MAGIC):
+        try:
+            data = gzip.decompress(data)
+        except OSError as exc:
+            if notes is not None:
+                notes.append(f"{source}: gzip non leggibile ({exc})")
+            return iter(())
+        source = source[:-3] if source.lower().endswith(".gz") else source
+    if data.startswith(BTSNOOP_MAGIC):
+        return read_btsnoop_bytes(data, source, notes)
+    if data.startswith(ZIP_MAGIC):
+        return _zip_bytes_frames(data, source, notes)
+    if BTSNOOZ_BEGIN.encode() in data:
+        return _bugreport_text_frames(data.decode("utf-8", "replace"), source, notes)
+    if (source.lower().endswith(".pklg") or not _looks_like_text(data[:512])) and pklg_byte_order(data[:65536]):
+        return read_pklg_bytes(data, source, notes)
+    return None
+
+
+def _zip_bytes_frames(data: bytes, source: str, notes: Optional[list[str]]) -> Iterator[Frame]:
+    buf = io.BytesIO(data)
+    buf.name = Path(source).name  # type: ignore[attr-defined]
+    return read_zip(buf, notes)
+
+
+def _looks_like_text(head: bytes) -> bool:
+    if not head:
+        return True
+    printable = sum(1 for b in head if 32 <= b < 127 or b in (9, 10, 13))
+    return printable / len(head) > 0.9
 
 
 # ----- log di testo e righe esadecimali ---------------------------------------------------
@@ -229,13 +454,13 @@ def read_hex_lines(lines: list[str], direction: str = "<-") -> Iterator[Frame]:
             yield from _split_messages(raw, d, "", "", counter)
 
 
-def read_any(path: Path | str) -> Iterator[Frame]:
+def read_any(path: Path | str, notes: Optional[list[str]] = None) -> Iterator[Frame]:
+    """Riconosce il formato dal contenuto: btsnoop, zip (bugreport), gzip, bugreport-*.txt con sezioni
+    btsnooz, PacketLogger; tutto il resto è letto come log di testo."""
     p = Path(path)
-    with open(p, "rb") as fh:
-        head = fh.read(8)
-    if head.startswith(b"btsnoop\x00"):
-        return read_btsnoop(p)
-    return read_text_log(p)
+    data = p.read_bytes()
+    frames = _frames_from_bytes(data, p.name, notes)
+    return frames if frames is not None else read_text_log(p)
 
 
 # ----- riepilogo ---------------------------------------------------------------------------
@@ -277,8 +502,10 @@ def summarize(records: list[dict]) -> str:
 
 def run(paths: list[str], hex_args: Optional[list[str]] = None, caps: Optional[str] = None,
         as_json: bool = False, only_types: Optional[set[int]] = None, only_port: Optional[int] = None,
-        summary: bool = False, out=None, downstream: bool = True, assume_default_modes: bool = True) -> int:
+        summary: bool = False, out=None, downstream: bool = True, assume_default_modes: bool = True,
+        notes: Optional[list[str]] = None) -> int:
     out = out or sys.stdout
+    notes = [] if notes is None else notes
     decoder = Decoder.with_capabilities(caps, assume_default_modes)
     frames: list[Iterator[Frame]] = []
     if hex_args:
@@ -287,7 +514,7 @@ def run(paths: list[str], hex_args: Optional[list[str]] = None, caps: Optional[s
         if path == "-":
             frames.append(read_hex_lines(sys.stdin.read().splitlines()))
         else:
-            frames.append(read_any(path))
+            frames.append(read_any(path, notes))
     records: list[dict] = []
     for it in frames:
         for frame in it:
@@ -306,6 +533,8 @@ def run(paths: list[str], hex_args: Optional[list[str]] = None, caps: Optional[s
                 out.write(f"{when}{rec['direction']} {rec['text']}   [{rec['raw']}]\n")
     if summary:
         out.write(("\n" if records else "") + summarize(records) + "\n")
+    for note in notes:
+        print(f"Nota: {note}", file=sys.stderr)
     return 0
 
 

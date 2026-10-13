@@ -9,9 +9,10 @@ fatto, perché, cosa ha funzionato e cosa no*.
 scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); dashboard con pagine
 Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
-versione (solo simulato); strumento `decode` per log e catture; 121 test offline; repository
-pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far suonare Mario via
-Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO.
+versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; 126 test
+offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
+(compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
 ## 1. Obiettivo
 
@@ -500,7 +501,7 @@ utilizzare Mario". Fatto, in cinque commit:
   voce, suono, messaggio, volume, goto, fine, webhook), libreria degli elementi, servizio, editor a
   moduli + JSON, schermo di gioco, comando `adventure` con simulazione da tastiera, tre esempi
   (colori, gesti, quiz con le basette dell'utente). Partita simulata del quiz: 80 punti, 7 passi.
-- **Test**: da 54 a 121 (BleakClient finto per `MarioDevice` e `BleWorker`, server SSE locale per i
+- **Test**: da 54 a 121, poi 126 in serata (BleakClient finto per `MarioDevice` e `BleWorker`, server SSE locale per i
   backend HTTP, servizio, voce, CLI, pagine, token, avventure, controlli statici del JavaScript,
   fumo); `pyproject.toml`, workflow GitHub Actions; cloni di terze parti in `third_party/`;
   `logs/pylegomario-src` rimosso; regola udev in `tools/`.
@@ -509,6 +510,41 @@ utilizzare Mario". Fatto, in cinque commit:
   Broadcom cercato di nuovo, non disponibile pubblicamente.
 - Non toccato perché serve Mario: sezione 1 del TODO, porte 4/7, cattura dell'app, prove dal vivo
   di assistente e avventure. Tutte le novità hanno una voce "da provare dal vivo" nel TODO.
+
+### 13/10 sera — Sezione 2 del TODO (reverse engineering) senza Mario
+
+Richiesta dell'utente: "procediamo con il punto 2. Reverse engineering ancora da fare". Mario non
+era acceso (scansione vuota), quindi si è fatto tutto ciò che non richiede il dispositivo:
+
+- **Rilettura dei log con `decode`** (sessioni dell'11 e del 12/10, cronologia compatta per porta):
+  `0x3861` non è un contatore di monete ma un **conto alla rovescia** a un passo al secondo (5→1
+  alle 17:07:08 dell'11/10; poi 5→1, 8→1, 8→1 dalle 17:08:16) con Mario fermo, interrotto dal
+  movimento (`0x3862 = 0`) e chiuso da `0x3866 = 0` + `0x1802 = 2`, seguiti da 93 s senza alcun
+  gesto (sonno?); alle 17:10:10, ripreso in mano, `0x3866 = 1` + `0x1802 = 1` (risveglio?).
+  `0x1801`/`0x1803`/`0x3812` si comportano come una macchina a stati del livello (Start: `0x386B = 0`,
+  `0x1801 = 1`, `0x1803 = 1`; poi `0x1803 = 4`; fine: `0x1803 = 3`, `0x3812 = 2`; ~9 s dopo
+  `0x1801 = 0`, `0x1803 = 0`, `0x3812 = 1`). `0x3004 = 601` è costante anche a 21 s e 44 s dallo
+  Start: non è il tempo. `0x3857` oscilla 1/0 attorno al rosso (lava) con urti e scosse. Ipotesi
+  aggiornate in `mario/data/mario_codes.json`, README e ASIS.
+- **`decode` per i telefoni**: legge lo zip di `adb bugreport` (cerca `btsnoop_hci.log`, anche `.last`,
+  `.cfa`, `.gz`), le sezioni btsnooz base64+zlib del `bugreport-*.txt` (formato AOSP v1 e v2,
+  ricostruzione dei timestamp dall'ultimo pacchetto) e i file PacketLogger di Apple (`.pklg`, big o
+  little endian, euristica di Wireshark); riconosce il formato dal contenuto; conta e segnala i
+  pacchetti ACL troncati (riassunto btsnooz senza HCI snoop log attivo). 5 test nuovi (126 in tutto).
+- **Guida alla cattura** `docs/cattura-app-ufficiale.md`: Android (opzioni sviluppatore, snoop log,
+  `adb bugreport`), iPhone (profilo Bluetooth logging, sysdiagnose, `.pklg`), copione di gioco con
+  orari, comandi di analisi, avvertenze sulla privacy del bugreport.
+- **Tabella GATT nel report `info`** e nel JSON delle funzioni: servizi, caratteristiche (proprietà) e
+  descrittori con i nomi noti (GAP, GATT, LEGO, OAD Texas Instruments e le sue caratteristiche secondo
+  il profilo TI) e l'avviso "da non toccare" sull'OAD; solo lettura della tabella, nessun accesso.
+- **Nuovo strumento `./run.sh re-checks`** (`tools/re_checks.py`): esegue dal vivo, guidati a voce, i
+  passi della sezione 2: `annuncio` (manufacturer data prima della connessione), `gatt`, `sistema`
+  (0x0B contro advertisement), `sonno` (45 s fermo, poi ripreso in mano), `porta3` (CHAL/VERS/DEBUG
+  con lettura e 20 s di notifiche, poi ritorno a EVENTS), `gioco` (porte 3, 4, 7 con scanner, gesti e
+  pantaloni durante un mini livello di circa due minuti). Log in `logs/re-checks-<data>.txt`
+  rileggibile con `decode`. Mai provato con Mario: voce nella sezione 1 del TODO.
+- Fonti: formato btsnooz da `tools/scripts/btsnooz.py` di AOSP (mirror), formato PacketLogger da
+  `wiretap/packetlogger.c` di Wireshark; Mario non acceso, nessuna prova dal vivo.
 
 ## 4. Stato del codice
 
@@ -519,12 +555,12 @@ utilizzare Mario". Fatto, in cinque commit:
 | `mario/hubstate.py` | stato dell'hub senza bleak: porte, modi, formati, valori combinati ricomposti per modo, evento unico (`event`), stato iniziale da JSON |
 | `mario/codes.py`, `mario/data/mario_codes.json` | tabelle Mario (pantaloni, gesti, barcode 61, colori, eventi 22) con fonte e verifica; IO type; modi di default per nome; delta |
 | `mario/device.py` | `MarioDevice` (scansione, connessione con retry, agente di pairing, bonding, notifiche, richieste con attesa, scoperta, modalità combinata con delta per modo, report, JSON), `BlueZAgent`, `remove_bluez_device` |
-| `mario/decode.py` | decodifica offline: btsnoop (monitor/H4/HCI, riassemblaggio L2CAP), log di testo, btmon -r, hex; riepilogo |
+| `mario/decode.py` | decodifica offline: btsnoop (monitor/H4/HCI, riassemblaggio L2CAP), bugreport Android (zip, sezioni btsnooz), PacketLogger di Apple, gzip, log di testo, btmon -r, hex; note sui pacchetti troncati; riepilogo |
 | `mario/cli.py` | comandi `scan`, `info [--json] [--quick] [--no-save]`, `monitor [--sub] [--combined] [--json] [--duration] [--no-battery] [--rssi] [--raw-accel] [--no-reconnect]`, `shell [--no-reconnect]`, `decode`, `assistant [--minutes] [--block] [--no-memory] [--no-db] [--piper-model]`, `adventure [--list] [--play] [--no-mario]`, `web [--server] [--token] [--threads]`, comandi rapidi, strumenti di tools/ come sottocomandi; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py` (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 121 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 126 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -535,9 +571,11 @@ utilizzare Mario". Fatto, in cinque commit:
 | `tools/live_checks.py` | verifiche dal vivo guidate a voce della sezione 1 del TODO (pulsante, pantaloni, gesti, RGB, RSSI, allarmi, disconnect, off) |
 | `tools/catalog_tiles.py` | sessione guidata con le basette reali: annunci vocali, eventi porta 3 per basetta, aggiornamento del database |
 | `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
+| `tools/re_checks.py` | reverse engineering dal vivo guidato a voce (sezione 2 del TODO): annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG, porte 4 e 7 nel gioco; mai provato con Mario |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
 | `tools/99-mario-btusb.rules` | regola udev contro l'autosospensione dell'adattatore Broadcom (da installare con sudo, istruzioni nel file) |
-| `docs/capabilities-fw-6.5.01.json` | mappa completa delle funzioni letta dal dispositivo |
+| `docs/capabilities-fw-6.5.01.json` | mappa completa delle funzioni letta dal dispositivo (dal 13/10 `info` vi aggiunge la tabella GATT) |
+| `docs/cattura-app-ufficiale.md` | guida alla cattura del traffico dell'app ufficiale dal telefono (Android, iPhone), copione di gioco, analisi con `decode` |
 | `docs/sessioni/` | copie anonimizzate dei log delle prove dal vivo (11 e 12/10) con indice |
 | `third_party/` | cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), ignorati da git |
 | `logs/` | catture btmon, log di monitor/shell/assistente/avventure (ignorata da git) |
@@ -554,7 +592,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (121); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (126); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/
@@ -564,6 +602,8 @@ cd ~/Sviluppo/Mario
 ./run.sh assistant                           # con Claude: la chiave è in .env (o nelle impostazioni della pagina)
 ./run.sh adventure --play quiz --no-mario    # avventura con eventi da tastiera; senza --no-mario con Mario
 ./run.sh live-checks --steps gesti           # verifiche guidate a voce (sezione 1 del TODO)
+./run.sh re-checks                           # reverse engineering dal vivo (sezione 2): annuncio, GATT, sonno, porta 3, porte 4 e 7
+./run.sh decode logs/bugreport-mario.zip --summary   # cattura dell'app ufficiale (guida: docs/cattura-app-ufficiale.md)
 ./run.sh catalog-tiles                       # sessione con le basette: codici, eventi, database
 ./run.sh probe-port4 --help                  # prove a scatola nera su porte 4 e 7
 ./tools/capture_btmon.sh                     # se la connessione torna a fallire
@@ -578,7 +618,8 @@ timeout e stampa dove si trova; i log di `monitor`, `shell` e `btmon` sono in `l
 
 Per i prossimi sviluppi partire da [TODO.md](TODO.md): la sezione 1 raccoglie le verifiche dal
 vivo (comprese le novità del 13/10 scritte senza Mario), la 6 e la 7 le prove di avventure e
-assistente con il Mario fisico, la 2 la cattura del traffico dell'app ufficiale con `decode`.
+assistente con il Mario fisico, la 2 la cattura del traffico dell'app ufficiale con `decode`
+(guida in `docs/cattura-app-ufficiale.md`) e le prove dal vivo che `./run.sh re-checks` esegue in un colpo.
 
 ## 7. Fonti consultate
 

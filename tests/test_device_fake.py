@@ -82,10 +82,27 @@ class FakeHub:
         return []
 
 
+class FakeAttr:
+    """Servizio, caratteristica o descrittore GATT finto (stessi attributi di bleak)."""
+
+    def __init__(self, uuid, handle, characteristics=(), properties=(), descriptors=()):
+        self.uuid, self.handle = uuid, handle
+        self.characteristics, self.properties, self.descriptors = list(characteristics), list(properties), list(descriptors)
+
+
+FAKE_SERVICES = [
+    FakeAttr("00001800-0000-1000-8000-00805f9b34fb", 1, [FakeAttr("00002a00-0000-1000-8000-00805f9b34fb", 3, properties=["read"])]),
+    FakeAttr(lwp3.LEGO_SERVICE_UUID, 0x10, [FakeAttr(lwp3.LEGO_CHARACTERISTIC_UUID, 0x12, properties=["write", "notify"],
+                                                      descriptors=[FakeAttr("00002902-0000-1000-8000-00805f9b34fb", 0x13)])]),
+    FakeAttr(lwp3.OAD_SERVICE_UUID, 0x20, [FakeAttr("f000ffc1-0451-4000-b000-000000000000", 0x22, properties=["write-without-response", "notify"])]),
+]
+
+
 class FakeClient:
     hub = FakeHub()
     fail_first_connect = False
     created: list = []
+    services = FAKE_SERVICES
 
     def __init__(self, device, disconnected_callback=None, timeout=20.0, **kwargs):
         self.device = device
@@ -184,6 +201,13 @@ class DeviceFakeTests(unittest.TestCase):
             d = dev.to_dict()
             self.assertEqual(d["properties"]["FW_VERSION"]["value"], "6.5.01.0000")
             self.assertEqual(d["ports"][0]["combinations"], [[0, 1]])
+            # tabella GATT: servizi noti con nome, OAD segnalato, descrittore CCCD
+            self.assertIn("=== Servizi GATT ===", report)
+            self.assertIn("Texas Instruments OAD", report)
+            self.assertIn("DA NON TOCCARE", report)
+            self.assertIn("desc. 0x0013 00002902", report)
+            self.assertEqual([svc["uuid"] for svc in d["gatt"]], [s.uuid for s in FAKE_SERVICES])
+            self.assertEqual(d["gatt"][1]["characteristics"][0]["properties"], ["write", "notify"])
             await dev.disconnect()
             self.assertFalse(dev.connected)
         run(go())

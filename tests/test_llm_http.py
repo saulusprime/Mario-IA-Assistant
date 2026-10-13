@@ -4,6 +4,13 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+
+class QuietServer(ThreadingHTTPServer):
+    """Non stampa il traceback quando il client chiude a metà risposta (prova dello Stop)."""
+
+    def handle_error(self, request, client_address):
+        pass
+
 from mario.assistant.llm import AnthropicBackend, LLMConfig, LLMError, OpenAICompatBackend, make_backend
 
 RECEIVED: list[dict] = []
@@ -61,7 +68,7 @@ class Handler(BaseHTTPRequestHandler):
 class HttpBackendTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.server = QuietServer(("127.0.0.1", 0), Handler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         cls.base = f"http://127.0.0.1:{cls.server.server_address[1]}"

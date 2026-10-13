@@ -98,7 +98,9 @@ class TokenTests(unittest.TestCase):
         r = self.client.get("/api/status")
         self.assertEqual(r.status_code, 401)
         self.assertFalse(r.get_json()["ok"])
-        self.assertEqual(self.client.get("/static/app.css").status_code, 200)
+        css = self.client.get("/static/app.css")
+        self.assertEqual(css.status_code, 200)
+        css.close()  # send_file lascia il file aperto fino alla chiusura della risposta
         r = self.client.get("/api/status", headers={"Authorization": "Bearer segreto-123"})
         self.assertEqual(r.status_code, 200)
         r = self.client.get("/api/status", headers={"Authorization": "Bearer sbagliato"})

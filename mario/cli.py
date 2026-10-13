@@ -7,7 +7,7 @@ Interfaccia a riga di comando.
   shell     console interattiva bidirezionale (comandi + messaggi in arrivo)
   assistant Mario come ingresso/uscita di una sessione con un modello di linguaggio (voce dal PC)
   web       dashboard Flask
-  decode    decodifica catture btsnoop, log di testo o byte esadecimali (senza Bluetooth)
+  decode    decodifica catture btsnoop, bugreport Android, PacketLogger iOS, log o byte esadecimali (senza Bluetooth)
   adventure avventure del designer: elenco, prova con eventi simulati, partita con il Mario fisico
   volume / name / prop / raw / off   comandi rapidi one-shot
   live-checks / catalog-tiles / probe-port4 / diag-connect   strumenti dal vivo di tools/
@@ -968,7 +968,8 @@ def cmd_decode(args) -> int:
 TOOLS = {"live-checks": ("live_checks.py", "verifiche dal vivo guidate a voce (pulsante, pantaloni, gesti, RGB, ...)"),
          "catalog-tiles": ("catalog_tiles.py", "sessione guidata con le basette reali (codici, eventi, database)"),
          "probe-port4": ("probe_port4.py", "scritture a scatola nera su porta 4 e 7, osservazione di standby"),
-         "diag-connect": ("diag_connect.py", "diagnostica di connessione: come BlueZ vede Mario")}
+         "diag-connect": ("diag_connect.py", "diagnostica di connessione: come BlueZ vede Mario"),
+         "re-checks": ("re_checks.py", "reverse engineering dal vivo: annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG, porte 4 e 7 nel gioco")}
 
 
 def run_tool(name: str, argv: list[str]) -> int:
@@ -1242,7 +1243,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="esci se Mario cade invece di aspettare che torni visibile")
     p.set_defaults(func=cmd_shell)
 
-    p = sub.add_parser("decode", help="decodifica catture btsnoop, log di testo o byte esadecimali (senza Bluetooth)")
+    p = sub.add_parser("decode", help="decodifica catture btsnoop, bugreport Android (zip/btsnooz), PacketLogger di iOS, log di testo o byte esadecimali (senza Bluetooth)")
     p.add_argument("inputs", nargs="*", metavar="FILE|HEX",
                    help="file btsnoop (btmon -w, HCI snoop Android) o log di testo; '-' = stdin; oppure byte, es. '05 00 45 02 21'")
     p.add_argument("--caps", help="JSON delle funzioni per lo stato iniziale (default docs/capabilities-fw-6.5.01.json)")

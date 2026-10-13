@@ -46,13 +46,18 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   (0x47), 1 (0x49), 2 (0x4A), 3 (0x46), 4 (0x55), 6 (0x14), 7 (0x60); la porta 7 "Telemetry"
   (16 byte, ingresso e uscita) è nuova dal firmware 6.x e non documentata altrove.
 - **Eventi di gioco (porta 3 modo 2)**, `[codice LE16][valore LE16]`, ipotesi solide dalle sessioni
-  con le basette reali: `0x0113` basetta letta (valore = barcode); `0x386B` totale monete del
-  livello; `0x20C2` monete date dall'ultima basetta (6 o 8 con l'aereo, come una roulette);
-  `0x2042` nemici sconfitti; `0x3712 = 1` circa 1 s dopo ogni nemico; `0x2022` giri sulla
-  piattaforma rotante; `0x1803` 4 dopo lo Start, 3 a fine livello, 0 fuori; `0x3812` 2 in livello,
-  1 fuori; sequenza del tempo scaduto `0x3004=601, 0x3812=2, 0x3852=0, 0x1803=3, 0x386E=0,
-  0x3803=100` (confermata dal conto alla rovescia sul petto); `0x3862 = 0` quasi a ogni basetta
-  letta o sollevata, 4 alla connessione. 22 codici in `codes.GAME_EVENTS`.
+  con le basette reali e dalla rilettura dei log con `decode` (13/10): `0x0113` basetta letta
+  (valore = barcode); `0x386B` totale monete del livello (0 alla lettura dello Start); `0x20C2`
+  monete date dall'ultima basetta (6 o 8 con l'aereo, come una roulette); `0x2042` nemici sconfitti
+  (riparte da 1 anche fuori dal livello); `0x3712 = 1` circa 1 s dopo ogni nemico; `0x2022` giri
+  sulla piattaforma rotante; macchina a stati del livello `0x1801` (1 allo Start, 0 dopo la fine) e
+  `0x1803` (1 allo Start, 4 in livello, 3 a fine livello, 0 fuori); `0x3812` 2 a fine livello, 1
+  fuori; sequenza di fine livello `0x3004=601, 0x3812=2, 0x3852=0, 0x1803=3, 0x386E=0, 0x3803=100`
+  (601 è costante: non è il tempo); `0x3861` conto alla rovescia a un passo al secondo (5→1, poi
+  8→1) con Mario fermo fuori dal livello, chiuso da `0x3866=0`/`0x1802=2` e da 93 s di immobilità
+  (sonno?), con `0x3866=1`/`0x1802=1` al risveglio; `0x3862` 0 a ogni movimento o basetta, 2 dopo
+  il conto alla rovescia, 4 alla connessione. 22 codici in `codes.GAME_EVENTS`; la conferma dal vivo
+  è il passo `sonno` di `./run.sh re-checks`.
 - **Porta 4 (`Events`)**: non ha mai trasmesso. Scritture (39 prove, fuori e dentro un livello):
   solo WriteDirectModeData (0x51) è accettato, con feedback "completato", ma il valore non viene
   conservato (rilettura `00 00 00 00`), nessun eco, contatore monete fermo, nessuna reazione.
@@ -67,7 +72,8 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   polarizzatori, probabile lettura nel vicino infrarosso). Pista chiusa per gli schermi emissivi.
 - **System type**: la proprietà 0x0B risponde `0x40` mentre l'advertisement dichiara `0x43`.
 - **Servizi GATT**: quattro (GATT, GAP, LEGO 1623/1624, OAD Texas Instruments `f000ffc0-…`),
-  nessuna caratteristica nascosta.
+  nessuna caratteristica nascosta. Dal 13/10 `info` elenca la tabella GATT con i nomi dei servizi
+  noti e l'avviso sull'OAD (da rileggere dal vivo: passo `gatt` di `re-checks`).
 
 ## 3. Sistema e Bluetooth del PC (configurazione in essere)
 
@@ -98,7 +104,8 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   con delta per modo, report (con stato del bond) e JSON.
 - **CLI** `./run.sh`: `scan`, `info` (salva `docs/capabilities-fw-<versione>.json`), `monitor`
   (`--combined`, `--json`, `--duration`, `--no-battery`, riconnessione automatica), `shell`
-  (readline, `help <comando>`, `log`, riconnessione), `decode` (catture btsnoop, log, byte),
+  (readline, `help <comando>`, `log`, riconnessione), `decode` (catture btsnoop, bugreport Android con
+  sezioni btsnooz, PacketLogger di Apple, gzip, log, byte; i formati dei telefoni provati su file sintetici),
   `assistant`, `adventure`, `web` (waitress, token), comandi rapidi, strumenti di `tools/` come
   sottocomandi; log di sessione in `logs/`.
 - **Dashboard Flask** `mario/web/`: Panoramica, Scansione, Dispositivi (nome e volume dalla scheda),
@@ -121,7 +128,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   simulati, non ancora con Mario.
 - **Strumenti dal vivo**: `tools/probe_port4.py`, `tools/catalog_tiles.py`, `tools/live_checks.py`
   (anche come `./run.sh live-checks` ecc.), `tools/99-mario-btusb.rules`.
-- **Test**: 121 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Test**: 126 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

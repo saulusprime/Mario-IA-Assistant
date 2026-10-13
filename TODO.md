@@ -21,6 +21,12 @@ dentro ogni gruppo le prime sono le più utili.
       `LOW_VOLTAGE` senza richiesta (gli allarmi sono abilitati e rispondono alla richiesta).
 - [ ] **Reset completo**: `./run.sh unpair` e nuovo pairing, per verificare che il flusso
       automatico funzioni da zero (voce anche in sezione 3).
+- [ ] **`./run.sh re-checks`** (sezione 2 dal vivo, scritto il 13/10 senza Mario): passi `annuncio`
+      (manufacturer data), `gatt` (tabella GATT nel report `info`, OAD solo elencato), `sistema`
+      (0x0B contro advertisement), `sonno` (conto alla rovescia 0x3861 e 0x3866/0x1802 con Mario
+      fermo 45 s, poi ripreso in mano), `porta3` (CHAL/VERS/DEBUG), `gioco` (porte 3, 4, 7 durante
+      un mini livello). Confermare le ipotesi del 13/10 su 0x3861/0x3862/0x3866/0x1802 e sulla
+      macchina a stati 0x1801/0x1803/0x3812; controllare che il log si rilegga con `decode`.
 - [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
       (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
       `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON
@@ -30,29 +36,43 @@ dentro ogni gruppo le prime sono le più utili.
 
 ## 2. Reverse engineering ancora da fare
 
+Il 13/10, senza Mario, i log registrati sono stati riletti con `decode` (risultati nelle ipotesi di
+`codes.GAME_EVENTS`, nel README e in ASIS) ed è nato lo strumento `./run.sh re-checks` che esegue dal
+vivo i passi qui sotto; la cattura dal telefono ha la sua guida in `docs/cattura-app-ufficiale.md`.
+
 - [ ] **Eventi porta 3 (modo EVENTS)**: confermare le ipotesi di `codes.GAME_EVENTS` giocando un
-      livello intero con `monitor` attivo e incrociando i contatori (monete `0x386B`, nemici
-      `0x2042`, giri `0x2022`, monete per basetta `0x20C2`) con il display di Mario; dare un nome
-      ai codici ancora generici (`0x1801`, `0x1802`, `0x2009`, `0x200C`, `0x200E`, `0x3857`,
-      `0x3862`, `0x3866`, `0x3861`).
-- [ ] **Porta 3, modi CHAL / VERS / DEBUG**: mai letti. `sub 3 0`, `sub 3 1`, `sub 3 3`
-      nella shell (uno alla volta: una porta ha un solo modo attivo per volta).
+      livello intero (passo `gioco` di `re-checks`, o `monitor`) e incrociando i contatori (monete
+      `0x386B`, nemici `0x2042`, giri `0x2022`, monete per basetta `0x20C2`) con il display di Mario.
+      Dalla rilettura del 13/10: `0x3861` è un conto alla rovescia (5→1, 8→1, un passo al secondo)
+      con Mario fermo, `0x3866`/`0x1802` sembrano sonno (0/2) e risveglio (1/1), `0x1801`/`0x1803`/
+      `0x3812` una macchina a stati del livello: da confermare con il passo `sonno`. Restano senza
+      nome `0x2009`, `0x200C`, `0x200E`, `0x3857` (rosso/lava?) e il valore 601 di `0x3004`.
+- [ ] **Porta 3, modi CHAL / VERS / DEBUG**: mai letti. Passo `porta3` di `re-checks` (valore letto
+      e 20 s di notifiche per modo, poi ritorno a EVENTS) oppure `sub 3 0` / `sub 3 1` / `sub 3 3`
+      nella shell, uno alla volta.
 - [ ] **Porta 4 (0x55, `Events`)**: le scritture standard sono accettate ma inerti; capire cosa
-      vi scrive l'app ufficiale o Luigi (cattura dal telefono, sotto).
-- [ ] **Porta 7 (0x60, `Telemetry`)**: le scritture vengono ignorate; leggerla a lungo durante il
-      gioco (`monitor --sub 7:0`) per vedere se trasmette mai qualcosa in ingresso.
-- [ ] **Cattura del traffico dell'app ufficiale**: attivare l'HCI snoop log su un telefono
-      Android, giocare con l'app LEGO Super Mario, estrarre il btsnoop e decodificarlo con
-      `./run.sh decode btsnoop_hci.log --summary` (lo strumento c'è; il formato H4 di Android è
-      stato provato solo su file sintetici). È il modo più rapido per capire le porte 4 e 7 e il
-      significato degli eventi.
-- [ ] **System type 0x40**: la proprietà 0x0B risponde `0x40` mentre l'advertisement dice
-      `0x43`. Verificare se Luigi (0x44) e Peach (0x45) fanno lo stesso.
+      vi scrive l'app ufficiale o Luigi (cattura dal telefono, sotto). Il passo `gioco` di `re-checks`
+      la tiene sottoscritta durante un mini livello e conta quanto arriva.
+- [ ] **Porta 7 (0x60, `Telemetry`)**: le scritture vengono ignorate; il passo `gioco` di
+      `re-checks` la ascolta per circa due minuti di gioco (oppure `monitor --sub 7:0` a lungo).
+- [ ] **Cattura del traffico dell'app ufficiale**: procedura in `docs/cattura-app-ufficiale.md`
+      (Android con HCI snoop log e `adb bugreport`, iPhone con il profilo Bluetooth logging e
+      PacketLogger, copione di gioco, comandi di analisi). `decode` legge direttamente lo zip del
+      bugreport, le sezioni btsnooz del testo (segnalando i dati troncati) e i file `.pklg`: tutto
+      provato solo su file sintetici, la prima cattura vera va controllata con `--json`. È il modo
+      più rapido per capire le porte 4 e 7 e il significato degli eventi.
+- [ ] **System type 0x40**: la proprietà 0x0B risponde `0x40` ("Boost Move Hub" nella tabella LWP3,
+      cioè numero di dispositivo 0) mentre l'advertisement dice `0x43` (anche per bricklife). Passi
+      `annuncio` e `sistema` di `re-checks` per rileggere entrambi; verificare se Luigi (0x44) e
+      Peach (0x45) fanno lo stesso quando ci saranno.
 - [ ] **Mario come "central"**: l'advertisement dichiara capacità 0x03 (central e
       peripheral). È il meccanismo con cui Mario si collega a Luigi/Peach. Osservarlo con
       btmon avendo un secondo personaggio.
-- [ ] **Servizio OAD Texas Instruments** (`f000ffc0-…`): è l'aggiornamento firmware via
-      radio. Da non toccare, ma documentarne le caratteristiche nel report `info`.
+- [ ] **Servizio OAD Texas Instruments** (`f000ffc0-…`): è l'aggiornamento firmware via radio.
+      Da non toccare. Dal 13/10 `info` (e il JSON delle funzioni) elenca la tabella GATT con il
+      servizio OAD e le sue caratteristiche, nominate secondo il profilo TI: da leggere dal vivo
+      (passo `gatt` di `re-checks`) e confrontare con il profilo (FFC1 Image Identify, FFC2 Image
+      Block, FFC5 Control).
 
 ## 3. Sistema e Bluetooth del PC
 

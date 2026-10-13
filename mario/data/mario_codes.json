@@ -475,43 +475,43 @@
  },
  "game_events": {
   "0x3861": {
-   "name": "contatore (1..8 in sequenza, probabilmente monete raccolte)",
+   "name": "conto alla rovescia a un passo al secondo quando Mario resta fermo fuori dal livello: 5→1, poi 8→1 ripetuto (11/10 17:07–17:08); si interrompe se Mario viene mosso (0x3862 = 0). Non è un contatore di monete: il totale è 0x386B",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x3862": {
-   "name": "evento 0x38/0x62 (valori 0, 2 e 4; 0 quasi a ogni basetta letta o sollevata, 4 alla connessione delle 17:39 del 12/10)",
+   "name": "stato di attività: 0 a ogni movimento, basetta letta o sollevamento (azzera l'inattività); 2 alla fine del conto alla rovescia 5→1 da fermo; 4 alla connessione (12/10 17:39) e 3 s prima della sequenza di fine livello (12/10 18:26:20)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x3857": {
-   "name": "evento 0x38/0x57 (valori 0 e 1 osservati)",
+   "name": "1 e 0 attorno alle letture del colore rosso (lava) con urti e scosse (11/10 17:07:31–36): forse danno subito o reazione alla lava; da riprovare appoggiando Mario sul rosso senza muoverlo",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x3866": {
-   "name": "evento 0x38/0x66 (valori 0 e 1 osservati)",
+   "name": "0 insieme a 0x1802 = 2 alla fine dei conti alla rovescia con Mario fermo (11/10 17:08:37, poi 93 s senza alcun gesto: addormentamento?); 1 insieme a 0x1802 = 1 quando Mario è stato ripreso in mano (17:10:10, risveglio?)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x3803": {
-   "name": "evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione)",
+   "name": "0 subito dopo la lettura di molte basette (inizio di un'animazione o di un suono?), 100 qualche secondo dopo e nella sequenza di fine livello (conclusa?)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x200E": {
-   "name": "evento 0x20/0x0E (valore 2 osservato)",
+   "name": "valore 2 (11/10 17:10:21) mentre Mario veniva fatto ruotare e invertire sopra i colori nougat, bianco e nero; significato ignoto",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x1802": {
-   "name": "evento 0x18/0x02 (valori 1 e 2 osservati)",
+   "name": "2 con 0x3866 = 0 quando Mario, fermo, finisce i conti alla rovescia (sonno?); 1 con 0x3866 = 1 quando viene ripreso in mano (risveglio?) (11/10)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
@@ -529,13 +529,13 @@
    "hypothesis": true
   },
   "0x1801": {
-   "name": "evento 0x18/0x01 (valori 0 e 1; 0 all'uscita dal livello, 12/10)",
+   "name": "livello in corso: 1 alla lettura dello Start (12/10 18:09:14, insieme all'azzeramento delle monete 0x386B = 0), 0 circa 9 s dopo la fine del livello",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x1803": {
-   "name": "evento 0x18/0x03 (12/10: 4 subito dopo Start, 3 a fine livello, 0 fuori dal livello: forse fase di gioco o vite)",
+   "name": "fase del gioco: 1 alla lettura dello Start, 4 pochi secondi dopo (livello in corso), 3 alla fine del livello (con 0x3004 = 601), 0 al ritorno fuori dal livello",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
@@ -553,19 +553,19 @@
    "hypothesis": true
   },
   "0x3004": {
-   "name": "evento 0x30/0x04 (sempre 601: visto al tempo scaduto del 12/10 17:33 e 8 s dopo la basetta Clown Koopa alle 18:10 senza fine livello; significato da chiarire)",
+   "name": "sempre 601 nella sequenza di fine livello (12/10 17:33, 18:10:14 e 18:26:23, arrivata 21 s e 44 s dopo lo Start: non è il tempo trascorso); forse un codice di esito",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x3812": {
-   "name": "evento 0x38/0x12 (12/10: 2 a fine livello, 1 fuori dal livello: forse stato del gioco)",
+   "name": "2 alla fine del livello (schermata dei risultati?), 1 al ritorno fuori dal livello (12/10)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x3852": {
-   "name": "evento 0x38/0x52 (valore 0, nella sequenza di fine livello)",
+   "name": "0 nella sequenza di fine livello e alla lettura dello Start (azzeramento ai confini del livello)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
@@ -577,13 +577,13 @@
    "hypothesis": true
   },
   "0x386E": {
-   "name": "evento 0x38/0x6E (valore 0, nella sequenza di fine livello)",
+   "name": "0 nella sequenza di fine livello e alla lettura dello Start (azzeramento ai confini del livello)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true
   },
   "0x2042": {
-   "name": "nemici sconfitti nel livello: 1, 2, 3 a ogni basetta con codice Goomba (0x0002)",
+   "name": "nemici sconfitti dall'ultimo azzeramento: 1, 2, 3 a ogni basetta con codice Goomba (0x0002); riparte da 1 anche fuori dal livello (12/10 18:10:23)",
    "source": "dal vivo",
    "verified": "12/10/2026",
    "hypothesis": true

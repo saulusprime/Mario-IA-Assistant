@@ -16,6 +16,30 @@ from typing import Any, Callable, Iterator, Optional
 
 LEGO_SERVICE_UUID = "00001623-1212-efde-1623-785feabcd123"
 LEGO_CHARACTERISTIC_UUID = "00001624-1212-efde-1623-785feabcd123"
+OAD_SERVICE_UUID = "f000ffc0-0451-4000-b000-000000000000"  # Texas Instruments Over-the-Air Download: MAI scriverci
+GATT_NAMES: dict[str, str] = {
+    "00001800-0000-1000-8000-00805f9b34fb": "Generic Access (GAP)",
+    "00001801-0000-1000-8000-00805f9b34fb": "Generic Attribute (GATT)",
+    "00002a00-0000-1000-8000-00805f9b34fb": "Device Name",
+    "00002a01-0000-1000-8000-00805f9b34fb": "Appearance",
+    "00002a04-0000-1000-8000-00805f9b34fb": "Peripheral Preferred Connection Parameters",
+    "00002a05-0000-1000-8000-00805f9b34fb": "Service Changed",
+    "00002aa6-0000-1000-8000-00805f9b34fb": "Central Address Resolution",
+    "00002902-0000-1000-8000-00805f9b34fb": "Client Characteristic Configuration (CCCD)",
+    LEGO_SERVICE_UUID: "LEGO Wireless Protocol 3 (servizio)",
+    LEGO_CHARACTERISTIC_UUID: "LEGO Wireless Protocol 3 (caratteristica: scrittura + notifiche)",
+    OAD_SERVICE_UUID: "Texas Instruments OAD, aggiornamento firmware via radio: DA NON TOCCARE",
+    "f000ffc1-0451-4000-b000-000000000000": "OAD Image Identify (profilo TI)",
+    "f000ffc2-0451-4000-b000-000000000000": "OAD Image Block (profilo TI)",
+    "f000ffc3-0451-4000-b000-000000000000": "OAD Image Count (profilo TI)",
+    "f000ffc4-0451-4000-b000-000000000000": "OAD Image Status (profilo TI)",
+    "f000ffc5-0451-4000-b000-000000000000": "OAD Control (profilo TI)",
+}
+
+
+def gatt_name(uuid: str) -> str:
+    """Nome leggibile di un UUID GATT (servizio, caratteristica o descrittore), '?' se sconosciuto."""
+    return GATT_NAMES.get(str(uuid).lower(), "?")
 LEGO_COMPANY_ID = 0x0397  # LEGO System A/S (Bluetooth SIG company identifier)
 
 

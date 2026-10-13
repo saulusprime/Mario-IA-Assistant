@@ -32,6 +32,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh adventure --list     # avventure del designer; --play quiz [--no-mario] per giocarne una
 ./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
 ./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect)
+./run.sh re-checks --steps sonno,porta3   # reverse engineering dal vivo (sezione 2 del TODO): annuncio, GATT, porta 3, porte 4 e 7
 ./run.sh volume 30            # imposta il volume (0-100)
 ./run.sh name "Mario Casa"    # cambia il nome Bluetooth
 ./run.sh prop battery         # legge una proprietà
@@ -267,17 +268,25 @@ ricomposti per modo e descritti come i valori singoli.
 ```sh
 ./run.sh decode logs/monitor-20261012-180642.txt --summary     # log di monitor/shell/strumenti
 ./run.sh decode cattura.btsnoop --type 45,46 --port 3 --json   # btmon -w, HCI snoop di Android
+./run.sh decode logs/bugreport-mario.zip --summary              # bugreport Android (adb bugreport) così com'è
+./run.sh decode logs/cattura.pklg --port 4                      # PacketLogger di iPhone / macOS
 ./run.sh decode "05 00 45 02 21" "-> 06 00 01 12 01 32"        # byte, anche in uscita (->)
 btmon -r cattura.btsnoop | ./run.sh decode -                    # testo di btmon da stdin
 ```
 
 Legge catture btsnoop (formato "Linux monitor" di btmon, H4 dei telefoni Android, HCI puro) con
-riassemblaggio L2CAP, i log di testo del progetto (byte tra parentesi quadre in coda alla riga,
-righe `TX`/`RX` dell'opzione `-d`, uscita di `btmon -r`) e byte esadecimali. Lo stato delle porte
-parte da `docs/capabilities-fw-6.5.01.json` (ogni porta nel modo che `monitor` attiva di default,
+riassemblaggio L2CAP; i bugreport di Android (lo zip con `FS/data/misc/bluetooth/logs/btsnoop_hci.log`
+o il percorso Samsung, oppure le sezioni btsnooz base64 del `bugreport-*.txt`, che senza HCI snoop
+log attivo contengono solo dati ACL troncati: `decode` lo segnala); i file PacketLogger di Apple
+(`.pklg`, big o little endian); file gzip; i log di testo del progetto (byte tra parentesi quadre in
+coda alla riga, righe `TX`/`RX` dell'opzione `-d`, uscita di `btmon -r`) e byte esadecimali. Il
+formato viene riconosciuto dal contenuto. Lo stato delle porte parte da
+`docs/capabilities-fw-6.5.01.json` (ogni porta nel modo che `monitor` attiva di default,
 `--no-default-modes` per non presumerlo) ed evolve con le sottoscrizioni e le modalità combinate
 viste nel file. `--summary` conta i messaggi per tipo e porta ed elenca gli eventi della porta 3
-con i valori osservati: è lo strumento per la cattura del traffico dell'app ufficiale (TODO).
+con i valori osservati. La procedura per catturare il traffico dell'app ufficiale dal telefono (Android
+e iPhone, copione di gioco, analisi) è in [docs/cattura-app-ufficiale.md](docs/cattura-app-ufficiale.md);
+i lettori btsnooz e PacketLogger sono stati provati solo su file sintetici.
 
 ## Uso come libreria
 
@@ -308,6 +317,9 @@ connessione, le richieste con attesa della risposta e lo stato dell'hub.
 
 - Servizio GATT `00001623-1212-efde-1623-785feabcd123`, caratteristica
   `00001624-1212-efde-1623-785feabcd123` (write + notify): tutto passa da lì.
+- Tabella GATT completa (GAP, GATT, LEGO, OAD Texas Instruments `f000ffc0-…`) nel report di
+  `info` e nel JSON delle funzioni, con il nome dei servizi noti: il servizio OAD è l'aggiornamento
+  del firmware via radio e non va mai scritto (il programma lo elenca soltanto).
 - Advertisement: manufacturer data con company ID `0x0397` (LEGO), per esempio
   `00 43 03 ff ff 00` dove `43` è il system type (0x43 Mario, 0x44 Luigi, 0x45 Peach).
 - Frame: `[lunghezza] [hub id 0x00] [tipo] [payload]`.
@@ -370,20 +382,25 @@ Colori: `0x13` bianco, `0x15` rosso, `0x17` blu, `0x18` giallo, `0x1A` nero,
 nougat verificati dal vivo).
 
 Eventi di gioco (porta 3 modo 2, `[codice LE16][valore LE16]`), significato ricavato dal vivo il
-12 ottobre con le basette reali (ipotesi solide, in `codes.GAME_EVENTS`):
+12 ottobre con le basette reali e dalla rilettura dei log con `decode` il 13 ottobre (ipotesi, in
+`codes.GAME_EVENTS`; conferma con `./run.sh re-checks`):
 
 | Codice | Significato |
 |---|---|
 | `0x0113` | basetta letta: il valore è il codice del barcode |
-| `0x386B` | totale monete del livello (1 dopo un Goomba, +6 dopo l'aereo) |
+| `0x386B` | totale monete del livello (1 dopo un Goomba, +6 dopo l'aereo); 0 alla lettura dello Start |
 | `0x20C2` | monete date dall'ultima basetta (6 o 8 con l'aereo, come una roulette) |
-| `0x2042` | nemici sconfitti nel livello (1, 2, 3 a ogni Goomba) |
+| `0x2042` | nemici sconfitti dall'ultimo azzeramento (1, 2, 3 a ogni Goomba; riparte da 1 anche fuori dal livello) |
 | `0x3712` | = 1 circa un secondo dopo ogni nemico sconfitto |
 | `0x2022` | giri contati sulla piattaforma rotante |
-| `0x1803` | 4 subito dopo lo Start, 3 a fine livello, 0 fuori dal livello |
-| `0x3812` | 2 in livello / a fine livello, 1 fuori dal livello |
-| `0x3004`, `0x3852`, `0x386E`, `0x3803=100` | sequenza del "tempo scaduto" (conto alla rovescia sul petto) |
-| `0x3862` | 0 quasi a ogni basetta letta o sollevata; 4 alla connessione |
+| `0x1801` | livello in corso: 1 alla lettura dello Start, 0 circa 9 s dopo la fine |
+| `0x1803` | fase del gioco: 1 allo Start, 4 pochi secondi dopo (in livello), 3 a fine livello, 0 fuori |
+| `0x3812` | 2 a fine livello (risultati?), 1 fuori dal livello |
+| `0x3004`, `0x3852`, `0x386E`, `0x3803=100` | sequenza di fine livello (`0x3004` sempre 601, non è il tempo) |
+| `0x3861` | conto alla rovescia a un passo al secondo (5→1, poi 8→1) con Mario fermo fuori dal livello: non sono monete |
+| `0x3862` | attività: 0 a ogni movimento o basetta, 2 dopo il conto alla rovescia da fermo, 4 alla connessione |
+| `0x3866`, `0x1802` | 0 e 2 alla fine dei conti alla rovescia (sonno?); 1 e 1 quando Mario viene ripreso in mano (risveglio?) |
+| `0x3857` | 1 e 0 attorno al colore rosso (lava) con urti e scosse: danno? da riprovare da fermo |
 
 ### Osservazioni dal vivo (sessione `monitor` dell'11 ottobre 2026, 3 minuti e 40 secondi)
 
@@ -393,10 +410,13 @@ Eventi di gioco (porta 3 modo 2, `[codice LE16][valore LE16]`), significato rica
   (nei due int16 del modo GEST il secondo valore ripete il primo).
 - Scanner: colori bianco `0x13`, nero `0x1A`, nougat `0x138`, giallo `0x18`, rosso `0x15`;
   `FFFF FFFF` quando Mario viene sollevato. Nessun barcode in quella sessione.
-- Porta 3 modo EVENTS: coppie `[codice, valore]`; il codice si legge come classe/evento
-  (`0x38/0x61` con valore che sale 1→8 come un contatore, `0x38/0x62`, `0x38/0x57`,
-  `0x38/0x66`, `0x38/0x03` = 100, `0x20/0x0E` = 2, `0x18/0x02` = 1 e 2). Tabella provvisoria
-  in `codes.GAME_EVENTS`.
+- Porta 3 modo EVENTS: coppie `[codice, valore]`; il codice si legge come classe/evento.
+  Riletta il 13/10 con `decode`: `0x38/0x61` è un conto alla rovescia a un passo al secondo
+  (5→1 alle 17:07:08, poi 5→1, 8→1, 8→1 dalle 17:08:16) con Mario fermo, chiuso da `0x38/0x66` = 0
+  e `0x18/0x02` = 2 e seguito da 93 s senza alcun gesto (sonno?); alle 17:10:10, ripreso in mano,
+  `0x38/0x66` = 1 e `0x18/0x02` = 1 (risveglio?). `0x38/0x57` 1/0 attorno al rosso (lava) con
+  urti e scosse; `0x38/0x03` = 100 dopo il rosso; `0x20/0x0E` = 2 ruotandolo sopra nougat, bianco
+  e nero. Tabella in `codes.GAME_EVENTS`.
 - Batteria (porta 6): la tensione oscilla 2740–2760 mV; con delta 1 arrivava un valore ogni
   millivolt, per questo `monitor` ora usa delta 25.
 - Allo spegnimento Mario annuncia `WILL_SWITCH_OFF` e `WILL_DISCONNECT`.
@@ -551,14 +571,14 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centoventuno test senza Bluetooth né rete esterna, raggruppati per file:
+Centoventisei test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
 | `test_lwp3` (18) | codec LWP3, decodificatori e tabelle di Mario |
 | `test_hubstate` (5) | stato dell'hub da `capabilities`, valori combinati con i dati reali del 12/10 |
-| `test_decode` (4) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), log di testo, filtri |
-| `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, notifiche, modalità combinata |
+| `test_decode` (9) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri |
+| `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata |
 | `test_db` (6) | database della dashboard |
 | `test_assistant` (30), `test_assistant_ext` (11) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, API |
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
@@ -579,7 +599,7 @@ mario/lwp3.py           protocollo LWP3: messaggi, parser, descrizioni (anche in
 mario/hubstate.py       stato dell'hub senza bleak: porte, modi, formati, valori combinati, eventi
 mario/codes.py          tabelle Mario caricate da mario/data/mario_codes.json (fonte e verifica), modi di default
 mario/device.py         MarioDevice (bleak), agente di pairing BlueZ, scoperta, report
-mario/decode.py         decodifica offline: btsnoop, log di testo, byte esadecimali, riepilogo
+mario/decode.py         decodifica offline: btsnoop, bugreport Android (zip, btsnooz), PacketLogger, gzip, log di testo, byte, riepilogo
 mario/cli.py            comandi scan/info/monitor/shell/decode/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
                         e gli strumenti di tools/ come sottocomandi
 mario/web/              dashboard: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
@@ -588,9 +608,10 @@ mario/adventures/       designer di avventure: model, engine, library, service
 mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
-                        probe_port4.py, catalog_tiles.py, live_checks.py, 99-mario-btusb.rules (udev)
-tests/                  test offline (121)
-docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), sessioni/ (log delle prove dal vivo)
+                        probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev)
+tests/                  test offline (126)
+docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
+                        cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), ignorati da git
 data/                   database SQLite della dashboard (ignorato da git)
 logs/                   catture btmon, log di monitor/shell/assistente/avventure/prove (ignorato da git)

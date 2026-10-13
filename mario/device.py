@@ -273,6 +273,7 @@ class MarioDevice:
         self.debug = debug
         self.client: Optional[BleakClient] = None
         self.ble_device: Optional[BLEDevice] = None
+        self.gatt: list[dict] = []   # servizi e caratteristiche GATT visti da bleak alla connessione
         self.state = HubState()
         self.disconnected = asyncio.Event()
         self._waiters: list[tuple[Callable[[Message], bool], asyncio.Future]] = []
@@ -383,6 +384,7 @@ class MarioDevice:
         else:
             raise BleakError(f"connessione fallita dopo {retries} tentativi: {_connect_hint(last_error)}")
         self.disconnected.clear()
+        self.gatt = self._read_gatt()
         say("Collegato: attivo le notifiche LWP3 (StartNotify)...")
         try:
             await asyncio.wait_for(
@@ -748,6 +750,44 @@ class MarioDevice:
             lines.append(f"  significato noto: {hint}")
         return lines
 
+    def _read_gatt(self) -> list[dict]:
+        """Tabella GATT (servizi, caratteristiche, descrittori) come la espone bleak dopo la connessione.
+        Solo lettura della tabella: nessuna caratteristica viene letta o scritta (il servizio OAD resta intatto)."""
+        services = getattr(self.client, "services", None)
+        out: list[dict] = []
+        if not services:
+            return out
+        try:
+            for svc in services:
+                chars = []
+                for ch in getattr(svc, "characteristics", None) or []:
+                    chars.append({"uuid": str(ch.uuid).lower(), "handle": getattr(ch, "handle", None),
+                                  "properties": [str(x) for x in (getattr(ch, "properties", None) or [])],
+                                  "descriptors": [{"uuid": str(d.uuid).lower(), "handle": getattr(d, "handle", None)}
+                                                  for d in (getattr(ch, "descriptors", None) or [])]})
+                out.append({"uuid": str(svc.uuid).lower(), "handle": getattr(svc, "handle", None),
+                            "characteristics": chars})
+        except Exception as exc:  # la tabella GATT è solo informativa
+            log.debug("lettura della tabella GATT fallita: %s", exc)
+        return out
+
+    def gatt_lines(self) -> list[str]:
+        """Righe del report per la tabella GATT (con il nome dei servizi noti e l'avviso sul servizio OAD)."""
+        lines: list[str] = []
+        if not self.gatt:
+            return ["  (tabella GATT non disponibile)"]
+        for svc in self.gatt:
+            handle = f"0x{svc['handle']:04X} " if svc.get("handle") is not None else ""
+            lines.append(f"  {handle}{svc['uuid']}  {lwp3.gatt_name(svc['uuid'])}")
+            for ch in svc.get("characteristics", []):
+                chandle = f"0x{ch['handle']:04X} " if ch.get("handle") is not None else ""
+                props = ", ".join(ch.get("properties") or []) or "-"
+                lines.append(f"      car. {chandle}{ch['uuid']}  {lwp3.gatt_name(ch['uuid'])} [{props}]")
+                for d in ch.get("descriptors", []):
+                    dhandle = f"0x{d['handle']:04X} " if d.get("handle") is not None else ""
+                    lines.append(f"          desc. {dhandle}{d['uuid']}  {lwp3.gatt_name(d['uuid'])}")
+        return lines
+
     def report(self) -> str:
         st = self.state
         bond = {True: "sì", False: "no", None: "sconosciuto"}[self.bonded]
@@ -766,6 +806,7 @@ class MarioDevice:
             lines.append("  (nessuna porta annunciata)")
         for port, ps in sorted(st.ports.items()):
             lines += self._port_lines(ps)
+        lines += ["", "=== Servizi GATT ==="] + self.gatt_lines()
         return "\n".join(lines)
 
     def port_report(self, port: int) -> str:
@@ -784,4 +825,5 @@ class MarioDevice:
         return {"address": self.ble_device.address if self.ble_device else self.address,
                 "bonded": self.bonded,
                 "properties": props,
+                "gatt": self.gatt,
                 "ports": {port: ps.to_dict() for port, ps in sorted(st.ports.items())}}
