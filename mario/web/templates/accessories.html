@@ -2,7 +2,7 @@
 {% block content %}
 <section class="card">
   <h1>Accessori di Mario</h1>
-  <p class="muted">Pantaloni, basette con barcode e colori del terreno conosciuti dal software; spunta quelli che possiedi. Le colonne "visti" si aggiornano da sole quando il sensore di Mario li riconosce.</p>
+  <p class="muted">Pantaloni, basette con barcode e colori del terreno conosciuti dal software; spunta quelli che possiedi. "Verificato" indica la data in cui il codice è stato confermato con il Mario fisico; le colonne "visti" si aggiornano da sole quando il sensore li riconosce.</p>
   <div class="actions">
     {% for kind in kinds %}<button class="tab {{ 'active' if loop.first }}" data-tab="{{ kind }}">{{ kind_labels[kind] }} <small>{{ stats.get(kind, {}).get('owned', 0) }}/{{ stats.get(kind, {}).get('total', 0) }}</small></button>{% endfor %}
     <span class="spacer"></span>
@@ -12,12 +12,13 @@
   {% for kind in kinds %}
   <div class="tabpane {{ '' if loop.first else 'hidden' }}" data-pane="{{ kind }}">
     <table class="compact acc-table" data-kind="{{ kind }}">
-      <thead><tr><th>Codice</th><th>Nome</th><th>Posseduto</th><th>Qtà</th><th>Set</th><th>Note</th><th>Visto</th><th>Ultima volta</th><th></th></tr></thead>
+      <thead><tr><th>Codice</th><th>Nome</th><th>Verificato</th><th>Posseduto</th><th>Qtà</th><th>Set</th><th>Note</th><th>Visto</th><th>Ultima volta</th><th></th></tr></thead>
       <tbody>
       {% for a in grouped[kind] %}
         <tr data-id="{{ a.id }}" class="{{ 'owned' if a.owned }}">
           <td><code>{% if a.code is not none %}0x{{ '%02X' % a.code if a.code < 256 else '%04X' % a.code }}{% endif %}</code></td>
           <td class="name">{{ a.name }}{% if a.source == 'rilevato' %} <span class="badge warn">rilevato</span>{% endif %}</td>
+          <td>{% if a.code is not none and verified[kind].get(a.code) %}<span class="badge ok" title="confermato con il Mario dell'utente">{{ verified[kind][a.code] }}</span>{% elif a.source == 'tabella' %}<span class="muted" title="dalle tabelle della community, non ancora visto dal vivo">comunità</span>{% endif %}</td>
           <td><input type="checkbox" class="acc-owned" {{ 'checked' if a.owned }}></td>
           <td><input type="number" class="acc-qty" value="{{ a.quantity }}" min="0" style="width:4em"></td>
           <td><input type="text" class="acc-set" value="{{ a.set_number }}" style="width:6em"></td>

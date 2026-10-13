@@ -7,6 +7,7 @@ Tabelle:
   events       eventi dei sensori e dell'hub ricevuti dal vivo
   settings     impostazioni chiave/valore
   assistant_messages  conversazione con l'assistente (Mario come I/O di un LLM)
+  assistant_memory    ricordi dell'assistente tra una sessione e l'altra
 """
 from __future__ import annotations
 
@@ -80,6 +81,11 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
     emotion    TEXT,
     source     TEXT,
     turn       INTEGER
+);
+CREATE TABLE IF NOT EXISTS assistant_memory (
+    id   INTEGER PRIMARY KEY,
+    ts   REAL NOT NULL,
+    text TEXT NOT NULL
 );
 """
 
@@ -384,10 +390,39 @@ class Database:
             "INSERT INTO assistant_messages (ts, device_id, role, content, emotion, source, turn) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ts or time.time(), device_id, role, content, emotion, source, turn))
 
-    def list_assistant_messages(self, limit: int = 100, since_id: int = 0) -> list[dict]:
-        rows = self._all("SELECT * FROM assistant_messages WHERE id>? ORDER BY id DESC LIMIT ?",
-                         (since_id, max(1, min(int(limit), 2000))))
+    def list_assistant_messages(self, limit: int = 100, since_id: int = 0, since_ts: Optional[float] = None,
+                                until_ts: Optional[float] = None) -> list[dict]:
+        sql, params = "SELECT * FROM assistant_messages WHERE id>?", [since_id]
+        if since_ts is not None:
+            sql += " AND ts>=?"
+            params.append(since_ts)
+        if until_ts is not None:
+            sql += " AND ts<=?"
+            params.append(until_ts)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(max(1, min(int(limit), 5000)))
+        return list(reversed(self._all(sql, params)))
+
+    # ----- memoria dell'assistente -----------------------------------------------------
+
+    def add_memory(self, text: str) -> int:
+        text = " ".join(str(text).split())
+        if not text:
+            return 0
+        row = self._one("SELECT id FROM assistant_memory WHERE lower(text)=lower(?)", (text,))
+        if row:
+            return int(row["id"])
+        return self._insert("INSERT INTO assistant_memory (ts, text) VALUES (?, ?)", (time.time(), text))
+
+    def list_memories(self, limit: int = 50) -> list[dict]:
+        rows = self._all("SELECT * FROM assistant_memory ORDER BY id DESC LIMIT ?", (max(1, min(int(limit), 500)),))
         return list(reversed(rows))
+
+    def delete_memory(self, memory_id: int) -> int:
+        return self._exec("DELETE FROM assistant_memory WHERE id=?", (memory_id,))
+
+    def clear_memories(self) -> int:
+        return self._exec("DELETE FROM assistant_memory")
 
     def clear_assistant_messages(self) -> int:
         return self._exec("DELETE FROM assistant_messages")

@@ -16,6 +16,7 @@ from typing import Any, Optional
 from .behaviours import BehaviourEngine
 from .intents import IntentMapper
 from .llm import LLMConfig, make_backend
+from .memory import DatabaseMemory
 from .session import AssistantSession
 from .tts import Speaker
 
@@ -28,13 +29,25 @@ DEFAULTS: dict[str, str] = {
     "assistant.behaviours": "1", "assistant.volume_effects": "1", "assistant.busy_indication": "0",
     "assistant.port_writes": "0", "assistant.port_payloads": "{}",
     "assistant.listening": "1", "assistant.persona": "", "assistant.rules": "{}",
+    "assistant.piper_model": "", "assistant.session_minutes": "0", "assistant.blocked_words": "", "assistant.memory": "1",
 }
-BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening"}
+BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory"}
 SECRET_KEYS = {"api_key"}
 
 
 def as_bool(value: Any) -> bool:
     return str(value).strip().lower() in ("1", "true", "on", "yes", "sì", "si")
+
+
+def split_words(text: str) -> list[str]:
+    return [w.strip() for w in str(text or "").replace(";", ",").split(",") if w.strip()]
+
+
+def minutes_to_seconds(text: Any) -> float:
+    try:
+        return max(0.0, float(text or 0)) * 60.0
+    except (TypeError, ValueError):
+        return 0.0
 
 
 class WorkerActions:
@@ -70,7 +83,8 @@ class AssistantService:
         self.quiet = quiet
         s = self.settings()
         self.speaker = Speaker(enabled=as_bool(s["tts"]) and not quiet, voice=s["voice"], rate=int(s["rate"] or 0),
-                               pitch=int(s["pitch"] or 0), sounds=as_bool(s["sounds"]) and not quiet)
+                               pitch=int(s["pitch"] or 0), sounds=as_bool(s["sounds"]) and not quiet,
+                               piper_model=s["piper_model"])
         self.behaviours = BehaviourEngine(WorkerActions(worker), emit=self._emit,
                                           enabled=as_bool(s["behaviours"]) and not quiet,
                                           volume_effects=as_bool(s["volume_effects"]),
@@ -78,7 +92,10 @@ class AssistantService:
                                           port_writes=as_bool(s["port_writes"]),
                                           port_payloads=self._json(s["port_payloads"]))
         self.session = AssistantSession(self._make_backend, self.speaker, self.behaviours, emit=self._emit,
-                                        mapper=IntentMapper(), persona=s["persona"], on_message=self._store)
+                                        mapper=IntentMapper(), persona=s["persona"], on_message=self._store,
+                                        memory=DatabaseMemory(db), memory_enabled=as_bool(s["memory"]),
+                                        session_limit=minutes_to_seconds(s["session_minutes"]),
+                                        blocked_words=split_words(s["blocked_words"]))
         self.session.listening = as_bool(s["listening"])
         self._apply_rules(self._json(s["rules"]))
         self._thread = threading.Thread(target=self._consume, name="assistant-events", daemon=True)
@@ -128,7 +145,10 @@ class AssistantService:
             self.db.set_setting(key, str(value if value is not None else ""))
         s = self.settings()
         self.speaker.configure(enabled=as_bool(s["tts"]) and not self.quiet, voice=s["voice"], rate=s["rate"] or 0,
-                               pitch=s["pitch"] or 0, sounds=as_bool(s["sounds"]) and not self.quiet)
+                               pitch=s["pitch"] or 0, sounds=as_bool(s["sounds"]) and not self.quiet,
+                               piper_model=s["piper_model"])
+        self.session.configure_safety(session_limit=minutes_to_seconds(s["session_minutes"]),
+                                      blocked_words=split_words(s["blocked_words"]), memory_enabled=as_bool(s["memory"]))
         self.behaviours.configure(enabled=as_bool(s["behaviours"]) and not self.quiet,
                                   volume_effects=as_bool(s["volume_effects"]),
                                   busy_indication=as_bool(s["busy_indication"]), port_writes=as_bool(s["port_writes"]),

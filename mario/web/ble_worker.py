@@ -69,6 +69,8 @@ class BleWorker:
         if self._thread.is_alive():
             self.loop.call_soon_threadsafe(_stop)
             self._thread.join(timeout)
+        if not self._thread.is_alive() and not self.loop.is_closed():
+            self.loop.close()
 
     def call(self, factory: Callable[[], Any], timeout: float = 90.0) -> Any:
         """Esegue una coroutine nel loop del worker e ne attende il risultato."""

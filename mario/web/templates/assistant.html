@@ -23,6 +23,8 @@
     <button class="small" data-sim="basetta_goomba">Basetta Goomba</button>
     <button class="small" data-sim="basetta_traguardo">Traguardo</button>
     <button class="small" data-sim="terreno_lava">Terreno lava</button>
+    <button class="small" data-sim="rotazione">Rotazione</button>
+    <button class="small" data-sim="sollevato" title="scanner senza colore né basetta: Mario in mano (la rotazione viene ignorata)">Sollevato</button>
     <button class="small" data-sim="pulsante">Pulsante</button>
     <button class="small" data-sim="batteria">Batteria 10 %</button>
   </div>
@@ -48,6 +50,13 @@
   <ul id="intent-list" class="menu-list"><li class="muted">nessuno</li></ul>
   <h2>Comportamenti su Mario <small class="muted">(volume, indicazione occupato, porte sperimentali)</small></h2>
   <pre class="log small" id="beh-log"></pre>
+  <h2>Ricordi <small class="muted">(memoria tra le sessioni: il modello li scrive con [ricorda: …])</small></h2>
+  <ul id="memory-list" class="menu-list"><li class="muted">nessuno</li></ul>
+  <div class="actions">
+    <input type="text" id="memory-text" placeholder="Aggiungi un ricordo, es. 'Il bambino si chiama Leo e ama Yoshi'" style="flex:1; min-width:12em">
+    <button id="memory-add">Ricorda</button>
+    <button id="memory-clear" class="ghost danger">Dimentica tutto</button>
+  </div>
 </section>
 </div>
 
@@ -73,6 +82,11 @@
       <div class="actions"><label><input type="checkbox" id="set-tts"> voce attiva</label> <label><input type="checkbox" id="set-sounds"> effetti sonori</label> <span class="muted" id="set-engine"></span></div>
       <div class="actions"><label>Voce <input type="text" id="set-voice" placeholder="es. Italian+Alex (vuoto = predefinita)" style="width:16em"></label></div>
       <div class="actions"><label>Velocità <input type="range" id="set-rate" min="-100" max="100"> <span id="set-rate-v"></span></label> <label>Tono <input type="range" id="set-pitch" min="-100" max="100"> <span id="set-pitch-v"></span></label></div>
+      <div class="actions"><label title="Voce neurale offline: installa piper e scarica un modello italiano (.onnx + .json); se il file esiste il motore passa a piper">Modello piper <input type="text" id="set-piper" placeholder="/percorso/it_IT-paola-medium.onnx (vuoto = spd-say/espeak)" style="width:22em"></label></div>
+      <h2>Sicurezza per i bambini</h2>
+      <div class="actions"><label>Minuti di gioco per sessione <input type="number" id="set-minutes" min="0" max="240" style="width:5em"> <span class="muted">(0 = nessun limite; allo scadere Mario saluta e smette di ascoltare, "Nuova" ricomincia)</span></label></div>
+      <div class="actions"><label>Parole bloccate <input type="text" id="set-blocked" placeholder="separate da virgola" style="width:22em"></label> <span class="muted">non vengono inviate al modello e vengono sostituite nelle risposte</span></div>
+      <div class="actions"><label><input type="checkbox" id="set-memory"> memoria tra le sessioni (il modello può salvare ricordi con [ricorda: …])</label></div>
       <h2>Comportamenti sul Mario fisico</h2>
       <div class="actions"><label><input type="checkbox" id="set-beh"> attivi</label> <label><input type="checkbox" id="set-vol"> effetti di volume</label> <label title="Provato il 12/10/2026: Mario fw 6.5.01 risponde INVALID_USE, quindi non ha effetto"><input type="checkbox" id="set-busy"> indicazione "occupato" (azione hub 0x05/0x06: Mario la rifiuta, nessun effetto)</label></div>
       <div class="actions"><label><input type="checkbox" id="set-ports"> scritture sperimentali su porta 4/7</label></div>
@@ -81,6 +95,19 @@
     </div>
   </div>
   <div class="actions"><button id="set-save" class="primary">Salva impostazioni</button> <span id="set-msg" class="muted"></span></div>
+</section>
+
+<section class="card">
+  <h1>Diario per i genitori <small class="muted">(tutto ciò che è stato detto, dal database)</small></h1>
+  <div class="actions">
+    <label>Dal <input type="datetime-local" id="diary-from"></label>
+    <label>Al <input type="datetime-local" id="diary-to"></label>
+    <label>Limite <input type="number" id="diary-limit" value="200" min="1" max="5000" style="width:5em"></label>
+    <button id="diary-load">Carica</button>
+    <button id="diary-csv" class="ghost">Esporta CSV</button>
+    <span id="diary-msg" class="muted"></span>
+  </div>
+  <table class="compact" id="diary-table"><thead><tr><th>Data</th><th>Chi</th><th>Origine</th><th>Emozione</th><th>Testo</th></tr></thead><tbody></tbody></table>
 </section>
 
 <section class="card">

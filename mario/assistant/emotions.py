@@ -51,7 +51,10 @@ ALIASES = {
 }
 
 TAG_MAX = 24
+MEMORY_PREFIX = "ricorda:"   # [ricorda: il bambino si chiama Leo] -> memoria tra le sessioni, non viene letto
+MEMORY_MAX = 200
 _SENTENCE_END = re.compile(r"[.!?…]+[\"'»)]*(\s+)")
+_MEMORY_TAG = re.compile(r"\[\s*ricorda:\s*([^\]]{1,%d})\]\s*" % MEMORY_MAX, re.IGNORECASE)
 
 
 def resolve(tag: str) -> Optional[str]:
@@ -62,10 +65,16 @@ def resolve(tag: str) -> Optional[str]:
 
 
 def strip_tags(text: str) -> str:
-    """Toglie i tag emozione da un testo completo (per il log e la cronologia)."""
+    """Toglie i tag emozione e i tag [ricorda: ...] da un testo completo (per il log e la cronologia)."""
     def repl(m: re.Match) -> str:
         return "" if resolve(m.group(1)) else m.group(0)
+    text = _MEMORY_TAG.sub("", text)
     return re.sub(r"\[([^\[\]]{1,%d})\]\s*" % TAG_MAX, repl, text).strip()
+
+
+def memory_tags(text: str) -> list[str]:
+    """Le memorie contenute nei tag [ricorda: ...] di un testo completo."""
+    return [m.group(1).strip() for m in _MEMORY_TAG.finditer(text)]
 
 
 class EmotionStream:
@@ -78,6 +87,11 @@ class EmotionStream:
         self.buffer = ""
         self.current = DEFAULT_EMOTION
         self.seen: list[str] = []
+        self.memories: list[str] = []
+
+    def _is_memory_prefix(self) -> bool:
+        head = self.buffer[1:len(MEMORY_PREFIX) + 2].lstrip().lower()
+        return head.startswith(MEMORY_PREFIX) or MEMORY_PREFIX.startswith(head) and bool(head)
 
     def feed(self, chunk: str) -> list[tuple[str, str]]:
         self.buffer += chunk
@@ -93,11 +107,21 @@ class EmotionStream:
                 self.buffer = self.buffer[start:]
             end = self.buffer.find("]")
             if end < 0:
-                if len(self.buffer) > TAG_MAX + 2:  # troppo lungo per essere un tag: è testo
+                limit = MEMORY_MAX + 12 if self._is_memory_prefix() else TAG_MAX + 2
+                if len(self.buffer) > limit:  # troppo lungo per essere un tag: è testo
                     out.append(("text", self.buffer))
                     self.buffer = ""
                 break  # aspettiamo il resto
-            key = resolve(self.buffer[1:end])
+            inner = self.buffer[1:end].strip()
+            if inner.lower().startswith(MEMORY_PREFIX) and len(inner) <= MEMORY_MAX + len(MEMORY_PREFIX):
+                memory = inner[len(MEMORY_PREFIX):].strip()
+                if memory:
+                    out.append(("memory", memory))
+                    self.memories.append(memory)
+                rest = self.buffer[end + 1:]
+                self.buffer = rest.lstrip(" ") if rest else ""
+                continue
+            key = resolve(inner)
             if key:
                 out.append(("emotion", key))
                 self.current = key

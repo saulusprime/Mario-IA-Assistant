@@ -52,6 +52,8 @@ SIMULATIONS = {
     "basetta_goomba": {"type": "PORT_VALUE_SINGLE", "io_type": 0x49, "mode": 0, "hex": "02 00 25 00"},
     "basetta_traguardo": {"type": "PORT_VALUE_SINGLE", "io_type": 0x49, "mode": 0, "hex": "b7 00 25 00"},
     "terreno_lava": {"type": "PORT_VALUE_SINGLE", "io_type": 0x49, "mode": 0, "hex": "ff ff 15 00", "baseline": "ff ff 25 00"},
+    "rotazione": {"type": "PORT_VALUE_SINGLE", "io_type": 0x47, "mode": 1, "hex": "00 01"},
+    "sollevato": {"type": "PORT_VALUE_SINGLE", "io_type": 0x49, "mode": 0, "hex": "ff ff ff ff"},
     "pulsante": {"type": "HUB_PROPERTIES", "prop": "BUTTON", "value": True},
     "batteria": {"type": "HUB_PROPERTIES", "prop": "BATTERY_VOLTAGE", "value": 10},
 }
@@ -239,8 +241,10 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     def page_accessories():
         items = db.list_accessories()
         grouped = {kind: [a for a in items if a["kind"] == kind] for kind in ACCESSORY_KINDS}
+        verified = {"pants": codes.verified_codes("pants"), "tile": codes.verified_codes("barcodes"),
+                    "color": codes.verified_codes("colors"), "other": {}}
         return render_template("accessories.html", page="accessories", grouped=grouped,
-                               stats=db.accessory_stats(), kinds=ACCESSORY_KINDS)
+                               stats=db.accessory_stats(), kinds=ACCESSORY_KINDS, verified=verified)
 
     @app.get("/assistant")
     def page_assistant():
@@ -658,11 +662,60 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     def api_assistant_settings_update():
         return ok(settings=assistant.update_settings(body()))
 
+    def diary_range() -> dict:
+        out = {}
+        for key, name in (("from", "since_ts"), ("to", "until_ts")):
+            value = request.args.get(key)
+            if value:
+                try:
+                    out[name] = float(value)
+                except ValueError:
+                    out[name] = time.mktime(time.strptime(value[:16], "%Y-%m-%dT%H:%M"))
+        return out
+
     @app.get("/api/assistant/history")
     @api
     def api_assistant_history():
         return ok(messages=db.list_assistant_messages(int(request.args.get("limit", 100)),
-                                                      int(request.args.get("since_id", 0))),
+                                                      int(request.args.get("since_id", 0)), **diary_range()),
                   stats=db.assistant_stats())
+
+    @app.get("/api/assistant/history.csv")
+    @api
+    def api_assistant_history_csv():
+        buf = io.StringIO()
+        writer = csv.writer(buf, delimiter=";")
+        writer.writerow(["id", "data_ora", "turno", "chi", "origine", "emozione", "testo"])
+        for m in db.list_assistant_messages(int(request.args.get("limit", 5000)), 0, **diary_range()):
+            who = "Mario" if m["role"] == "assistant" else ("sensore" if m["source"] and m["source"] != "utente" else "bambino")
+            writer.writerow([m["id"], fmt_time(m["ts"]), m["turn"], who, m["source"], m["emotion"], m["content"]])
+        name = f"mario-diario-{time.strftime('%Y%m%d-%H%M%S')}.csv"
+        return Response("\ufeff" + buf.getvalue(), mimetype="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f"attachment; filename={name}"})
+
+    @app.get("/api/assistant/memory")
+    @api
+    def api_assistant_memory():
+        return ok(memory=assistant.session.memory.list(), enabled=assistant.session.memory_enabled)
+
+    @app.post("/api/assistant/memory")
+    @api
+    def api_assistant_memory_add():
+        text = str(body().get("text", "")).strip()
+        if not text:
+            raise ValueError("testo vuoto")
+        mid = assistant.session.memory.add(text)
+        assistant.session.emit("memory", text=text, id=mid, source="utente")
+        return ok(id=mid, memory=assistant.session.memory.list())
+
+    @app.delete("/api/assistant/memory")
+    @api
+    def api_assistant_memory_clear():
+        return ok(deleted=assistant.session.forget())
+
+    @app.delete("/api/assistant/memory/<int:memory_id>")
+    @api
+    def api_assistant_memory_delete(memory_id: int):
+        return ok(deleted=assistant.session.forget(memory_id))
 
     return app

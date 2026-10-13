@@ -78,7 +78,10 @@ def ensure_sound(name: str) -> Optional[Path]:
     return path
 
 
-def detect_engine() -> Optional[str]:
+def detect_engine(piper_model: str = "") -> Optional[str]:
+    """`piper` (voci neurali, offline) vince se c'è il binario e un modello .onnx; poi spd-say ed espeak-ng."""
+    if piper_model and shutil.which("piper") and Path(piper_model).is_file():
+        return "piper"
     for name in ("spd-say", "espeak-ng", "espeak"):
         if shutil.which(name):
             return name
@@ -96,7 +99,8 @@ class Speaker:
     """Coda di frasi da pronunciare, una alla volta, con velocità e tono legati all'emozione."""
 
     def __init__(self, enabled: bool = True, language: str = "it", voice: str = "", rate: int = 0,
-                 pitch: int = 0, volume: int = 0, sounds: bool = True, engine: Optional[str] = None):
+                 pitch: int = 0, volume: int = 0, sounds: bool = True, engine: Optional[str] = None,
+                 piper_model: str = ""):
         self.enabled = enabled
         self.language = language
         self.voice = voice
@@ -104,7 +108,8 @@ class Speaker:
         self.pitch = int(pitch)
         self.volume = int(volume)
         self.sounds = sounds
-        self.engine = engine if engine is not None else detect_engine()
+        self.piper_model = piper_model
+        self.engine = engine if engine is not None else detect_engine(piper_model)
         self.player = detect_player()
         self.spoken: list[tuple[str, Optional[str]]] = []
         self.on_start: Optional[Callable[[str, Optional[str]], None]] = None  # chiamato quando una frase inizia
@@ -127,11 +132,14 @@ class Speaker:
                 if key in ("rate", "pitch", "volume"):
                     value = max(-100, min(100, int(value)))
                 setattr(self, key, value)
+        if "piper_model" in opts and opts["piper_model"] is not None and opts["piper_model"] != self.piper_model:
+            self.piper_model = str(opts["piper_model"])
+            self.engine = detect_engine(self.piper_model)  # cambia motore se il modello c'è (o non c'è più)
 
     def status(self) -> dict:
         return {"engine": self.engine, "player": self.player[0] if self.player else None, "enabled": self.enabled,
                 "busy": self._busy, "queued": self._queue.qsize(), "voice": self.voice, "rate": self.rate,
-                "pitch": self.pitch, "sounds": self.sounds, "last_error": self.last_error}
+                "pitch": self.pitch, "sounds": self.sounds, "piper_model": self.piper_model, "last_error": self.last_error}
 
     @property
     def available(self) -> bool:
@@ -185,6 +193,12 @@ class Speaker:
         emo = EMOTIONS.get(emotion or "")
         rate = max(-100, min(100, self.rate + (emo.rate if emo else 0)))
         pitch = max(-100, min(100, self.pitch + (emo.pitch if emo else 0)))
+        if self.engine == "piper":
+            # piper legge il testo dallo standard input e scrive un WAV; velocità = length_scale (1 = normale,
+            # più piccolo = più veloce). Niente controllo del tono: l'emozione si sente solo nel ritmo.
+            length_scale = round(max(0.6, min(1.6, 1.0 - rate / 200)), 2)
+            return ["piper", "--model", self.piper_model, "--length_scale", str(length_scale), "--output_file",
+                    str(SOUNDS_DIR / "piper-out.wav")]
         if self.engine == "spd-say":
             cmd = ["spd-say", "-w", "-l", self.language, "-r", str(rate), "-p", str(pitch), "-i", str(self.volume)]
             if self.voice:
@@ -204,11 +218,14 @@ class Speaker:
             try:
                 if self.on_start:
                     self.on_start(text, emotion)
-                self._proc = subprocess.Popen(self._command(text, emotion), stdout=subprocess.DEVNULL,
-                                              stderr=subprocess.PIPE)
-                _out, err = self._proc.communicate(timeout=120)
-                if self._proc.returncode not in (0, None, -15) and err:
-                    self.last_error = err.decode(errors="replace").strip()[:200]
+                if self.engine == "piper":
+                    self._run_piper(text, emotion)
+                else:
+                    self._proc = subprocess.Popen(self._command(text, emotion), stdout=subprocess.DEVNULL,
+                                                  stderr=subprocess.PIPE)
+                    _out, err = self._proc.communicate(timeout=120)
+                    if self._proc.returncode not in (0, None, -15) and err:
+                        self.last_error = err.decode(errors="replace").strip()[:200]
             except Exception as exc:  # il TTS non deve mai fermare la sessione
                 self.last_error = str(exc)
             finally:
@@ -219,6 +236,19 @@ class Speaker:
                         self.on_end(text, emotion)
                     except Exception:
                         pass
+
+    def _run_piper(self, text: str, emotion: Optional[str]) -> None:
+        """Sintesi con piper (testo su stdin -> WAV) e riproduzione con il lettore trovato."""
+        SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
+        cmd = self._command(text, emotion)
+        self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        _out, err = self._proc.communicate(input=text.encode("utf-8"), timeout=120)
+        if self._proc.returncode not in (0, None, -15):
+            self.last_error = (err or b"").decode(errors="replace").strip()[:200] or "piper fallito"
+            return
+        if self.player:
+            self._proc = subprocess.Popen(self.player + [cmd[-1]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._proc.communicate(timeout=120)
 
     # ----- effetti sonori ---------------------------------------------------------------
 

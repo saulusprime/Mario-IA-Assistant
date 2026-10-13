@@ -679,8 +679,11 @@ ASSISTANT_HELP = """Comandi: una riga di testo = messaggio per il modello.
   /nuova           nuova conversazione                /ascolto on|off  sensori -> modello
   /emozione NOME   prova un'emozione (gioia, sorpresa, pensieroso, allarme, tristezza, sonno, calma)
   /di TESTO        fa dire un testo con la voce       /stato         stato della sessione
-  /regole          regole sensori -> intenti          /aiuto         questo elenco      /esci"""
-ASSISTANT_COMMANDS = ["/stop", "/ripeti", "/nuova", "/ascolto", "/emozione", "/di", "/stato", "/regole", "/aiuto", "/esci"]
+  /ricordi         ricordi salvati                    /ricorda TESTO  aggiunge un ricordo
+  /dimentica [N|tutto]  cancella un ricordo o tutti   /regole        regole sensori -> intenti
+  /aiuto           questo elenco                      /esci"""
+ASSISTANT_COMMANDS = ["/stop", "/ripeti", "/nuova", "/ascolto", "/emozione", "/di", "/stato", "/ricordi", "/ricorda",
+                      "/dimentica", "/regole", "/aiuto", "/esci"]
 
 
 class AssistantPrinter:
@@ -755,6 +758,24 @@ def handle_assistant_command(session, speaker, line: str) -> tuple[bool, str]:
     if cmd == "regole":
         return False, "\n".join(f"  {'on ' if r['enabled'] else 'off'} {r['name']:<10} {r['kind']:<7} pausa {r['cooldown']:>4}s  {r['text']}"
                                 for r in session.mapper.rules_dict())
+    if cmd == "ricordi":
+        items = session.memory.list()
+        if not items:
+            return False, "nessun ricordo" + ("" if session.memory_enabled else " (memoria disattivata)")
+        return False, "\n".join(f"  {m['id']:>3}  {time.strftime('%d/%m %H:%M', time.localtime(m['ts']))}  {m['text']}" for m in items)
+    if cmd == "ricorda":
+        if not rest.strip():
+            return False, "uso: /ricorda TESTO"
+        mid = session.memory.add(rest)
+        return False, f"ricordo {mid} salvato" if mid else "ricordo non salvato"
+    if cmd == "dimentica":
+        arg = rest.strip().lower()
+        if arg in ("", "tutto", "tutti"):
+            return False, f"{session.forget()} ricordi cancellati"
+        try:
+            return False, f"{session.forget(int(arg))} ricordo cancellato"
+        except ValueError:
+            return False, "uso: /dimentica [numero|tutto]"
     return False, ASSISTANT_HELP
 
 
@@ -821,24 +842,49 @@ async def cmd_assistant(args) -> int:
             out.delta(ev["text"])
         elif kind == "done":
             session_log.write(f"Mario: {ev['text']}")
-            out.end(f"[{ts()}] (risposta in {ev.get('elapsed')} s, emozioni: {', '.join(ev.get('emotions') or []) or 'nessuna'})")
+            first = f", prima frase dopo {ev['first_sentence']} s" if ev.get("first_sentence") else ""
+            out.end(f"[{ts()}] (risposta in {ev.get('elapsed')} s{first}, emozioni: {', '.join(ev.get('emotions') or []) or 'nessuna'})")
         elif kind == "error":
             session_log.write("errore: " + ev["text"])
             out.end(f"[{ts()}] !! {ev['text']}")
         elif kind == "stopped" and out.streaming:
             out.end(f"[{ts()}] (interrotto)")
-        elif kind in ("intent", "intent_dropped", "listening", "stopped", "reset", "repeat"):
+        elif kind in ("intent", "intent_dropped", "listening", "stopped", "reset", "repeat", "time_up", "blocked",
+                      "memory_forgotten"):
             out.line(f"[{ts()}] · {ev['text']}")
             session_log.write(ev["text"])
+        elif kind == "memory":
+            out.line(f"[{ts()}] · ricordo salvato: {ev['text']}")
+            session_log.write("ricordo: " + ev["text"])
         elif kind == "behaviour":
             session_log.write(ev["text"])
             if verbose:
                 out.line(f"[{ts()}] · Mario: {ev['text']}")
 
     cfg = LLMConfig(backend=args.backend, model=args.model or "", base_url=args.base_url or "")
-    speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts)
+    speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts, piper_model=args.piper_model or "")
     engine = BehaviourEngine(LoopActions() if dev else NullActions(), emit=emit, enabled=not args.no_behaviours)
-    session = AssistantSession(lambda: make_backend(cfg), speaker, engine, emit=emit, persona=args.persona or "")
+    # ricordi e diario nel database della dashboard (data/mario.sqlite3), condivisi con la pagina Assistente
+    memory, on_message = None, None
+    if not args.no_db:
+        try:
+            from .assistant.memory import DatabaseMemory
+            from .web.db import Database
+            db = Database(Path(__file__).resolve().parent.parent / "data" / "mario.sqlite3")
+            memory = DatabaseMemory(db)
+
+            def on_message(msg: dict, _db=db) -> None:
+                try:
+                    _db.add_assistant_message(msg["role"], msg["content"], emotion=msg.get("emotion"),
+                                              source=msg.get("source"), turn=msg.get("turn"), ts=msg.get("ts"))
+                except Exception:
+                    pass
+        except Exception as exc:
+            say(f"Database non disponibile ({exc}): ricordi solo in memoria, nessun diario")
+    session = AssistantSession(lambda: make_backend(cfg), speaker, engine, emit=emit, persona=args.persona or "",
+                               memory=memory, memory_enabled=not args.no_memory, on_message=on_message,
+                               session_limit=max(0.0, float(args.minutes or 0)) * 60,
+                               blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()])
     if dev is not None:
         def on_message(msg, text):
             ev = event_from_message(dev, msg)
@@ -1074,6 +1120,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--persona", help="istruzioni in più per il modello")
     p.add_argument("--no-tts", action="store_true", help="senza voce ed effetti sonori")
     p.add_argument("--no-behaviours", action="store_true", help="nessun comportamento sul Mario fisico")
+    p.add_argument("--piper-model", help="voce neurale piper: percorso del modello .onnx (serve il binario piper)")
+    p.add_argument("--minutes", type=float, default=0.0, help="minuti di gioco per sessione (0 = nessun limite)")
+    p.add_argument("--block", help="parole bloccate, separate da virgola")
+    p.add_argument("--no-memory", action="store_true", help="niente ricordi tra le sessioni")
+    p.add_argument("--no-db", action="store_true", help="non usare data/mario.sqlite3 per ricordi e diario")
     p.add_argument("-v", "--verbose", action="store_true", help="mostra anche i comportamenti (volume, busy) riga per riga")
     p.set_defaults(func=cmd_assistant)
 

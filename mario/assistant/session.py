@@ -15,20 +15,31 @@ import time
 from collections import deque
 from typing import Callable, Optional
 
+import re
+
 from .behaviours import BehaviourEngine
 from .emotions import DEFAULT_EMOTION, EMOTIONS, MODEL_EMOTIONS, EmotionStream, SentenceBuffer, strip_tags
 from .intents import Intent, IntentMapper
 from .llm import Backend, LLMError
+from .memory import ListMemory, MemoryStore, memory_prompt
 from .tts import Speaker
 
 BASE_PROMPT = """Sei Mario, il personaggio LEGO Super Mario: una statuina vera, con dei sensori, che parla attraverso il computer di casa. Parli italiano, in prima persona, con frasi brevi, allegre e adatte a bambini dai sei anni. Niente elenchi, niente markdown, niente emoji: solo frasi. Al massimo tre frasi, salvo che ti chiedano una storia.
 Ogni frase inizia con un'emozione tra parentesi quadre, scelta solo tra: {tags}. Esempio: "[gioia] Yahoo, che salto! [calma] Adesso riposiamoci un momento."
 I messaggi che iniziano con "[sensore: ...]" non li scrive una persona: arrivano dal tuo corpo (gesti, pantaloni, basette con il codice a barre, colore del terreno, pulsante, batteria). Reagisci come farebbe Mario nel gioco, in una o due frasi.
 Le righe "(Stato del corpo: ...)" descrivono come sei in questo momento: tienine conto senza ripeterle.
+{memory_rule}
 {persona}
+{memory}
 Stato del corpo adesso: {context}."""
 
+MEMORY_RULE = ("Se scopri qualcosa che vale la pena ricordare per le prossime volte (il nome di chi gioca, un gusto, "
+               "una cosa successa), aggiungi alla fine un tag [ricorda: una frase breve in terza persona]. "
+               "Al massimo uno per risposta, e solo se è davvero nuovo.")
+
 FALLBACK_ERROR_SPEECH = "Ops, adesso non riesco a rispondere."
+BLOCKED_SPEECH = "Mmm, di questo preferisco non parlare. Facciamo un bel salto, piuttosto!"
+TIME_UP_SPEECH = "Che bella giocata! Adesso Mario deve riposare un po'. Alla prossima avventura!"
 
 
 class AssistantBusy(Exception):
@@ -39,7 +50,9 @@ class AssistantSession:
     def __init__(self, backend_factory: Callable[[], Backend], speaker: Speaker, behaviours: BehaviourEngine,
                  emit: Optional[Callable[[dict], None]] = None, mapper: Optional[IntentMapper] = None,
                  persona: str = "", history_limit: int = 20,
-                 on_message: Optional[Callable[[dict], None]] = None):
+                 on_message: Optional[Callable[[dict], None]] = None,
+                 memory: Optional[MemoryStore] = None, memory_enabled: bool = True,
+                 session_limit: float = 0.0, blocked_words: Optional[list[str]] = None):
         self.backend_factory = backend_factory
         self.speaker = speaker
         self.behaviours = behaviours
@@ -48,6 +61,12 @@ class AssistantSession:
         self.persona = persona
         self.history_limit = history_limit
         self.on_message = on_message or (lambda msg: None)
+        self.memory: MemoryStore = memory if memory is not None else ListMemory()
+        self.memory_enabled = memory_enabled
+        self.session_limit = float(session_limit or 0.0)   # secondi di gioco per sessione (0 = nessun limite)
+        self.blocked_words: list[str] = [w for w in (blocked_words or []) if w]
+        self.started = time.time()
+        self.time_up = False
         self.listening = True
         self.busy = False
         self.emotion = DEFAULT_EMOTION
@@ -103,7 +122,10 @@ class AssistantSession:
     def status(self) -> dict:
         emo = EMOTIONS[self.emotion]
         return {"listening": self.listening, "busy": self.busy, "turn": self.turn, "pending": len(self.pending),
-                "speaking": not self.speaker.idle,
+                "speaking": not self.speaker.idle, "elapsed": round(time.time() - self.started),
+                "session_limit": self.session_limit, "time_up": self.time_up,
+                "memory": self.memory.list() if self.memory_enabled else [], "memory_enabled": self.memory_enabled,
+                "blocked_words": list(self.blocked_words),
                 "emotion": {"key": self.emotion, "emoji": emo.emoji, "color": emo.color, "label": emo.label},
                 "backend": self.backend_name, "last_answer": self.last_answer, "last_error": self.last_error,
                 "history": len(self.history), "context": {**self.mapper.context, "text": self.mapper.context_text()},
@@ -112,8 +134,50 @@ class AssistantSession:
                 "rules": self.mapper.rules_dict(), "emotions": [EMOTIONS[k].to_dict() for k in EMOTIONS]}
 
     def build_system_prompt(self) -> str:
-        return BASE_PROMPT.format(tags=" ".join(f"[{k}]" for k in MODEL_EMOTIONS),
-                                  persona=self.persona.strip(), context=self.mapper.context_text()).strip()
+        memories = memory_prompt(self.memory.list()) if self.memory_enabled else ""
+        text = BASE_PROMPT.format(tags=" ".join(f"[{k}]" for k in MODEL_EMOTIONS), persona=self.persona.strip(),
+                                  memory_rule=MEMORY_RULE if self.memory_enabled else "", memory=memories,
+                                  context=self.mapper.context_text())
+        return "\n".join(line for line in text.splitlines() if line.strip()).strip()
+
+    # ----- sicurezza: parole bloccate e limite di tempo --------------------------------------------
+
+    def configure_safety(self, session_limit: Optional[float] = None, blocked_words: Optional[list[str]] = None,
+                         memory_enabled: Optional[bool] = None) -> None:
+        if session_limit is not None:
+            self.session_limit = max(0.0, float(session_limit))
+            if self.time_up and (not self.session_limit or time.time() - self.started < self.session_limit):
+                self.time_up = False
+        if blocked_words is not None:
+            self.blocked_words = [w.strip() for w in blocked_words if w and w.strip()]
+        if memory_enabled is not None:
+            self.memory_enabled = bool(memory_enabled)
+
+    def _blocked_pattern(self) -> Optional[re.Pattern]:
+        if not self.blocked_words:
+            return None
+        return re.compile(r"(?<!\w)(" + "|".join(re.escape(w) for w in self.blocked_words) + r")(?!\w)", re.IGNORECASE)
+
+    def _blocked_in(self, text: str) -> Optional[str]:
+        pat = self._blocked_pattern()
+        m = pat.search(text) if pat else None
+        return m.group(1) if m else None
+
+    def _clean(self, text: str) -> str:
+        pat = self._blocked_pattern()
+        return pat.sub("…", text) if pat else text
+
+    def _check_time(self) -> bool:
+        """True se la sessione può continuare; altrimenti (una volta sola) saluta e sospende l'ascolto."""
+        if not self.session_limit or time.time() - self.started < self.session_limit:
+            return True
+        if not self.time_up:
+            self.time_up = True
+            self.emit("time_up", text=f"tempo di gioco finito ({self.session_limit / 60:g} min): ascolto sospeso")
+            self._set_emotion("sonno")
+            self.speaker.speak(TIME_UP_SPEECH, "sonno")
+            self.listening = False
+        return False
 
     # ----- ingresso -----------------------------------------------------------------------
 
@@ -151,6 +215,9 @@ class AssistantSession:
                 self.set_listening(not self.listening, source=intent.source)
                 return "ascolto " + ("attivato" if self.listening else "sospeso")
             if intent.text == "repeat":
+                if self.busy or not self.speaker.idle:  # scossa mentre parla: è un "basta", non un "ripeti"
+                    self.stop()
+                    return "fermato (scossa durante la risposta)"
                 return "ripeto l'ultima risposta" if self.repeat() else "niente da ripetere"
             if intent.text == "stop":
                 self.stop()
@@ -204,6 +271,15 @@ class AssistantSession:
         text = text.strip()
         if not text:
             raise ValueError("testo vuoto")
+        if not self._check_time():
+            raise AssistantBusy("tempo di gioco finito: premi Nuova (o /nuova) per ricominciare")
+        if not sensor:
+            word = self._blocked_in(text)
+            if word:
+                self.emit("blocked", text=f"messaggio non inviato al modello (parola bloccata)", source=source)
+                self._set_emotion("pensieroso")
+                self.speaker.speak(BLOCKED_SPEECH, "pensieroso")
+                return 0
         with self._lock:
             if self.busy:
                 if priority < 2:
@@ -227,6 +303,7 @@ class AssistantSession:
 
     def _run_turn(self, turn: int, text: str, source: str, prompt: str, sensor: bool) -> None:
         started = time.time()
+        self._first_sentence_at: Optional[float] = None
         # se un turno precedente sta ancora finendo, gli lasciamo il tempo di uscire
         while self._abort and self._thread is not threading.current_thread():
             time.sleep(0.02)
@@ -258,7 +335,7 @@ class AssistantSession:
                 if close:
                     close()
             full_raw = "".join(answer_raw)
-            plain = strip_tags(full_raw)
+            plain = self._clean(strip_tags(full_raw))
             if self._abort:
                 self.emit("stopped", turn=turn, text=plain)
             else:
@@ -268,7 +345,18 @@ class AssistantSession:
                 del self.history[:-self.history_limit]
                 self.on_message({"role": "assistant", "content": plain, "emotion": self.emotion, "source": self.backend_name,
                                  "turn": turn, "ts": time.time()})
-                self.emit("done", turn=turn, text=plain, emotions=parser.seen, elapsed=round(time.time() - started, 2))
+                if self.memory_enabled:
+                    for memory in parser.memories:
+                        try:
+                            mid = self.memory.add(memory)
+                        except Exception as exc:  # il database non deve fermare la risposta
+                            mid = 0
+                            self.emit("error", turn=turn, text=f"memoria non salvata: {exc}")
+                        if mid:
+                            self.emit("memory", turn=turn, text=memory, id=mid)
+                first = self._first_sentence_at
+                self.emit("done", turn=turn, text=plain, emotions=parser.seen, elapsed=round(time.time() - started, 2),
+                          first_sentence=round(first - started, 2) if first else None)
         except LLMError as exc:
             self.last_error = str(exc)
             self.emit("error", turn=turn, text=str(exc))
@@ -295,12 +383,17 @@ class AssistantSession:
                 if rest:
                     self._sentence(rest, turn)
                 self._set_emotion(value)
+            elif kind == "memory":
+                continue  # salvata a fine risposta (vedi _run_turn), mai letta a voce
             else:
-                self.emit("delta", turn=turn, text=value, emotion=self.emotion)
+                self.emit("delta", turn=turn, text=self._clean(value), emotion=self.emotion)
                 for sentence in sentences.feed(value):
                     self._sentence(sentence, turn)
 
     def _sentence(self, sentence: str, turn: int) -> None:
+        sentence = self._clean(sentence)
+        if getattr(self, "_first_sentence_at", None) is None:
+            self._first_sentence_at = time.time()
         self.emit("sentence", turn=turn, text=sentence, emotion=self.emotion)
         self.speaker.speak(sentence, self.emotion)
 
@@ -330,7 +423,17 @@ class AssistantSession:
         self.last_answer = ""
         self._ctx_sent = ""
         self.emotion = DEFAULT_EMOTION
+        self.started = time.time()
+        if self.time_up:
+            self.time_up = False
+            self.listening = True
         self.emit("reset", text="nuova conversazione")
+
+    def forget(self, memory_id: Optional[int] = None) -> int:
+        """Cancella un ricordo (o tutti) e lo comunica."""
+        n = self.memory.delete(memory_id) if memory_id else self.memory.clear()
+        self.emit("memory_forgotten", text=("un ricordo cancellato" if memory_id else f"{n} ricordi cancellati"), id=memory_id, count=n)
+        return n
 
     def repeat(self) -> bool:
         if not self.last_answer:

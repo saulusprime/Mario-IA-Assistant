@@ -249,7 +249,11 @@
         case "start": $("#as-backend").textContent = ev.backend; $("#face").classList.add("busy"); $("#face-sub").textContent = "sto pensando…"; break;
         case "emotion": setFace(ev.emotion); if (current) current.style.setProperty("--emo", emoColor(ev.emotion)); break;
         case "delta": { const b = ensureCurrent(ev.emotion); b.style.setProperty("--emo", emoColor(ev.emotion)); b.appendChild(document.createTextNode(ev.text)); scroll(); break; }
-        case "done": if (current) { current.classList.remove("typing"); current.textContent = ev.text; } else if (ev.text) bubble("assistant", esc(ev.text)); current = null; $("#face").classList.remove("busy"); $("#face-sub").textContent = `${ev.elapsed} s · ${(ev.emotions || []).join(", ") || "nessun tag"}`; break;
+        case "done": if (current) { current.classList.remove("typing"); current.textContent = ev.text; } else if (ev.text) bubble("assistant", esc(ev.text)); current = null; $("#face").classList.remove("busy"); $("#face-sub").textContent = `${ev.elapsed} s${ev.first_sentence ? ` (prima frase ${ev.first_sentence} s)` : ""} · ${(ev.emotions || []).join(", ") || "nessun tag"}`; break;
+        case "memory": flash(msg, `ricordo salvato: ${ev.text}`); loadMemory(); break;
+        case "memory_forgotten": flash(msg, ev.text); loadMemory(); break;
+        case "time_up": flash(msg, ev.text, true); $("#as-listen").checked = false; break;
+        case "blocked": bubble("error", esc(ev.text)); break;
         case "error": bubble("error", esc(ev.text)); current = null; $("#face").classList.remove("busy"); $("#face-sub").textContent = "errore"; break;
         case "stopped": if (current) { current.classList.remove("typing"); current = null; } $("#face").classList.remove("busy"); break;
         case "reset": chat.innerHTML = ""; current = null; break;
@@ -269,6 +273,20 @@
       $("#set-engine").textContent = speaker && speaker.engine ? `motore: ${speaker.engine}, suoni: ${speaker.player || "nessun lettore"}` : "nessun motore vocale trovato (installa speech-dispatcher o espeak-ng)";
       $("#set-beh").checked = !!s.behaviours; $("#set-vol").checked = !!s.volume_effects; $("#set-busy").checked = !!s.busy_indication; $("#set-ports").checked = !!s.port_writes;
       $("#set-payloads").value = s.port_payloads && s.port_payloads !== "{}" ? s.port_payloads : "";
+      $("#set-piper").value = s.piper_model || ""; $("#set-minutes").value = s.session_minutes || 0; $("#set-blocked").value = s.blocked_words || ""; $("#set-memory").checked = !!s.memory;
+    }
+    function renderMemory(items) {
+      const ul = $("#memory-list"); ul.innerHTML = "";
+      if (!items.length) { ul.innerHTML = '<li class="muted">nessuno</li>'; return; }
+      items.forEach((m) => { const li = document.createElement("li"); li.innerHTML = `${esc(m.text)} <span class="muted small">${fmtDate(m.ts)}</span> <button class="small ghost" data-forget="${m.id}" title="dimentica">×</button>`; ul.appendChild(li); });
+    }
+    async function loadMemory() { try { renderMemory((await api("/api/assistant/memory")).memory || []); } catch (e) { flash(msg, e.message, true); } }
+    const isoToTs = (v) => v ? String(new Date(v).getTime() / 1000) : "";
+    function diaryQuery(extra) { const q = new URLSearchParams({ limit: $("#diary-limit").value }); const f = isoToTs($("#diary-from").value), t = isoToTs($("#diary-to").value); if (f) q.set("from", f); if (t) q.set("to", t); Object.entries(extra || {}).forEach(([k, v]) => q.set(k, v)); return q; }
+    async function loadDiary() {
+      try { const r = await api("/api/assistant/history?" + diaryQuery()); const tb = $("#diary-table tbody"); tb.innerHTML = "";
+        r.messages.forEach((m) => tb.appendChild(eventRow(m, [fmtDate(m.ts), m.role === "assistant" ? "Mario" : (m.source && m.source !== "utente" ? "sensore" : "bambino"), esc(m.source || ""), esc(m.emotion || ""), esc(m.content)])));
+        flash($("#diary-msg"), `${r.messages.length} messaggi mostrati, ${r.stats.total} in archivio`); } catch (e) { flash($("#diary-msg"), e.message, true); }
     }
     function renderRules(rules) {
       const tb = $("#rules-table tbody"); tb.innerHTML = "";
@@ -280,7 +298,7 @@
       setFace(st.emotion); $("#as-listen").checked = !!st.listening; renderContext(st.context);
       $("#as-backend").textContent = st.backend || (st.llm.resolved_backend + (st.llm.model ? " · " + st.llm.model : ""));
       if (st.busy) $("#face").classList.add("busy");
-      renderSettings(st.settings, st.speaker, st.llm); renderRules(st.rules || []);
+      renderSettings(st.settings, st.speaker, st.llm); renderRules(st.rules || []); renderMemory(st.memory || []);
       (st.behaviours.last_actions || []).forEach((t) => { $("#beh-log").textContent += t + "\n"; });
       const h = (await api("/api/assistant/history?limit=40")).messages;
       h.forEach((m) => { if (m.role === "user") addUser(m.content, m.source, m.source && m.source !== "utente"); else { const b = bubble("assistant", esc(m.content)); b.style.setProperty("--emo", emoColor(m.emotion)); } });
@@ -296,15 +314,20 @@
     $("#say-send").addEventListener("click", () => { const text = $("#say-text").value.trim(); if (text) api("/api/assistant/say", "POST", { text }).catch((e) => flash(msg, e.message, true)); });
     $("#set-rate").addEventListener("input", () => { $("#set-rate-v").textContent = $("#set-rate").value; });
     $("#set-pitch").addEventListener("input", () => { $("#set-pitch-v").textContent = $("#set-pitch").value; });
+    $("#memory-add").addEventListener("click", async () => { const t = $("#memory-text").value.trim(); if (!t) return; try { await api("/api/assistant/memory", "POST", { text: t }); $("#memory-text").value = ""; } catch (e) { flash(msg, e.message, true); } });
+    $("#memory-clear").addEventListener("click", async () => { if (confirm("Dimenticare tutti i ricordi?")) { try { await api("/api/assistant/memory", "DELETE"); } catch (e) { flash(msg, e.message, true); } } });
+    $("#diary-load").addEventListener("click", loadDiary);
+    $("#diary-csv").addEventListener("click", () => { location.href = "/api/assistant/history.csv?" + diaryQuery({ limit: 5000 }); });
     document.addEventListener("click", async (ev) => {
       const b = ev.target.closest("button"); if (!b) return;
+      if (b.dataset.forget) { try { await api("/api/assistant/memory/" + b.dataset.forget, "DELETE"); } catch (e) { flash(msg, e.message, true); } }
       if (b.dataset.emotion) { try { await api("/api/assistant/emotion", "POST", { emotion: b.dataset.emotion }); } catch (e) { flash(msg, e.message, true); } }
       if (b.dataset.sim) { try { const r = await api("/api/assistant/simulate", "POST", { what: b.dataset.sim }); flash(msg, r.intents.length ? `simulato: ${r.intents.map((i) => i.source).join(", ")}` : "simulato: nessun intento (pausa attiva o regola spenta)"); } catch (e) { flash(msg, e.message, true); } }
     });
     $("#set-save").addEventListener("click", async () => {
       let payloads = {};
       try { payloads = $("#set-payloads").value.trim() ? JSON.parse($("#set-payloads").value) : {}; } catch (e) { flash($("#set-msg"), "JSON dei payload non valido", true); return; }
-      const data = { backend: $("#set-backend").value, model: $("#set-model").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads };
+      const data = { backend: $("#set-backend").value, model: $("#set-model").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads, piper_model: $("#set-piper").value, session_minutes: $("#set-minutes").value, blocked_words: $("#set-blocked").value, memory: $("#set-memory").checked ? 1 : 0 };
       try { const r = await api("/api/assistant/settings", "POST", data); $("#set-key").value = ""; $("#set-key-clear").checked = false; renderSettings(r.settings, null, null); const st = (await api("/api/assistant/status")).status; renderSettings(st.settings, st.speaker, st.llm); flash($("#set-msg"), "impostazioni salvate"); } catch (e) { flash($("#set-msg"), e.message, true); }
     });
     $("#rules-save").addEventListener("click", async () => {

@@ -149,7 +149,10 @@ class IntentMapper:
         self.rules: dict[str, Rule] = {k: Rule(**asdict(v)) for k, v in (rules or DEFAULT_RULES).items()}
         self.context: dict = {"pants": None, "pants_name": None, "color": None, "color_name": None,
                               "tile": None, "tile_name": None, "gesture": None, "battery": None,
-                              "updated": 0.0}
+                              "lifted": None, "updated": 0.0}
+        # La rotazione scatta di continuo quando Mario è tenuto in mano: vale solo se lo scanner vede
+        # qualcosa sotto i piedi (colore o basetta), cioè se Mario è appoggiato.
+        self.rotation_only_on_ground = True
         self._last: dict[str, float] = {}
         self._tile_prev: Optional[int] = None
         self._color_prev: Optional[int] = None
@@ -195,6 +198,8 @@ class IntentMapper:
             parts.append(f"ultima basetta: {c['tile_name']}")
         if c["gesture"]:
             parts.append(f"ultimo gesto: {c['gesture']}")
+        if c.get("lifted"):
+            parts.append("sei sollevato da terra (in mano a qualcuno)")
         if c["battery"] is not None:
             parts.append(f"batteria: {c['battery']} %")
         return "; ".join(parts) if parts else "nessun dato dai sensori per ora"
@@ -266,6 +271,8 @@ class IntentMapper:
             self.context["gesture"] = ", ".join(short_name(n) for n in names)
         for bit, name in GESTURE_BITS.items():
             if bits & bit:
+                if name == "rotazione" and self.rotation_only_on_ground and self.context.get("lifted"):
+                    continue  # girato in mano: non è il gioco della piattaforma rotante
                 intent = self._fire(name, ts, source=f"gesto: {name}")
                 if intent:
                     out.append(intent)
@@ -294,6 +301,7 @@ class IntentMapper:
 
     def _scanner(self, barcode: int, color: int, ts: float, settled: bool = False) -> list[Intent]:
         out = []
+        self.context["lifted"] = barcode == 0xFFFF and color == 0xFFFF
         if barcode != 0xFFFF and barcode != self._tile_prev:
             name = short_name(codes.BARCODES.get(barcode, f"basetta sconosciuta 0x{barcode:04X}"))
             self.context.update(tile=barcode, tile_name=name)
