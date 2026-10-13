@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% block title %}Avventure{% endblock %}
+{% block content %}
+<div class="grid two">
+<section class="card">
+  <h1>Avventure</h1>
+  <p class="muted">Missioni fatte di basette, colori, pantaloni, gesti ed eventi di gioco: il PC riconosce cosa fa il Mario fisico e reagisce con voce, suoni e punti. <a href="/adventures/play">Schermo di gioco →</a></p>
+  <table class="compact" id="adv-table"><thead><tr><th>Nome</th><th>Passi</th><th>Autore</th><th>Aggiornata</th><th></th></tr></thead>
+  <tbody>{% for a in adventures %}<tr data-id="{{ a.id }}"><td><b>{{ a.name }}</b><br><span class="muted small">{{ a.description }}</span></td><td>{{ a.steps }}</td><td>{{ a.author }}</td><td>{{ fmt_time(a.updated) }}</td>
+    <td><button class="small adv-edit" data-id="{{ a.id }}">Modifica</button> <a class="small" href="/adventures/play?id={{ a.id }}"><button class="small primary">Gioca</button></a> <a href="/api/adventures/{{ a.id }}/export"><button class="small ghost">JSON</button></a> <button class="small ghost danger adv-del" data-id="{{ a.id }}">×</button></td></tr>{% endfor %}</tbody></table>
+  <div class="actions"><button id="adv-new">Nuova avventura</button> <button id="adv-import" class="ghost">Importa JSON…</button> <span id="adv-msg" class="muted"></span></div>
+  <textarea id="adv-import-text" rows="4" class="hidden" placeholder='Incolla qui il JSON di un'avventura esportata'></textarea>
+  <h2>Partite giocate</h2>
+  <table class="compact" id="runs-table"><thead><tr><th>Quando</th><th>Avventura</th><th>Esito</th><th>Punti</th><th>Durata</th></tr></thead><tbody></tbody></table>
+</section>
+<section class="card">
+  <h1>Elementi disponibili</h1>
+  <p class="muted">Le basette possedute (pagina Accessori) sono evidenziate. Clicca un elemento per copiarne il trigger nel passo selezionato.</p>
+  <div class="actions"><label><input type="checkbox" id="lib-owned" checked> solo basette possedute</label></div>
+  <div id="library" class="elements"></div>
+</section>
+</div>
+
+<section class="card" id="editor" data-adventure-id="">
+  <h1>Editor <small class="muted" id="ed-title">(nessuna avventura selezionata)</small></h1>
+  <div class="grid two">
+    <div>
+      <div class="actions"><label>Nome <input type="text" id="ed-name" style="width:18em"></label> <label>Autore <input type="text" id="ed-author" style="width:10em"></label> <label>Versione <input type="number" id="ed-version" min="1" style="width:4em"></label></div>
+      <div class="actions"><label>Descrizione <input type="text" id="ed-description" style="width:34em"></label></div>
+      <div class="actions"><label>Frase iniziale <input type="text" id="ed-intro" style="width:34em"></label></div>
+      <div class="actions"><label>Frase finale ({score} = punti) <input type="text" id="ed-end" style="width:30em"></label></div>
+      <div class="actions"><label>Limite di tempo (s, 0 = nessuno) <input type="number" id="ed-time" min="0" style="width:6em"></label> <label><input type="checkbox" id="ed-kid"> schermo "bambino" (icone grandi)</label></div>
+    </div>
+    <div>
+      <h2>JSON <small class="muted">(modifica avanzata: sequenze, azioni)</small></h2>
+      <textarea id="ed-json" rows="9"></textarea>
+      <div class="actions"><button id="ed-apply-json" class="ghost">Applica JSON al modulo</button></div>
+    </div>
+  </div>
+  <h2>Passi</h2>
+  <table class="compact" id="steps-table"><thead><tr><th>#</th><th>Id</th><th>Titolo</th><th>Missione (detta e mostrata)</th><th>Trigger</th><th>Parametro</th><th>Punti</th><th>Timeout s</th><th>Frase di successo</th><th>Frase di timeout</th><th></th></tr></thead><tbody></tbody></table>
+  <p class="hint">Parametro: codice esadecimale per basetta/colore/pantaloni/evento (es. 0x0002), famiglia per basetta (start, goal, enemy, prize, friend, any), nome del gesto (salto, scossa, urto, rotazione, caduta), secondi per il timer. Sequenze, ripetizioni e azioni (volume, goto, webhook, end) si scrivono nel JSON.</p>
+  <div class="actions"><button id="step-add">Aggiungi passo</button> <button id="ed-validate" class="ghost">Controlla</button> <button id="ed-save" class="primary">Salva</button> <button id="ed-play">Salva e gioca</button> <span id="ed-msg" class="muted"></span></div>
+</section>
+{% endblock %}

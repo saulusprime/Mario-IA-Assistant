@@ -1,0 +1,16 @@
+{
+ "name": "Quiz sulle basette",
+ "description": "Mario chiede una basetta e il bambino la cerca tra quelle sul tavolo. Usa le basette dei set 71360 e 71425 (partenza, Goomba, nuvola, aereo, carrello, Bowser Jr., piattaforma rotante).",
+ "author": "progetto Mario BLE",
+ "version": 1,
+ "intro_text": "Quiz delle basette! Metti tutte le basette sul tavolo. Quando dico il nome, appoggia Mario sopra.",
+ "steps": [
+  {"id": "start", "title": "Si parte", "text": "Prima la basetta di partenza, il tubo verde!", "trigger": {"kind": "barcode", "family": "start"}, "points": 5, "success_text": "Si parte! Let's-a go!"},
+  {"id": "nemico", "title": "Il nemico", "text": "Trova un nemico: il Goomba, il fungo marrone con le sopracciglia cattive!", "trigger": {"kind": "barcode", "code": "0x0002"}, "points": 10, "success_text": "Preso! Un bel salto sulla testa!", "timeout": 60, "timeout_text": "Il Goomba è scappato. Avanti!"},
+  {"id": "nuvola", "title": "La nuvola", "text": "Adesso qualcosa che vola: la nuvola!", "trigger": {"kind": "barcode", "code": "0x002E"}, "points": 10, "success_text": "Che morbida questa nuvola!", "timeout": 45, "timeout_text": "Niente nuvola. Proviamo con l'aereo."},
+  {"id": "aereo", "title": "L'aereo", "text": "E ora l'aereo di Diddy Kong!", "trigger": {"kind": "barcode", "code": "0x0160"}, "points": 10, "success_text": "Vroom! Sei o otto monete in arrivo!", "timeout": 45},
+  {"id": "giri", "title": "La giostra", "text": "Metti Mario sulla piattaforma rotante e fallo girare tre volte!", "trigger": {"kind": "game_event", "code": "0x2022", "min_value": 3}, "points": 15, "success_text": "Tre giri! Che giostra!", "emotion": "sorpresa", "timeout": 60, "timeout_text": "Gira che ti rigira, passiamo oltre."},
+  {"id": "miniera", "title": "La miniera", "text": "Cerca il carrello della miniera!", "trigger": {"kind": "barcode", "code": "0x015B"}, "points": 10, "success_text": "Tutti a bordo del carrello!", "timeout": 45},
+  {"id": "boss", "title": "Il boss", "text": "Per finire, il cattivone: Bowser Junior nel suo Clown Koopa!", "trigger": {"kind": "barcode", "code": "0x00F5"}, "points": 20, "success_text": "Bowser Junior sconfitto! Quiz finito!", "sound": "powerup", "timeout": 60, "timeout_text": "Bowser Junior è sfuggito, ma il quiz è finito lo stesso."}
+ ]
+}

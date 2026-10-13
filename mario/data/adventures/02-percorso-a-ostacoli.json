@@ -1,0 +1,14 @@
+{
+ "name": "Percorso a ostacoli con i gesti",
+ "description": "Salti, giravolte e scosse: Mario sente i movimenti con l'accelerometro. Non servono basette.",
+ "author": "progetto Mario BLE",
+ "version": 1,
+ "intro_text": "Percorso a ostacoli! Tieni Mario in mano e fai quello che dico.",
+ "time_limit": 300,
+ "steps": [
+  {"id": "tre-salti", "title": "Tre salti", "text": "Fai saltare Mario tre volte!", "trigger": {"kind": "count", "of": {"kind": "gesture", "name": "salto"}, "times": 3, "seconds": 0.8}, "points": 15, "success_text": "Uno, due, tre! Che molle nelle gambe!", "timeout": 60, "timeout_text": "Niente salti? Proviamo con la giravolta."},
+  {"id": "giravolta", "title": "La giravolta", "text": "Adesso fallo girare su se stesso, appoggiato sul tavolo.", "trigger": {"kind": "gesture", "name": "rotazione"}, "points": 10, "success_text": "Uooo, gira tutto!", "emotion": "sorpresa", "timeout": 45},
+  {"id": "combo", "title": "La combinazione", "text": "Ultima prova: un salto e subito dopo una scossa, entro cinque secondi!", "trigger": {"kind": "sequence", "steps": [{"kind": "gesture", "name": "salto"}, {"kind": "gesture", "name": "scossa"}], "seconds": 5}, "points": 25, "success_text": "Combinazione perfetta! Sei un campione!", "sound": "powerup", "timeout": 60, "timeout_text": "Quasi! La combinazione era difficile."},
+  {"id": "riposo", "title": "Riposo", "text": "Appoggia Mario e lascialo fermo per cinque secondi.", "trigger": {"kind": "timer", "seconds": 5}, "points": 5, "success_text": "Che pace. Percorso finito!", "emotion": "calma"}
+ ]
+}

@@ -1,0 +1,14 @@
+{
+ "name": "Caccia al tesoro dei colori",
+ "description": "Trova i terreni colorati nell'ordine giusto: Mario legge il colore sotto i piedi. Servono fogli o mattoncini verdi, rossi, bianchi e blu.",
+ "author": "progetto Mario BLE",
+ "version": 1,
+ "intro_text": "Caccia al tesoro! Cerchiamo i colori con Mario. Pronti?",
+ "end_text": "Caccia al tesoro finita! Hai fatto {score} punti. Bravissimo!",
+ "steps": [
+  {"id": "verde", "title": "Il prato", "text": "Trova qualcosa di verde e appoggiaci Mario!", "trigger": {"kind": "color", "code": "0x0025"}, "points": 10, "success_text": "Erba fresca! Dieci punti!", "timeout": 90, "timeout_text": "Niente verde? Non importa, passiamo al rosso."},
+  {"id": "rosso", "title": "La lava", "text": "Ora cerca il rosso! Attento, scotta!", "trigger": {"kind": "color", "code": "0x0015"}, "points": 10, "success_text": "Ahi ahi, lava! Via subito, ma dieci punti sono tuoi!", "sound": "alarm", "emotion": "allarme", "timeout": 90, "timeout_text": "Il rosso si nasconde bene. Andiamo avanti."},
+  {"id": "bianco", "title": "La neve", "text": "Adesso il bianco, come la neve.", "trigger": {"kind": "color", "code": "0x0013"}, "points": 10, "success_text": "Brrr, che freddo! Perfetto!", "timeout": 90},
+  {"id": "blu", "title": "L'acqua", "text": "Per finire, trova il blu dell'acqua!", "trigger": {"kind": "color", "code": "0x0017"}, "points": 20, "success_text": "Splash! Venti punti e tesoro trovato!", "sound": "powerup", "timeout": 90, "timeout_text": "Il blu era difficile. Il tesoro è comunque tuo!"}
+ ]
+}

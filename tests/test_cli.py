@@ -109,6 +109,27 @@ class CliTests(unittest.TestCase):
         leave, msg = self.cli.handle_assistant_command(session, speaker, "/ripeti")
         self.assertEqual(msg, "")
 
+    def test_adventure_simulation_events(self):
+        ev = self.cli.adventure_sim_event("basetta 0x02")
+        self.assertEqual((ev["io_type"], ev["data"]), (0x49, bytes.fromhex("0200ffff")))
+        self.assertEqual(self.cli.adventure_sim_event("colore 0x25")["data"], bytes.fromhex("ffff2500"))
+        self.assertEqual(self.cli.adventure_sim_event("salto")["data"], bytes.fromhex("0080"))
+        self.assertEqual(self.cli.adventure_sim_event("evento 0x386B 7")["data"], bytes.fromhex("6b380700"))
+        self.assertEqual(self.cli.adventure_sim_event("pulsante")["prop"], "BUTTON")
+        self.assertIsNone(self.cli.adventure_sim_event("boh"))
+        args = self.cli.build_parser().parse_args(["adventure", "--play", "quiz", "--no-mario", "--no-tts"])
+        self.assertEqual((args.play, args.no_mario, args.webhooks), ("quiz", True, False))
+        with tempfile.TemporaryDirectory() as tmp:
+            from mario.web.db import Database
+            db = Database(Path(tmp) / "a.sqlite3")
+            aid, data = self.cli._pick_adventure("colori", db)   # senza database popolato: esempi
+            self.assertEqual(data["name"], "Caccia al tesoro dei colori")
+            path = Path(tmp) / "x.json"
+            path.write_text(json.dumps({"name": "Da file", "steps": [{"trigger": {"kind": "button"}}]}), encoding="utf-8")
+            self.assertEqual(self.cli._pick_adventure(str(path), db)[1]["name"], "Da file")
+            with self.assertRaises(ValueError):
+                self.cli._pick_adventure("inesistente", db)
+
     def test_decode_via_main(self):
         import contextlib
         buf = io.StringIO()

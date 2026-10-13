@@ -339,6 +339,101 @@
     startStream();
   }
 
+  if (page === "adventures" && $("#editor")) {
+    const msg = $("#adv-msg"), edMsg = $("#ed-msg"), editor = $("#editor");
+    let current = { name: "", steps: [] }, LIB = null, selectedRow = null;
+    const TRIGGER_PARAM = { barcode: ["code", "family"], color: ["code"], pants: ["code"], gesture: ["name"], game_event: ["code"], timer: ["seconds"], button: [], sequence: [], count: [] };
+    function paramOf(t) { if (!t) return ""; if (t.kind === "barcode") return t.code || t.family || ""; if (["color", "pants", "game_event"].includes(t.kind)) return t.code || ""; if (t.kind === "gesture") return t.name || ""; if (t.kind === "timer") return t.seconds || ""; return "(vedi JSON)"; }
+    function applyParam(t, v) { v = String(v).trim(); if (t.kind === "barcode") { if (/^0x/i.test(v)) { t.code = v; delete t.family; } else { t.family = v || "any"; delete t.code; } } else if (["color", "pants", "game_event"].includes(t.kind)) t.code = v; else if (t.kind === "gesture") t.name = v; else if (t.kind === "timer") t.seconds = Number(v) || 0; return t; }
+    function formToModel() {
+      current.name = $("#ed-name").value; current.author = $("#ed-author").value; current.version = Number($("#ed-version").value) || 1; current.description = $("#ed-description").value;
+      current.intro_text = $("#ed-intro").value; current.end_text = $("#ed-end").value; current.time_limit = Number($("#ed-time").value) || 0; current.kid_mode = $("#ed-kid").checked;
+      current.steps = $$("#steps-table tbody tr").map((tr) => { const s = tr._step || {}; const t = s.trigger && typeof s.trigger === "object" ? s.trigger : { kind: "button" };
+        const kind = $(".st-kind", tr).value; if (t.kind !== kind) { Object.keys(t).forEach((k) => delete t[k]); t.kind = kind; }
+        if (TRIGGER_PARAM[kind] && TRIGGER_PARAM[kind].length) applyParam(t, $(".st-param", tr).value);
+        return { ...s, id: $(".st-id", tr).value.trim() || undefined, title: $(".st-title", tr).value, text: $(".st-text", tr).value, trigger: t, points: Number($(".st-points", tr).value) || 0, timeout: Number($(".st-timeout", tr).value) || 0, success_text: $(".st-ok", tr).value, timeout_text: $(".st-ko", tr).value }; });
+      return current;
+    }
+    function modelToForm() {
+      $("#ed-name").value = current.name || ""; $("#ed-author").value = current.author || ""; $("#ed-version").value = current.version || 1; $("#ed-description").value = current.description || "";
+      $("#ed-intro").value = current.intro_text || ""; $("#ed-end").value = current.end_text || "Avventura finita! Hai fatto {score} punti."; $("#ed-time").value = current.time_limit || 0; $("#ed-kid").checked = current.kid_mode !== false;
+      const tb = $("#steps-table tbody"); tb.innerHTML = "";
+      (current.steps || []).forEach((s, i) => tb.appendChild(stepRow(s, i)));
+      $("#ed-json").value = JSON.stringify(current, null, 1);
+      $("#ed-title").textContent = current.name ? `${current.name}${editor.dataset.adventureId ? " (id " + editor.dataset.adventureId + ")" : " (nuova)"}` : "(nuova avventura)";
+    }
+    function stepRow(s, i) {
+      const tr = document.createElement("tr"); tr._step = s; const t = s.trigger || { kind: "button" };
+      const kinds = Object.keys(TRIGGER_PARAM).map((k) => `<option value="${k}" ${t.kind === k ? "selected" : ""}>${k}</option>`).join("");
+      tr.innerHTML = `<td>${i + 1}</td><td><input class="st-id" value="${esc(s.id || "")}" style="width:6em"></td><td><input class="st-title" value="${esc(s.title || "")}" style="width:8em"></td><td><input class="st-text" value="${esc(s.text || "")}" style="width:16em"></td><td><select class="st-kind">${kinds}</select></td><td><input class="st-param" value="${esc(paramOf(t))}" style="width:7em"></td><td><input class="st-points" type="number" value="${s.points ?? 10}" style="width:4em"></td><td><input class="st-timeout" type="number" value="${s.timeout || 0}" style="width:4em"></td><td><input class="st-ok" value="${esc(s.success_text || "")}" style="width:12em"></td><td><input class="st-ko" value="${esc(s.timeout_text || "")}" style="width:12em"></td><td><button class="small ghost st-up" title="su">↑</button><button class="small ghost st-down" title="giù">↓</button><button class="small ghost danger st-del">×</button></td>`;
+      tr.addEventListener("click", () => { $$("#steps-table tbody tr").forEach((r) => r.classList.remove("owned")); tr.classList.add("owned"); selectedRow = tr; });
+      return tr;
+    }
+    async function loadAdventure(id) {
+      try { const r = await api("/api/adventures/" + id); current = r.adventure.data; editor.dataset.adventureId = id; modelToForm(); flash(msg, `caricata: ${current.name}`); editor.scrollIntoView({ behavior: "smooth" }); } catch (e) { flash(msg, e.message, true); }
+    }
+    async function loadRuns() {
+      try { const r = await api("/api/adventure/runs?limit=15"); const tb = $("#runs-table tbody"); tb.innerHTML = "";
+        r.runs.forEach((x) => tb.appendChild(eventRow(x, [fmtDate(x.started), esc(x.name), esc(x.outcome), x.score, x.ended && x.started ? Math.round(x.ended - x.started) + " s" : ""]))); } catch (e) { flash(msg, e.message, true); }
+    }
+    function renderLibrary() {
+      if (!LIB) return; const box = $("#library"); box.innerHTML = ""; const onlyOwned = $("#lib-owned").checked;
+      const add = (el, label, trig) => { const d = document.createElement("span"); d.className = "element" + (el.owned ? " owned" : ""); d.title = el.effect || el.name || ""; d.innerHTML = `<span class="ico">${el.icon || ""}</span>${esc(label)}`; d.addEventListener("click", () => useTrigger(trig)); box.appendChild(d); };
+      LIB.tiles.filter((t) => !onlyOwned || t.owned).forEach((t) => add(t, t.name, { kind: "barcode", code: t.hex }));
+      LIB.colors.forEach((c) => add(c, c.name, { kind: "color", code: c.hex }));
+      LIB.pants.forEach((p) => add(p, p.name, { kind: "pants", code: p.hex }));
+      LIB.gestures.forEach((g) => add(g, g.label, { kind: "gesture", name: g.name }));
+      Object.entries(LIB.families).forEach(([k, v]) => { if (k !== "unknown") add({ icon: "🔲" }, "basetta " + v, { kind: "barcode", family: k }); });
+    }
+    function useTrigger(trig) { if (!selectedRow) { flash(edMsg, "seleziona prima un passo nella tabella", true); return; } selectedRow._step.trigger = trig; $(".st-kind", selectedRow).value = trig.kind; $(".st-param", selectedRow).value = paramOf(trig); flash(edMsg, `trigger impostato: ${trig.kind} ${paramOf(trig)}`); }
+    async function save(thenPlay) {
+      formToModel();
+      try { const id = editor.dataset.adventureId; const r = id ? await api("/api/adventures/" + id, "POST", { data: current }) : await api("/api/adventures", "POST", { data: current });
+        const newId = id || r.id; editor.dataset.adventureId = newId; flash(edMsg, "salvata"); if (thenPlay) location.href = "/adventures/play?id=" + newId; else location.reload(); } catch (e) { flash(edMsg, e.message, true); }
+    }
+    document.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button"); if (!b) return;
+      if (b.classList.contains("adv-edit")) loadAdventure(b.dataset.id);
+      if (b.classList.contains("adv-del")) { if (confirm("Eliminare questa avventura?")) { await api("/api/adventures/" + b.dataset.id, "DELETE"); location.reload(); } }
+      if (b.id === "adv-new") { current = { name: "Nuova avventura", author: "", version: 1, description: "", intro_text: "", end_text: "Avventura finita! Hai fatto {score} punti.", time_limit: 0, kid_mode: true, steps: [{ id: "passo1", title: "Primo passo", text: "Fai saltare Mario!", trigger: { kind: "gesture", name: "salto" }, points: 10, timeout: 60, success_text: "Bravo!" }] }; editor.dataset.adventureId = ""; modelToForm(); editor.scrollIntoView({ behavior: "smooth" }); }
+      if (b.id === "adv-import") { const ta = $("#adv-import-text"); if (ta.classList.contains("hidden")) { ta.classList.remove("hidden"); b.textContent = "Importa questo JSON"; return; } try { const r = await api("/api/adventures/import", "POST", { json: ta.value }); flash(msg, `importata: ${r.adventure.name}`); location.reload(); } catch (e) { flash(msg, e.message, true); } }
+      if (b.id === "step-add") { formToModel(); current.steps.push({ id: "passo" + (current.steps.length + 1), title: "", text: "", trigger: { kind: "button" }, points: 10, timeout: 0 }); modelToForm(); }
+      if (b.classList.contains("st-del") || b.classList.contains("st-up") || b.classList.contains("st-down")) { formToModel(); const tr = b.closest("tr"); const i = Array.from(tr.parentNode.children).indexOf(tr); if (b.classList.contains("st-del")) current.steps.splice(i, 1); else { const j = b.classList.contains("st-up") ? i - 1 : i + 1; if (j >= 0 && j < current.steps.length) { [current.steps[i], current.steps[j]] = [current.steps[j], current.steps[i]]; } } modelToForm(); }
+      if (b.id === "ed-apply-json") { try { current = JSON.parse($("#ed-json").value); modelToForm(); flash(edMsg, "JSON applicato"); } catch (e) { flash(edMsg, "JSON non valido: " + e.message, true); } }
+      if (b.id === "ed-validate") { formToModel(); try { const r = await api("/api/adventures/validate", "POST", { data: current }); flash(edMsg, r.problems.length ? "problemi: " + r.problems.join("; ") : "tutto a posto", r.problems.length > 0); $("#ed-json").value = JSON.stringify(r.normalized, null, 1); } catch (e) { flash(edMsg, e.message, true); } }
+      if (b.id === "ed-save") save(false);
+      if (b.id === "ed-play") save(true);
+    });
+    $("#lib-owned").addEventListener("change", renderLibrary);
+    api("/api/adventures/library").then((r) => { LIB = r.library; renderLibrary(); }).catch((e) => flash(msg, e.message, true));
+    loadRuns();
+    const params = new URLSearchParams(location.search); if (params.get("id")) loadAdventure(params.get("id"));
+  }
+
+  if (page === "adventures" && $("#stage")) {
+    const msg = $("#play-msg"), stage = $("#stage"), log = $("#pl-log");
+    const addLog = (text) => { log.textContent += `[${hhmmss()}] ${text}\n`; log.scrollTop = log.scrollHeight; };
+    function render(st) {
+      const r = st.runner;
+      stage.classList.toggle("finished", !!r && r.state === "finished");
+      if (!r) { $("#pl-adventure").textContent = "Scegli un'avventura e premi Inizia"; $("#pl-text").textContent = "—"; return; }
+      $("#pl-adventure").textContent = r.adventure + (r.state === "finished" ? ` · ${r.outcome}` : ""); $("#pl-score").textContent = r.score; $("#pl-elapsed").textContent = Math.round(r.elapsed);
+      if (r.step) { $("#pl-step-title").textContent = `Passo ${r.step_index + 1} di ${r.steps_total} · ${r.step.title}`; $("#pl-text").textContent = r.step.text || r.step.title; $("#pl-trigger").textContent = "aspetto: " + r.step.trigger; $("#pl-progress").textContent = r.step.progress || "";
+        const fill = $("#pl-timebar"); if (r.step.timeout) { const pct = Math.max(0, Math.min(100, 100 * r.step.remaining / r.step.timeout)); fill.style.width = pct + "%"; fill.style.background = pct < 25 ? "#d7262c" : pct < 50 ? "#f5c400" : "#2e9e44"; } else fill.style.width = "0"; }
+      else { $("#pl-step-title").textContent = ""; $("#pl-text").textContent = r.state === "finished" ? `Finita: ${r.outcome} · ${r.score} punti` : "…"; $("#pl-trigger").textContent = ""; $("#pl-progress").textContent = ""; $("#pl-timebar").style.width = "0"; }
+      const c = r.context || {}; $("#pl-context").textContent = `👖 ${c.pants || "—"} · 🎨 ${c.color || "—"} · 🔲 ${c.tile || "—"}${c.lifted ? " · ✋ in mano" : ""}`;
+      $("#pl-path").innerHTML = (r.path || []).map((p) => `<span>${esc(p.name)}</span>`).join("") || '<span class="muted">nessuna basetta ancora</span>';
+      $("#pl-results").innerHTML = (r.results || []).map((x) => `<li class="${x.outcome === "ok" ? "ok" : "ko"}">${esc(x.title)} · ${x.outcome} · ${x.points} punti</li>`).join("");
+    }
+    async function refresh() { try { render((await api("/api/adventure/status")).status); } catch (e) { flash(msg, e.message, true); } }
+    onEvent((ev) => { if (ev.type !== "ADVENTURE") return; addLog(`${ev.kind}: ${ev.text}`); if (["start", "step", "success", "timeout", "finish", "progress", "score"].includes(ev.kind)) refresh(); });
+    $("#play-start").addEventListener("click", async () => { try { render((await api("/api/adventure/start", "POST", { id: $("#play-select").value })).status); flash(msg, ""); } catch (e) { flash(msg, e.message, true); } });
+    $("#play-stop").addEventListener("click", async () => { try { render((await api("/api/adventure/stop", "POST", {})).status); } catch (e) { flash(msg, e.message, true); } });
+    $("#play-big").addEventListener("change", () => stage.classList.toggle("big", $("#play-big").checked));
+    document.addEventListener("click", async (ev) => { const b = ev.target.closest("button[data-advsim]"); if (!b) return; try { const r = await api("/api/adventure/simulate", "POST", { what: b.dataset.advsim }); flash(msg, r.progressed ? "evento riconosciuto!" : "evento ricevuto, nessun progresso"); render(r.status); } catch (e) { flash(msg, e.message, true); } });
+    refresh(); setInterval(refresh, 1000); startStream();
+  }
+
   if (page === "report") {
     $("#report-refresh").addEventListener("click", async () => { try { $("#report-text").textContent = (await api("/api/report")).text; } catch (e) { alert(e.message); } });
   }

@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Gioca{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="actions">
+    <label>Avventura <select id="play-select">{% for a in adventures %}<option value="{{ a.id }}" {{ 'selected' if a.id|string == selected }}>{{ a.name }}</option>{% endfor %}</select></label>
+    <button id="play-start" class="primary">Inizia</button>
+    <button id="play-stop" class="ghost danger">Ferma</button>
+    <label><input type="checkbox" id="play-big"> schermo grande</label>
+    <span id="play-msg" class="muted"></span>
+    <span class="spacer"></span>
+    <a href="/adventures">← editor</a>
+  </div>
+</section>
+<section class="card stage" id="stage">
+  <div class="stage-top">
+    <div class="stage-score">⭐ <span id="pl-score">0</span></div>
+    <div class="stage-title" id="pl-adventure">Scegli un'avventura e premi Inizia</div>
+    <div class="stage-time">⏱ <span id="pl-elapsed">0</span> s</div>
+  </div>
+  <div class="mission" id="pl-mission">
+    <div class="mission-step muted" id="pl-step-title"></div>
+    <div class="mission-text" id="pl-text">—</div>
+    <div class="mission-trigger muted" id="pl-trigger"></div>
+    <div class="timebar"><div class="timebar-fill" id="pl-timebar"></div></div>
+    <div class="mission-progress" id="pl-progress"></div>
+  </div>
+  <div class="stage-bottom">
+    <div class="body-state" id="pl-context">👖 — · 🎨 — · 🔲 —</div>
+    <div class="path" id="pl-path"></div>
+    <ol class="results" id="pl-results"></ol>
+  </div>
+</section>
+<section class="card">
+  <h1>Senza il Mario fisico: simula</h1>
+  <div class="actions">{% for s in simulations %}<button class="small" data-advsim="{{ s }}">{{ s.replace('_', ' ') }}</button>{% endfor %}</div>
+  <h2>Cronaca</h2>
+  <pre class="log small" id="pl-log"></pre>
+</section>
+{% endblock %}

@@ -64,3 +64,23 @@ svg.chart { width:100%; height:220px; background:#fafbfc; border:1px solid var(-
 .bars { display:grid; grid-template-columns:max-content 1fr max-content; gap:.3rem .6rem; align-items:center; font-size:.9rem; }
 .bars .bar { height:.9rem; background:var(--blue); border-radius:3px; min-width:2px; }
 .bars .bar.alt { background:var(--yellow); }
+
+/* ---- avventure ---- */
+.elements { display:flex; flex-wrap:wrap; gap:.3rem; max-height:360px; overflow:auto; }
+.element { border:1px solid var(--line); border-radius:8px; padding:.25rem .5rem; font-size:.85rem; cursor:pointer; background:#fafbfc; }
+.element:hover { border-color:var(--blue); } .element.owned { border-color:var(--green); background:#f0faf2; }
+.element .ico { font-size:1.1rem; margin-right:.2rem; }
+.stage { background:linear-gradient(180deg, #e9f3ff, #fff); }
+.stage-top { display:flex; justify-content:space-between; align-items:center; font-size:1.2rem; font-weight:700; }
+.stage-title { color:var(--blue); }
+.mission { text-align:center; padding:1.2rem; margin:.8rem 0; border-radius:14px; background:#fff; border:2px solid var(--line); }
+.mission-text { font-size:1.6rem; font-weight:700; margin:.4rem 0; }
+.mission-progress { font-size:1.3rem; color:var(--blue); min-height:1.4em; }
+.timebar { height:.6rem; background:#eee; border-radius:999px; overflow:hidden; margin:.6rem auto; max-width:520px; }
+.timebar-fill { height:100%; width:0; background:var(--green); transition:width .5s linear; }
+.stage-bottom { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; align-items:start; }
+@media (max-width:900px) { .stage-bottom { grid-template-columns:1fr; } }
+.path { display:flex; flex-wrap:wrap; gap:.3rem; } .path span { padding:.15rem .5rem; border-radius:999px; background:#eef; font-size:.85rem; }
+.results { margin:0; padding-left:1.2rem; font-size:.9rem; } .results li.ok { color:var(--green); } .results li.ko { color:var(--red); }
+.stage.big .mission-text { font-size:2.6rem; } .stage.big .mission { padding:2.5rem; } .stage.big .stage-top { font-size:1.8rem; }
+.stage.finished .mission { border-color:var(--yellow); background:#fffbe6; }

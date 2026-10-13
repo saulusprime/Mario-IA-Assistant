@@ -8,6 +8,7 @@ Tabelle:
   settings     impostazioni chiave/valore
   assistant_messages  conversazione con l'assistente (Mario come I/O di un LLM)
   assistant_memory    ricordi dell'assistente tra una sessione e l'altra
+  adventures, adventure_runs  avventure del designer (JSON) e partite giocate (esito, punti, log)
 """
 from __future__ import annotations
 
@@ -86,6 +87,26 @@ CREATE TABLE IF NOT EXISTS assistant_memory (
     id   INTEGER PRIMARY KEY,
     ts   REAL NOT NULL,
     text TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS adventures (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    author      TEXT DEFAULT '',
+    version     INTEGER DEFAULT 1,
+    json        TEXT NOT NULL,
+    created     REAL,
+    updated     REAL
+);
+CREATE TABLE IF NOT EXISTS adventure_runs (
+    id            INTEGER PRIMARY KEY,
+    adventure_id  INTEGER,
+    name          TEXT,
+    started       REAL,
+    ended         REAL,
+    score         INTEGER DEFAULT 0,
+    outcome       TEXT,
+    log           TEXT
 );
 """
 
@@ -430,3 +451,68 @@ class Database:
     def assistant_stats(self) -> dict:
         row = self._one("SELECT COUNT(*) AS n, MAX(ts) AS last FROM assistant_messages") or {}
         return {"total": row.get("n", 0), "last": row.get("last")}
+
+    # ----- avventure -------------------------------------------------------------------
+
+    def save_adventure(self, data: dict, adventure_id: Optional[int] = None) -> int:
+        import json as _json
+        now = time.time()
+        payload = _json.dumps(data, ensure_ascii=False)
+        fields = (str(data.get("name") or "Senza nome"), str(data.get("description") or ""), str(data.get("author") or ""),
+                  int(data.get("version") or 1), payload)
+        if adventure_id is not None and self.get_adventure(adventure_id):
+            self._exec("UPDATE adventures SET name=?, description=?, author=?, version=?, json=?, updated=? WHERE id=?",
+                       (*fields, now, adventure_id))
+            return int(adventure_id)
+        return self._insert("INSERT INTO adventures (name, description, author, version, json, created, updated) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)", (*fields, now, now))
+
+    def list_adventures(self) -> list[dict]:
+        import json as _json
+        rows = self._all("SELECT id, name, description, author, version, created, updated, json FROM adventures ORDER BY id")
+        for r in rows:
+            try:
+                r["steps"] = len(_json.loads(r.pop("json")).get("steps") or [])
+            except ValueError:
+                r["steps"] = 0
+        return rows
+
+    def get_adventure(self, adventure_id: int) -> Optional[dict]:
+        import json as _json
+        row = self._one("SELECT * FROM adventures WHERE id=?", (adventure_id,))
+        if row:
+            row["data"] = _json.loads(row.pop("json"))
+        return row
+
+    def delete_adventure(self, adventure_id: int) -> int:
+        return self._exec("DELETE FROM adventures WHERE id=?", (adventure_id,))
+
+    def count_adventures(self) -> int:
+        return int((self._one("SELECT COUNT(*) AS n FROM adventures") or {}).get("n", 0))
+
+    def add_run(self, adventure_id: Optional[int], name: str, started: float, ended: float, score: int, outcome: str,
+                log: list) -> int:
+        import json as _json
+        return self._insert("INSERT INTO adventure_runs (adventure_id, name, started, ended, score, outcome, log) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (adventure_id, name, started, ended, int(score), outcome, _json.dumps(log, ensure_ascii=False, default=str)))
+
+    def list_runs(self, adventure_id: Optional[int] = None, limit: int = 50) -> list[dict]:
+        sql, params = "SELECT id, adventure_id, name, started, ended, score, outcome FROM adventure_runs", []
+        if adventure_id is not None:
+            sql += " WHERE adventure_id=?"
+            params.append(adventure_id)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(max(1, min(int(limit), 1000)))
+        return self._all(sql, params)
+
+    def get_run(self, run_id: int) -> Optional[dict]:
+        import json as _json
+        row = self._one("SELECT * FROM adventure_runs WHERE id=?", (run_id,))
+        if row:
+            try:
+                row["log"] = _json.loads(row["log"] or "[]")
+            except ValueError:
+                row["log"] = []
+        return row
+

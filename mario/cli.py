@@ -8,6 +8,7 @@ Interfaccia a riga di comando.
   assistant Mario come ingresso/uscita di una sessione con un modello di linguaggio (voce dal PC)
   web       dashboard Flask
   decode    decodifica catture btsnoop, log di testo o byte esadecimali (senza Bluetooth)
+  adventure avventure del designer: elenco, prova con eventi simulati, partita con il Mario fisico
   volume / name / prop / raw / off   comandi rapidi one-shot
   live-checks / catalog-tiles / probe-port4 / diag-connect   strumenti dal vivo di tools/
 """
@@ -995,6 +996,175 @@ def cmd_tool(args) -> int:  # raggiunto solo se main() non ha già smistato lo s
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
+# ---------------------------------------------------------------------------
+# adventure: le avventure del designer dalla riga di comando
+# ---------------------------------------------------------------------------
+
+ADVENTURE_SIM_HELP = """Eventi simulabili (una riga ciascuno): salto, scossa, urto, rotazione, caduta, pulsante,
+  basetta <codice>  (es. basetta 0x02),  colore <codice>  (es. colore 0x25),  pantaloni <codice>  (es. pantaloni 0x12),
+  evento <codice> <valore>  (es. evento 0x386B 7),  stato, stop, esci"""
+
+
+def adventure_sim_event(line: str) -> Optional[dict]:
+    """Traduce un comando di simulazione in un evento come quelli del worker."""
+    parts = line.split()
+    if not parts:
+        return None
+    cmd = parts[0].lower()
+    gestures = {"salto": 0x8000, "scossa": 0x0010, "urto": 0x0001, "rotazione": 0x0100, "caduta": 0x0800}
+    now = time.time()
+    if cmd in gestures:
+        return {"ts": now, "type": "PORT_VALUE_SINGLE", "io_type": 0x47, "mode": 1, "data": gestures[cmd].to_bytes(2, "little")}
+    if cmd == "pulsante":
+        return {"ts": now, "type": "HUB_PROPERTIES", "prop": "BUTTON", "value": True}
+    if cmd in ("basetta", "colore") and len(parts) > 1:
+        code = parse_int(parts[1])
+        bar, col = (code, 0xFFFF) if cmd == "basetta" else (0xFFFF, code)
+        return {"ts": now, "type": "PORT_VALUE_SINGLE", "io_type": 0x49, "mode": 0,
+                "data": bar.to_bytes(2, "little") + col.to_bytes(2, "little")}
+    if cmd == "pantaloni" and len(parts) > 1:
+        return {"ts": now, "type": "PORT_VALUE_SINGLE", "io_type": 0x4A, "mode": 0, "data": bytes([parse_int(parts[1]) & 0x3F])}
+    if cmd == "evento" and len(parts) > 2:
+        return {"ts": now, "type": "PORT_VALUE_SINGLE", "io_type": 0x46, "mode": 2,
+                "data": parse_int(parts[1]).to_bytes(2, "little") + parse_int(parts[2]).to_bytes(2, "little")}
+    return None
+
+
+def _pick_adventure(selector: str, db) -> tuple[Optional[int], dict]:
+    """Avventura per id, per nome (anche parziale) o da file JSON."""
+    from .adventures.model import Adventure, load_examples
+    path = Path(selector)
+    if path.is_file():
+        return None, Adventure.from_json(path.read_text(encoding="utf-8")).to_dict()
+    rows = db.list_adventures() if db is not None else []
+    if not rows:
+        rows = [{"id": i + 1, "name": a.name, "_data": a.to_dict()} for i, a in enumerate(load_examples())]
+    for r in rows:
+        if selector.isdigit() and int(selector) == r["id"]:
+            return r["id"], r.get("_data") or db.get_adventure(r["id"])["data"]
+    for r in rows:
+        if selector.lower() in r["name"].lower():
+            return r["id"], r.get("_data") or db.get_adventure(r["id"])["data"]
+    raise ValueError(f"nessuna avventura corrisponde a {selector!r}")
+
+
+async def cmd_adventure(args) -> int:
+    from .adventures import AdventureRunner
+    from .adventures.model import Adventure, load_examples, validate
+    db = None
+    if not args.no_db:
+        try:
+            from .web.db import Database
+            db = Database(Path(__file__).resolve().parent.parent / "data" / "mario.sqlite3")
+            if db.count_adventures() == 0:
+                for adv in load_examples():
+                    db.save_adventure(adv.to_dict())
+        except Exception as exc:
+            say(f"Database non disponibile ({exc}): uso le avventure di esempio")
+    if args.list or not args.play:
+        rows = db.list_adventures() if db is not None else [{"id": i + 1, "name": a.name, "steps": len(a.steps), "description": a.description} for i, a in enumerate(load_examples())]
+        for r in rows:
+            print(f"  {r['id']:>3}  {r['name']:<34} {r.get('steps', '?'):>2} passi  {r.get('description', '')[:70]}")
+        if not args.play:
+            print("\nPer giocare: ./run.sh adventure --play <id|nome|file.json> [--no-mario]")
+            return 0
+    adventure_id, data = _pick_adventure(args.play, db)
+    adv = Adventure.from_dict(data)
+    problems = validate(adv)
+    if problems:
+        print("Avventura non valida: " + "; ".join(problems), file=sys.stderr)
+        return 2
+    loop = asyncio.get_running_loop()
+    dev: Optional[MarioDevice] = None
+    if not args.no_mario:
+        dev = await connect_device(args)
+        await dev.discover(full=False, progress=say)
+        for port, ps in sorted(dev.state.ports.items()):
+            mode = codes.default_mode(ps.io_type, {m: mi.name for m, mi in ps.modes.items()})
+            if mode is None or ps.io_type == codes.IO_VOLTAGE:
+                continue
+            try:
+                await dev.subscribe(port, mode, codes.DEFAULT_DELTAS.get(ps.io_type, 1))
+            except (LWPError, asyncio.TimeoutError, BleakError) as exc:
+                say(f"Porta {port} modo {mode}: impossibile attivare ({exc})")
+        try:
+            await dev.property_updates(HubProperty.BUTTON, True)
+        except (LWPError, asyncio.TimeoutError, BleakError):
+            pass
+    from .assistant import Speaker
+    speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts)
+    session_log = SessionLog("adventure")
+
+    def emit(ev: dict) -> None:
+        text = f"[{ts()}] {ev['kind']}: {ev.get('text', '')}" + (f"  (punti {ev['score']})" if ev["kind"] in ("success", "finish", "score") else "")
+        echo(text) if _readline_active else print(text, flush=True)
+        session_log.write(f"{ev['kind']}: {ev.get('text', '')}")
+
+    def set_volume(level: int) -> None:
+        if dev is not None:
+            asyncio.run_coroutine_threadsafe(dev.set_volume(level), loop)
+
+    runner = AdventureRunner(adv, emit=emit, speaker=speaker, volume_setter=set_volume if dev else None, webhooks=args.webhooks)
+    say(f"Avventura: {adv.name} ({len(adv.steps)} passi)" + (" · senza Mario: simula con la tastiera" if dev is None else ""))
+    if session_log.path:
+        say(f"Log della partita: {session_log.path}")
+    if dev is not None:
+        dev.add_listener(lambda msg, text: runner.handle_event(dev.event(msg, text)))
+    print(ADVENTURE_SIM_HELP)
+    runner.start()
+    queue: asyncio.Queue = asyncio.Queue()
+    threading.Thread(target=_stdin_reader, args=(loop, queue), kwargs={"history": "adventure"}, daemon=True).start()
+
+    async def ticker():
+        while runner.state == "running":
+            await asyncio.sleep(0.5)
+            runner.tick()
+        queue.put_nowait(None)
+    loop.create_task(ticker())
+    show_prompt()
+    try:
+        while runner.state == "running":
+            line = await queue.get()
+            if line is None:
+                if dev is not None and not dev.connected:
+                    say("Mario si è disconnesso.")
+                break
+            line = line.strip()
+            if not line:
+                show_prompt()
+                continue
+            low = line.lower()
+            if low in ("esci", "quit", "exit"):
+                runner.stop("abbandonata")
+                break
+            if low == "stop":
+                runner.stop("abbandonata")
+                break
+            if low == "stato":
+                print(json.dumps(runner.status(), ensure_ascii=False, indent=1, default=str))
+            else:
+                ev = adventure_sim_event(line)
+                if ev is None:
+                    print(ADVENTURE_SIM_HELP)
+                else:
+                    print("  riconosciuto" if runner.handle_event(ev) else "  nessun progresso")
+            show_prompt()
+    finally:
+        if runner.state == "running":
+            runner.stop("abbandonata")
+        if db is not None:
+            try:
+                db.add_run(adventure_id, adv.name, runner.started, runner.ended or time.time(), runner.score, runner.outcome, runner.log)
+            except Exception as exc:
+                say(f"partita non salvata: {exc}")
+        speaker.wait(10)
+        if dev is not None:
+            await dev.disconnect()
+        session_log.close()
+    print(f"\nEsito: {runner.outcome} · {runner.score} punti · {len(runner.step_results)} passi")
+    return 0
+
+
 def cmd_web(args) -> int:
     """Avvia la dashboard web. Gira sull'host perché usa BlueZ. Server: waitress se installato
     (`pip install waitress`), altrimenti quello di sviluppo di Flask. Oltre 127.0.0.1 l'accesso è
@@ -1127,6 +1297,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-db", action="store_true", help="non usare data/mario.sqlite3 per ricordi e diario")
     p.add_argument("-v", "--verbose", action="store_true", help="mostra anche i comportamenti (volume, busy) riga per riga")
     p.set_defaults(func=cmd_assistant)
+
+    p = sub.add_parser("adventure", help="avventure del designer: elenco, partita con Mario o simulata")
+    p.add_argument("--list", action="store_true", help="elenca le avventure (database o esempi)")
+    p.add_argument("--play", metavar="ID|NOME|FILE", help="gioca un'avventura (id, parte del nome o file JSON)")
+    p.add_argument("--no-mario", action="store_true", help="senza Bluetooth: eventi simulati da tastiera")
+    p.add_argument("--no-tts", action="store_true", help="senza voce ed effetti sonori")
+    p.add_argument("--no-db", action="store_true", help="non usare data/mario.sqlite3 (niente partite salvate)")
+    p.add_argument("--webhooks", action="store_true", help="consente alle azioni webhook di fare POST verso URL esterni")
+    p.set_defaults(func=cmd_adventure)
 
     p = sub.add_parser("web", help="avvia la dashboard web")
     p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 per esporla sulla rete locale (con token)")

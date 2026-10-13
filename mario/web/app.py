@@ -19,6 +19,8 @@ from ..assistant import AssistantBusy
 from ..assistant.emotions import EMOTIONS, SAMPLES
 from ..assistant.llm import ANTHROPIC_MODELS
 from ..assistant.service import AssistantService
+from ..adventures.model import ACTION_KINDS, TRIGGER_KINDS
+from ..adventures.service import AdventureService
 from ..device import LWPError
 from ..env import load_dotenv
 from ..lwp3 import HubAction, HubAlertOperation, HubAlertType, HubProperty, parse_hub_property, parse_int
@@ -37,6 +39,7 @@ MENU = [
     ("console", "Console", "/console"),
     ("accessories", "Accessori", "/accessories"),
     ("assistant", "Assistente", "/assistant"),
+    ("adventures", "Avventure", "/adventures"),
     ("report", "Funzioni", "/report"),
     ("docs", "Documentazione", "/docs"),
 ]
@@ -123,9 +126,11 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     if start_worker:
         worker.start()
     assistant = AssistantService(worker, db, quiet=quiet_assistant)
+    adventures = AdventureService(worker, db, speaker=assistant.speaker, quiet=quiet_assistant)
     app.extensions["db"] = db
     app.extensions["worker"] = worker
     app.extensions["assistant"] = assistant
+    app.extensions["adventures"] = adventures
 
     @app.context_processor
     def inject_globals():
@@ -250,6 +255,16 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     def page_assistant():
         return render_template("assistant.html", page="assistant", emotions=[e.to_dict() for e in EMOTIONS.values()],
                                models=ANTHROPIC_MODELS)
+
+    @app.get("/adventures")
+    def page_adventures():
+        return render_template("adventures.html", page="adventures", adventures=adventures.list(),
+                               trigger_kinds=TRIGGER_KINDS, action_kinds=ACTION_KINDS, simulations=list(SIMULATIONS))
+
+    @app.get("/adventures/play")
+    def page_adventure_play():
+        return render_template("play.html", page="adventures", adventures=adventures.list(), simulations=list(SIMULATIONS),
+                               selected=request.args.get("id", ""))
 
     @app.get("/report")
     def page_report():
@@ -717,5 +732,116 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @api
     def api_assistant_memory_delete(memory_id: int):
         return ok(deleted=assistant.session.forget(memory_id))
+
+    # ----- API: avventure ----------------------------------------------------------------------
+
+    @app.get("/api/adventures")
+    @api
+    def api_adventures():
+        return ok(adventures=adventures.list())
+
+    @app.post("/api/adventures")
+    @api
+    def api_adventure_create():
+        d = body()
+        data = d.get("data") if isinstance(d.get("data"), dict) else d
+        new_id = adventures.save(data)
+        return ok(id=new_id, adventure=adventures.get(new_id))
+
+    @app.get("/api/adventures/library")
+    @api
+    def api_adventure_library():
+        return ok(library=adventures.library(), trigger_kinds=TRIGGER_KINDS, action_kinds=ACTION_KINDS)
+
+    @app.post("/api/adventures/validate")
+    @api
+    def api_adventure_validate():
+        from ..adventures.model import Adventure, validate
+        d = body()
+        data = d.get("data") if isinstance(d.get("data"), dict) else d
+        adv = Adventure.from_dict(data)
+        return ok(problems=validate(adv), normalized=adv.to_dict())
+
+    @app.post("/api/adventures/import")
+    @api
+    def api_adventure_import():
+        d = body()
+        text = d.get("json") if isinstance(d.get("json"), str) else json.dumps(d)
+        new_id = adventures.save(json.loads(text))
+        return ok(id=new_id, adventure=adventures.get(new_id))
+
+    @app.get("/api/adventures/<int:adventure_id>")
+    @api
+    def api_adventure(adventure_id: int):
+        row = adventures.get(adventure_id)
+        if row is None:
+            return jsonify({"ok": False, "error": "avventura non trovata"}), 404
+        return ok(adventure=row)
+
+    @app.get("/api/adventures/<int:adventure_id>/export")
+    @api
+    def api_adventure_export(adventure_id: int):
+        row = adventures.get(adventure_id)
+        if row is None:
+            return jsonify({"ok": False, "error": "avventura non trovata"}), 404
+        name = "".join(c if c.isalnum() else "-" for c in row["name"].lower()).strip("-") or "avventura"
+        return Response(json.dumps(row["data"], ensure_ascii=False, indent=1), mimetype="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=avventura-{name}.json"})
+
+    @app.post("/api/adventures/<int:adventure_id>")
+    @api
+    def api_adventure_update(adventure_id: int):
+        d = body()
+        data = d.get("data") if isinstance(d.get("data"), dict) else d
+        adventures.save(data, adventure_id)
+        return ok(adventure=adventures.get(adventure_id))
+
+    @app.delete("/api/adventures/<int:adventure_id>")
+    @api
+    def api_adventure_delete(adventure_id: int):
+        return ok(deleted=adventures.delete(adventure_id))
+
+    @app.get("/api/adventure/status")
+    @api
+    def api_adventure_status():
+        return ok(status=adventures.status())
+
+    @app.post("/api/adventure/start")
+    @api
+    def api_adventure_start():
+        d = body()
+        if isinstance(d.get("data"), dict):
+            return ok(status=adventures.start(data=d["data"]))
+        return ok(status=adventures.start(int(d["id"])))
+
+    @app.post("/api/adventure/stop")
+    @api
+    def api_adventure_stop():
+        return ok(status=adventures.stop(str(body().get("reason") or "abbandonata")))
+
+    @app.post("/api/adventure/simulate")
+    @api
+    def api_adventure_simulate():
+        what = str(body().get("what", ""))
+        spec = dict(SIMULATIONS[what])
+        spec.pop("baseline", None)
+        if "hex" in spec:
+            spec["data"] = bytes.fromhex(spec.pop("hex"))
+        spec["ts"] = time.time()
+        return ok(progressed=adventures.simulate(spec), status=adventures.status())
+
+    @app.get("/api/adventure/runs")
+    @api
+    def api_adventure_runs():
+        aid = request.args.get("adventure_id")
+        return ok(runs=adventures.runs(int(aid) if aid not in (None, "") else None, int(request.args.get("limit", 50))))
+
+    @app.get("/api/adventure/runs/<int:run_id>")
+    @api
+    def api_adventure_run(run_id: int):
+        row = db.get_run(run_id)
+        if row is None:
+            return jsonify({"ok": False, "error": "partita non trovata"}), 404
+        return ok(run=row)
 
     return app
