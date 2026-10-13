@@ -441,6 +441,9 @@ Conseguenze pratiche:
 
 ### 13/10 — Documentazione allineata e stato del progetto
 
+- `ASIS.md`: nuovo file con le attività completate e verificate (sensori, protocollo, software,
+  assistente, catalogo dell'utente), spostate dal TODO che ora contiene solo il lavoro aperto.
+  La pagina Documentazione della dashboard mostra anche ASIS.
 - README riscritto nelle parti "Funzioni di Mario" (porte 4 e 7, modalità combinata, RSSI,
   allarmi, azioni), gesti, pantaloni, barcode (61), colori, nuova tabella degli eventi di gioco
   decodificati; test 54; struttura con i nuovi strumenti e `docs/sessioni/`.
@@ -486,10 +489,10 @@ Conseguenze pratiche:
 Nel README: uso, comandi della shell, protocollo, tabella porte verificata, osservazioni
 dal vivo, sezione "Problemi di connessione" con tutte e tre le catture.
 
-## 5. Punti aperti
+## 5. Punti aperti e stato
 
-Spostati in [TODO.md](TODO.md), che è la lista di lavoro aggiornata (verifiche dal vivo,
-reverse engineering, sistema, software, idee).
+Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate sono raccolte in
+[ASIS.md](ASIS.md) (dal 13/10: le voci spuntate del TODO sono state spostate lì).
 
 ## 6. Come riprendere
 

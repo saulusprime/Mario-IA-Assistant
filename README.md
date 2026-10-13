@@ -4,7 +4,8 @@ Applicazione Python 3 per parlare con LEGO Mario (e Luigi / Peach) dal PC: scope
 automatica di tutte le funzioni esposte dal dispositivo, comunicazione bidirezionale grezza
 o decodificata, dashboard web e un assistente che usa Mario come ingresso e uscita di una
 sessione con un modello di linguaggio. Repository: https://github.com/saulusprime/Mario-IA-Assistant
-(stato al 13 ottobre 2026; diario in [HANDOFF.md](HANDOFF.md), lavoro aperto in [TODO.md](TODO.md)).
+(stato al 13 ottobre 2026: cosa è fatto e verificato in [ASIS.md](ASIS.md), lavoro aperto in
+[TODO.md](TODO.md), diario in [HANDOFF.md](HANDOFF.md)).
 
 Mario è un hub LEGO che usa il **LEGO Wireless Protocol 3.0** (LWP3), lo stesso dei
 Powered Up / Boost / Technic. L'app implementa il protocollo generico (quindi scopre
@@ -86,7 +87,7 @@ sull'host (serve BlueZ); il browser si collega in locale.
 
 ## Assistente: Mario come ingresso e uscita di un modello di linguaggio
 
-Punto 7 del [TODO](TODO.md), prima tappa realizzata l'11 ottobre 2026. Mario diventa il
+Punto 7 del piano (tappe fatte in [ASIS.md](ASIS.md), prove aperte in [TODO.md](TODO.md)), prima tappa realizzata l'11 ottobre 2026. Mario diventa il
 "corpo" di un assistente: i sensori producono messaggi per il modello, la risposta torna
 come voce dagli altoparlanti del PC, con emozioni che si vedono nella dashboard e si
 riflettono sul Mario fisico per quel poco che il protocollo permette oggi (volume,
@@ -465,7 +466,8 @@ docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), sess
 data/                   database SQLite della dashboard (ignorato da git)
 logs/                   catture btmon, log di monitor/shell/assistente/prove (ignorato da git)
 .env                    ANTHROPIC_API_KEY=... (ignorato da git)
-HANDOFF.md, TODO.md     diario di lavoro e lista delle cose da fare
+ASIS.md, TODO.md        stato attuale (fatto e verificato) e lavoro aperto
+HANDOFF.md              diario di lavoro con orari
 ```
 
 Nella cartella del progetto sono stati clonati anche tre repository di riferimento
@@ -474,8 +476,8 @@ esclusi da git tramite `.gitignore`; andrebbero spostati in `third_party/`.
 
 ## Diario di lavoro e cose da fare
 
-La cronologia completa di quanto fatto, con i vicoli ciechi, è in [HANDOFF.md](HANDOFF.md);
-i punti aperti e le idee sono in [TODO.md](TODO.md).
+Cosa è fatto e verificato è in [ASIS.md](ASIS.md); i punti aperti e le idee sono in
+[TODO.md](TODO.md); la cronologia completa, con i vicoli ciechi, è in [HANDOFF.md](HANDOFF.md).
 
 ## Fonti
 

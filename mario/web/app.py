@@ -206,7 +206,7 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @app.get("/docs")
     def page_docs():
         docs = []
-        for name in ("README.md", "HANDOFF.md", "TODO.md"):
+        for name in ("README.md", "ASIS.md", "TODO.md", "HANDOFF.md"):
             path = PROJECT_DIR / name
             if path.exists():
                 docs.append((name, path.read_text(encoding="utf-8")))
