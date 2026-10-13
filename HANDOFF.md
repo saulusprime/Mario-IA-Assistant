@@ -1,8 +1,17 @@
 # HANDOFF — LEGO Mario via Bluetooth LE
 
-Diario dettagliato del lavoro svolto l'11 ottobre 2026 (sessione unica, circa dalle 12:40
-alle 17:40) e stato del progetto per chi lo riprende. Il README spiega *come si usa*;
-questo file spiega *cosa è stato fatto, perché, cosa ha funzionato e cosa no*.
+Diario dettagliato del lavoro svolto dall'11 al 13 ottobre 2026 (prima sessione l'11/10 dalle
+12:40 alle 19:00, prove dal vivo il 12/10, documentazione e sviluppo senza Mario il 13/10) e stato
+del progetto per chi lo riprende. Il README spiega *come si usa*; questo file spiega *cosa è stato
+fatto, perché, cosa ha funzionato e cosa no*.
+
+**Stato al 13/10 sera, in breve.** Connessione e pairing stabili; sensori decodificati (gesti,
+scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); dashboard con pagine
+Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
+connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
+versione (solo simulato); strumento `decode` per log e catture; 121 test offline; repository
+pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far suonare Mario via
+Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO.
 
 ## 1. Obiettivo
 
@@ -198,8 +207,9 @@ Conseguenze pratiche:
 - Il database `data/mario.sqlite3` contiene già 1 dispositivo/i (MarioCasa), 1189 eventi e 8 accessori avvistati (ultimo evento alle 17:50): la dashboard è stata usata con Mario connesso.
 - Nella cartella del progetto sono comparsi tre cloni git di repository di riferimento
   (`LEGO-Mario-Reveng/`, `legomario.py/`, `pyLegoMario/`), fatti dall'utente: utili per
-  consultare le fonti offline, da spostare in `third_party/` (voce nel TODO). In `logs/`
-  c'è anche `pylegomario-src/` (pacchetto scaricato con `pip download`), ridondante con il clone.
+  consultare le fonti offline, da spostare in `third_party/` (voce nel TODO; fatto il 13/10). In `logs/`
+  c'è anche `pylegomario-src/` (pacchetto scaricato con `pip download`), ridondante con il clone
+  (rimosso il 13/10).
 - Memoria persistente dell'assistente: `~/.claude/projects/<cartella-del-progetto>/memory/mario-ble-environment.md`
   (ambiente, cause dei problemi, decisioni). Non fa parte del progetto.
 - Repository git inizializzato il 12/10 sera (vedi la voce in cronologia); fino ad allora il progetto era senza versionamento.
@@ -453,7 +463,7 @@ Conseguenze pratiche:
   scanner con colori verificati, pantaloni con filtro di stabilità, eventi di gioco con contatori
   di monete/nemici/giri); dashboard con pagina Assistente; assistente provato con Claude e con Mario
   connesso; porte 4 e 7 scrivibili ma inerti; nessuna via per far suonare Mario via Bluetooth
-  con i comandi standard. Repository pubblico su GitHub, 4 commit.
+  con i comandi standard. Repository pubblico su GitHub, 4 commit (10 alla sera del 13/10).
 - Prossimi passi consigliati (dal TODO): modo RGB da solo e gesti isolati (sezione 1), prova del
   filtro di stabilità con l'assistente e la pagina Assistente con Mario connesso (sezione 7),
   cattura del traffico dell'app ufficiale (sezione 2).
@@ -490,7 +500,7 @@ utilizzare Mario". Fatto, in cinque commit:
   voce, suono, messaggio, volume, goto, fine, webhook), libreria degli elementi, servizio, editor a
   moduli + JSON, schermo di gioco, comando `adventure` con simulazione da tastiera, tre esempi
   (colori, gesti, quiz con le basette dell'utente). Partita simulata del quiz: 80 punti, 7 passi.
-- **Test**: da 54 a 120 (BleakClient finto per `MarioDevice` e `BleWorker`, server SSE locale per i
+- **Test**: da 54 a 121 (BleakClient finto per `MarioDevice` e `BleWorker`, server SSE locale per i
   backend HTTP, servizio, voce, CLI, pagine, token, avventure, controlli statici del JavaScript,
   fumo); `pyproject.toml`, workflow GitHub Actions; cloni di terze parti in `third_party/`;
   `logs/pylegomario-src` rimosso; regola udev in `tools/`.
@@ -514,7 +524,7 @@ utilizzare Mario". Fatto, in cinque commit:
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py` (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 120 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 121 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -544,7 +554,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (120); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (121); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

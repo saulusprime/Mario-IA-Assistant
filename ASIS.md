@@ -26,8 +26,9 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   scossa fino a ±98.
 - **Modalità combinata**: funziona su porta 0 (RAW+GEST) e porta 1 (TAG+RGB). Mario manda la
   maschera dei dataset con il byte alto per primo (`00 1f` = dataset 0..4) e, con multi-update,
-  solo i dataset cambiati: il ricevitore deve tenere l'ultimo valore di ciascuno
-  (`lwp3.describe` e `tools/live_checks.py` lo fanno). In RGB combinato si muove solo il primo dei
+  solo i dataset cambiati: il ricevitore deve tenere l'ultimo valore di ciascuno (lo fa
+  `mario/hubstate.py` per dispositivo, dashboard, CLI e `decode`; verificato offline sui messaggi
+  registrati, `monitor --combined` ancora da provare dal vivo). In RGB combinato si muove solo il primo dei
   tre canali (0..189, più alto sul chiaro); gli altri due restano 117 e 130.
 - **RSSI**: la proprietà risponde sempre 0, anche con aggiornamenti attivi: non implementata.
 - **Allarmi hub**: `LOW_VOLTAGE`, `HIGH_CURRENT`, `LOW_SIGNAL_STRENGTH`, `OVER_POWER_CONDITION`
@@ -120,7 +121,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   simulati, non ancora con Mario.
 - **Strumenti dal vivo**: `tools/probe_port4.py`, `tools/catalog_tiles.py`, `tools/live_checks.py`
   (anche come `./run.sh live-checks` ecc.), `tools/99-mario-btusb.rules`.
-- **Test**: 120 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Test**: 121 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

@@ -334,7 +334,9 @@ prodotto da `./run.sh info --json` l'11 ottobre 2026.
 | 7 | 0x60 | 0 `Telemetry` (16 × int8), ingresso **e uscita** | nuova dal firmware 6.x; mai trasmesso; ignora le scritture in silenzio |
 
 Modalità combinata: la maschera dei dataset nel messaggio 0x46 arriva con il byte alto per primo
-(`00 1f` = dataset 0..4) e con multi-update Mario manda solo i dataset cambiati. Proprietà:
+(`00 1f` = dataset 0..4) e con multi-update Mario manda solo i dataset cambiati; `mario/hubstate.py`
+ricompone i valori per modo e li presenta come valori singoli a dispositivo, dashboard, CLI e
+`decode` (`monitor --combined` li attiva). Proprietà:
 `RSSI` risponde sempre 0 (non implementata); `BUTTON` manda premuto/rilasciato; i quattro allarmi
 dell'hub rispondono; le azioni `DISCONNECT` e `SWITCH_OFF` annunciano `WILL_DISCONNECT` /
 `WILL_SWITCH_OFF`; le azioni busy 0x05/0x06 sono rifiutate (`INVALID_USE`).
@@ -426,7 +428,8 @@ porte o modalità in più rispetto a questa tabella le vedrai nel report.
   Allarmi: i quattro tipi rispondono. `DISCONNECT` e `SWITCH_OFF` annunciano `WILL_DISCONNECT` /
   `WILL_SWITCH_OFF` e chiudono il link.
 - Modalità combinata (porte 0 e 1): funziona, ma la maschera dei dataset arriva con il byte alto
-  per primo e, con multi-update, solo i dataset cambiati vengono inviati.
+  per primo e, con multi-update, solo i dataset cambiati vengono inviati (gestito in `hubstate.py`
+  dal 13/10; `monitor --combined` da provare dal vivo).
 - Pantaloni: con i soli pantaloni blu (0x21) il cambio dà 0x00 da sfilati e, infilandoli, codici
   transitori (0x18, 0x01) prima di tornare a 0x21: l'assistente aspetta che il valore sia stabile.
   Colori del modo TAG confermati per sette colori. Basette: otto basette catalogate (sette codici,
@@ -548,7 +551,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centoventi test senza Bluetooth né rete esterna, raggruppati per file:
+Centoventuno test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -560,7 +563,7 @@ Centoventi test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_assistant` (30), `test_assistant_ext` (11) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, API |
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
 | `test_service` (3), `test_tts` (4) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
-| `test_adventures` (6), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
+| `test_adventures` (7), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
 | `test_web_pages` (6), `test_web_static` (5) | pagina Eventi, esportazioni, grafici, token; sintassi del JavaScript e coerenza id/azioni con i template |
 | `test_cli` (7), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, `decode`; importazione senza Bluetooth |
 
@@ -586,7 +589,7 @@ mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure 
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, 99-mario-btusb.rules (udev)
-tests/                  test offline (120)
+tests/                  test offline (121)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), ignorati da git
 data/                   database SQLite della dashboard (ignorato da git)
