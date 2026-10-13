@@ -680,3 +680,62 @@ def describe(msg: Message, port_lookup: Optional[PortLookup] = None,
     except Exception as exc:  # decodifica fallita: mostriamo comunque i byte
         return f"{msg.type_name}: {p.hex(' ')} (decodifica fallita: {exc})"
     return f"{msg.type_name}: {p.hex(' ')}"
+
+
+# ---------------------------------------------------------------------------
+# Decodifica dei messaggi in uscita (downstream: PC -> Mario), per log e catture
+# ---------------------------------------------------------------------------
+
+OUTPUT_SUBCOMMANDS = {0x01: "StartPower", 0x02: "StartPower2", 0x05: "SetAccTime", 0x06: "SetDecTime",
+                      0x07: "StartSpeed", 0x08: "StartSpeed2", 0x09: "StartSpeedForTime",
+                      0x0B: "StartSpeedForDegrees", 0x0D: "GotoAbsolutePosition", 0x50: "WriteDirect",
+                      0x51: "WriteDirectModeData"}
+
+
+def describe_downstream(msg: Message) -> str:
+    """Descrizione leggibile di un messaggio inviato all'hub."""
+    t, p = msg.msg_type, msg.payload
+    try:
+        if t == MessageType.HUB_PROPERTIES:
+            prop, op = p[0], p[1]
+            text = f"Proprietà {enum_name(HubProperty, prop)} (0x{prop:02X}): {enum_name(HubPropertyOperation, op)}"
+            if op == HubPropertyOperation.SET and len(p) > 2:
+                text += f" = {format_hub_property(prop, p[2:])} [{p[2:].hex(' ')}]"
+            return text
+        if t == MessageType.HUB_ACTIONS:
+            return f"Azione hub: {enum_name(HubAction, p[0])}"
+        if t == MessageType.HUB_ALERTS:
+            return f"Allarme {enum_name(HubAlertType, p[0])}: {enum_name(HubAlertOperation, p[1])}"
+        if t == MessageType.PORT_INFORMATION_REQUEST:
+            return f"Richiesta info porta {p[0]}: {enum_name(PortInfoType, p[1])}"
+        if t == MessageType.PORT_MODE_INFORMATION_REQUEST:
+            return f"Richiesta info porta {p[0]} modo {p[1]}: {enum_name(ModeInfoType, p[2])}"
+        if t == MessageType.PORT_INPUT_FORMAT_SETUP_SINGLE:
+            delta = struct.unpack("<I", p[2:6])[0] if len(p) >= 6 else 0
+            notify = "ON" if len(p) > 6 and p[6] else "OFF"
+            return f"Imposta porta {p[0]} modo {p[1]}: delta {delta}, notifiche {notify}"
+        if t == MessageType.PORT_INPUT_FORMAT_SETUP_COMBINED:
+            sub = enum_name(CombinedModeSubcommand, p[1])
+            if p[1] == CombinedModeSubcommand.SET_COMBINATION and len(p) >= 3:
+                entries = [f"{(b >> 4) & 0xF}:{b & 0xF}" for b in p[3:]]
+                return f"Modalità combinata porta {p[0]}: combinazione {p[2]} con modo:dataset {' '.join(entries)}"
+            return f"Modalità combinata porta {p[0]}: {sub}"
+        if t == MessageType.VIRTUAL_PORT_SETUP:
+            return (f"Porta virtuale: collega {p[1]} + {p[2]}" if p[0] == 1 and len(p) >= 3
+                    else f"Porta virtuale: scollega {p[1] if len(p) > 1 else '?'}")
+        if t == MessageType.PORT_OUTPUT_COMMAND:
+            port, flags, sub = p[0], p[1], p[2]
+            name = OUTPUT_SUBCOMMANDS.get(sub, f"sottocomando 0x{sub:02X}")
+            text = (f"Comando output porta {port}: {name}, avvio {'subito' if flags & 0x10 else 'in coda'}, "
+                    f"feedback {'sì' if flags & 0x01 else 'no'}")
+            if sub == 0x51 and len(p) > 3:
+                text += f", modo {p[3]}, dati {p[4:].hex(' ')}"
+            elif len(p) > 3:
+                text += f", dati {p[3:].hex(' ')}"
+            return text
+        if t in (MessageType.FW_UPDATE_GO_INTO_BOOT_MODE, MessageType.FW_UPDATE_LOCK_MEMORY,
+                 MessageType.FW_UPDATE_LOCK_STATUS_REQUEST):
+            return f"{msg.type_name} (aggiornamento firmware: da non inviare) {p.hex(' ')}"
+    except Exception as exc:  # pragma: no cover - decodifica fallita: byte grezzi
+        return f"{msg.type_name}: {p.hex(' ')} (decodifica fallita: {exc})"
+    return f"{msg.type_name}: {p.hex(' ')}"

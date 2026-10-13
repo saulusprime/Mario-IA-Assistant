@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mario-ble"
+version = "0.2.0"
+description = "LEGO Mario via Bluetooth LE: libreria LWP3, CLI, dashboard Flask e assistente con un modello di linguaggio"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "saulusprime" }]
+keywords = ["lego", "mario", "bluetooth", "ble", "lwp3", "bleak"]
+dependencies = [
+    "bleak>=3.0",
+    "dbus-fast>=2.0; sys_platform == 'linux'",
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+serve = ["waitress>=3.0"]
+
+[project.urls]
+Repository = "https://github.com/saulusprime/Mario-IA-Assistant"
+
+[project.scripts]
+mario = "mario.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mario*"]
+
+[tool.setuptools.package-data]
+mario = ["web/templates/*.html", "web/static/*", "data/*.json"]

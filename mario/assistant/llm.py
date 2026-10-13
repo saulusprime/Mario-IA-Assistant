@@ -97,11 +97,15 @@ def _post_sse(url: str, headers: dict, body: dict, timeout: float) -> Iterator[s
         raise LLMError(f"rete non raggiungibile ({exc.reason})") from None
     except OSError as exc:
         raise LLMError(f"errore di rete: {exc}") from None
+    import http.client
     with resp:
-        for raw in resp:
-            line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-            if line.startswith("data:"):
-                yield line[5:].strip()
+        try:
+            for raw in resp:
+                line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                if line.startswith("data:"):
+                    yield line[5:].strip()
+        except (http.client.HTTPException, OSError) as exc:  # il server ha chiuso a metà risposta
+            raise LLMError(f"connessione interrotta durante la risposta ({type(exc).__name__})") from None
 
 
 class AnthropicBackend(Backend):

@@ -33,9 +33,10 @@ except ImportError:  # altri backend (macOS/Windows)
     HAVE_DBUS = False
 
 from . import codes, lwp3
+from .hubstate import HubState, ModeInfo, PortState  # noqa: F401  (riesportati per compatibilità)
 from .lwp3 import (
     CombinedModeSubcommand, HubAction, HubAlertOperation, HubProperty, HubPropertyOperation,
-    IOEvent, Message, MessageType, ModeInfoType, PortInfoType, ValueFormat,
+    Message, MessageType, ModeInfoType, PortInfoType,
 )
 
 log = logging.getLogger("mario")
@@ -51,89 +52,7 @@ class LWPError(Exception):
                          f"{lwp3.enum_name(MessageType, command)}")
 
 
-# ---------------------------------------------------------------------------
-# Stato dell'hub ricostruito dai messaggi ricevuti
-# ---------------------------------------------------------------------------
-
-@dataclass
-class ModeInfo:
-    mode: int
-    name: str = ""
-    raw: Optional[tuple[float, float]] = None
-    pct: Optional[tuple[float, float]] = None
-    si: Optional[tuple[float, float]] = None
-    symbol: str = ""
-    mapping: Optional[tuple[int, int]] = None
-    value_format: Optional[ValueFormat] = None
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name, "symbol": self.symbol,
-            "raw": list(self.raw) if self.raw else None,
-            "pct": list(self.pct) if self.pct else None,
-            "si": list(self.si) if self.si else None,
-            "mapping": {"input": lwp3.mapping_names(self.mapping[0]),
-                        "output": lwp3.mapping_names(self.mapping[1])} if self.mapping else None,
-            "value_format": {"datasets": self.value_format.datasets, "type": self.value_format.type_name,
-                             "figures": self.value_format.figures, "decimals": self.value_format.decimals}
-            if self.value_format else None,
-        }
-
-
-@dataclass
-class PortState:
-    port: int
-    io_type: int
-    event: int = IOEvent.ATTACHED
-    hw_version: str = ""
-    sw_version: str = ""
-    info: Optional[lwp3.PortInformation] = None
-    combinations: list[list[int]] = field(default_factory=list)
-    modes: dict[int, ModeInfo] = field(default_factory=dict)
-    current_mode: Optional[int] = None
-    delta: Optional[int] = None
-    notify: Optional[bool] = None
-    last_value: Optional[bytes] = None
-    virtual_ports: Optional[tuple[int, int]] = None
-
-    @property
-    def io_name(self) -> str:
-        return lwp3.io_type_name(self.io_type)
-
-    def mode(self, m: int) -> ModeInfo:
-        return self.modes.setdefault(m, ModeInfo(m))
-
-    def value_format(self, m: Optional[int]) -> Optional[ValueFormat]:
-        if m is None:
-            return None
-        mi = self.modes.get(m)
-        return mi.value_format if mi else None
-
-    def to_dict(self) -> dict:
-        return {
-            "io_type": f"0x{self.io_type:04X}", "io_name": self.io_name,
-            "hw_version": self.hw_version, "sw_version": self.sw_version,
-            "capabilities": self.info.capability_names if self.info else None,
-            "mode_count": self.info.mode_count if self.info else None,
-            "input_modes": self.info.input_mode_list if self.info else None,
-            "output_modes": self.info.output_mode_list if self.info else None,
-            "combinations": self.combinations,
-            "modes": {m: mi.to_dict() for m, mi in sorted(self.modes.items())},
-            "hint": codes.port_hint(self.io_type),
-        }
-
-
-@dataclass
-class HubState:
-    properties: dict[int, bytes] = field(default_factory=dict)
-    ports: dict[int, PortState] = field(default_factory=dict)
-
-    def property_text(self, prop: int) -> Optional[str]:
-        data = self.properties.get(prop)
-        return None if data is None else lwp3.format_hub_property(prop, data)
-
-    def port(self, port: int, io_type: int = 0xFFFF) -> PortState:
-        return self.ports.setdefault(port, PortState(port, io_type))
+# Lo stato dell'hub (porte, modi, formati, valori combinati) vive in `mario.hubstate`, senza bleak.
 
 
 # ---------------------------------------------------------------------------
@@ -560,6 +479,7 @@ class MarioDevice:
             except asyncio.TimeoutError:
                 raise BleakError(f"nessuna conferma dalla scrittura GATT entro {self.write_timeout:g} s: "
                                  "link Bluetooth instabile") from None
+        self.state.note_sent(bytes(data))  # es. definizione della modalità combinata
 
     async def send_hex(self, text: str) -> None:
         await self.send(bytes.fromhex(text.replace(" ", "").replace(":", "")))
@@ -614,60 +534,17 @@ class MarioDevice:
                     log.exception("listener fallito")
 
     def _update_state(self, msg: Message) -> None:
-        t, p = msg.msg_type, msg.payload
-        if t == MessageType.HUB_PROPERTIES and len(p) >= 2 and p[1] == HubPropertyOperation.UPDATE:
-            self.state.properties[p[0]] = bytes(p[2:])
-        elif t == MessageType.HUB_ATTACHED_IO:
-            io = lwp3.decode_attached_io(p)
-            if io.event == IOEvent.DETACHED:
-                self.state.ports.pop(io.port, None)
-            else:
-                ps = PortState(io.port, io.io_type or 0xFFFF, io.event, io.hw_version, io.sw_version)
-                if io.event == IOEvent.ATTACHED_VIRTUAL:
-                    ps.virtual_ports = (io.port_a, io.port_b)
-                self.state.ports[io.port] = ps
-        elif t == MessageType.PORT_INFORMATION:
-            info = lwp3.decode_port_information(p)
-            if isinstance(info, lwp3.PortInformation):
-                self.state.port(info.port).info = info
-            else:
-                port, combos = info
-                self.state.port(port).combinations = combos
-        elif t == MessageType.PORT_MODE_INFORMATION:
-            port, mode, info_type, value = lwp3.decode_port_mode_information(p)
-            mi = self.state.port(port).mode(mode)
-            if info_type == ModeInfoType.NAME:
-                mi.name = value
-            elif info_type == ModeInfoType.RAW and isinstance(value, tuple):
-                mi.raw = value
-            elif info_type == ModeInfoType.PCT and isinstance(value, tuple):
-                mi.pct = value
-            elif info_type == ModeInfoType.SI and isinstance(value, tuple):
-                mi.si = value
-            elif info_type == ModeInfoType.SYMBOL:
-                mi.symbol = value
-            elif info_type == ModeInfoType.MAPPING and isinstance(value, tuple):
-                mi.mapping = value
-            elif info_type == ModeInfoType.VALUE_FORMAT and isinstance(value, ValueFormat):
-                mi.value_format = value
-        elif t == MessageType.PORT_INPUT_FORMAT_SINGLE and len(p) >= 7:
-            ps = self.state.port(p[0])
-            ps.current_mode = p[1]
-            ps.delta = int.from_bytes(p[2:6], "little")
-            ps.notify = bool(p[6])
-        elif t == MessageType.PORT_VALUE_SINGLE and p:
-            self.state.port(p[0]).last_value = bytes(p[1:])
+        self.state.update(msg)
 
     def _port_lookup(self, port: int):
-        ps = self.state.ports.get(port)
-        if ps is None:
-            return None
-        mi = ps.modes.get(ps.current_mode) if ps.current_mode is not None else None
-        scale = (mi.raw, mi.si, mi.symbol) if mi and mi.raw and mi.si else None
-        return ps.io_type, ps.current_mode, ps.value_format(ps.current_mode), scale
+        return self.state.port_lookup(port)
 
     def describe(self, msg: Message) -> str:
-        return lwp3.describe(msg, self._port_lookup, codes.decode_value)
+        return self.state.describe(msg)
+
+    def event(self, msg: Message, text: Optional[str] = None) -> dict:
+        """Dizionario dell'evento (porta, modo, valori, decodifica) come lo usa la dashboard."""
+        return self.state.event(msg, text if text is not None else self.describe(msg))
 
     # ----- proprieta' e azioni dell'hub ------------------------------------------------
 
@@ -753,11 +630,13 @@ class MarioDevice:
         return await self.subscribe(port, mode, delta=1, notify=False)
 
     async def set_combined_mode(self, port: int, combination_index: int,
-                                mode_datasets: list[tuple[int, int]], delta: int = 1) -> None:
-        """Modalita' combinata (porte 'combinabili'): piu' modi attivi insieme sulla stessa porta."""
+                                mode_datasets: list[tuple[int, int]], delta: int = 1,
+                                deltas: Optional[dict[int, int]] = None) -> None:
+        """Modalita' combinata (porte 'combinabili'): piu' modi attivi insieme sulla stessa porta.
+        `deltas` permette un delta diverso per modo (es. {0: 4, 1: 1} per accelerometro e gesti)."""
         await self.send(lwp3.port_input_format_setup_combined(port, CombinedModeSubcommand.LOCK))
         for mode in sorted({m for m, _ in mode_datasets}):
-            await self.send(lwp3.port_input_format_setup(port, mode, delta, True))
+            await self.send(lwp3.port_input_format_setup(port, mode, (deltas or {}).get(mode, delta), True))
         await self.send(lwp3.port_combination_set(port, combination_index, mode_datasets))
         await self.send(lwp3.port_input_format_setup_combined(
             port, CombinedModeSubcommand.UNLOCK_MULTI_UPDATE_ENABLED))
@@ -871,7 +750,11 @@ class MarioDevice:
 
     def report(self) -> str:
         st = self.state
-        lines = ["=== Proprietà dell'hub ==="]
+        bond = {True: "sì", False: "no", None: "sconosciuto"}[self.bonded]
+        lines = ["=== Collegamento ===",
+                 f"  indirizzo: {self.ble_device.address if self.ble_device else self.address or '-'}"
+                 f" | associato (bond): {bond} | connesso: {'sì' if self.connected else 'no'}",
+                 "", "=== Proprietà dell'hub ==="]
         for prop in HubProperty:
             if prop in st.properties:
                 lines.append(f"  {prop.name:<18} (0x{prop:02X}): {st.property_text(prop)}")
@@ -899,5 +782,6 @@ class MarioDevice:
             props[key] = {"id": f"0x{prop:02X}", "raw": data.hex(),
                           "value": lwp3.decode_hub_property(prop, data)}
         return {"address": self.ble_device.address if self.ble_device else self.address,
+                "bonded": self.bonded,
                 "properties": props,
                 "ports": {port: ps.to_dict() for port, ps in sorted(st.ports.items())}}

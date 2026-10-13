@@ -7,7 +7,9 @@ Interfaccia a riga di comando.
   shell     console interattiva bidirezionale (comandi + messaggi in arrivo)
   assistant Mario come ingresso/uscita di una sessione con un modello di linguaggio (voce dal PC)
   web       dashboard Flask
+  decode    decodifica catture btsnoop, log di testo o byte esadecimali (senza Bluetooth)
   volume / name / prop / raw / off   comandi rapidi one-shot
+  live-checks / catalog-tiles / probe-port4 / diag-connect   strumenti dal vivo di tools/
 """
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import shlex
 import sys
 import threading
@@ -45,14 +48,28 @@ def ts() -> str:
 class SessionLog:
     """Scrive su file (logs/<nome>-<data>.txt) ogni riga mostrata, con i byte grezzi: comodo da rileggere dopo."""
 
-    def __init__(self, kind: str):
-        logs_dir = Path(__file__).resolve().parent.parent / "logs"
+    LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
+
+    def __init__(self, kind: str, path: Optional[str | Path] = None):
+        self.path: Optional[Path] = None
+        self._fh = None
+        self.switch(path or self.LOGS_DIR / f"{kind}-{time.strftime('%Y%m%d-%H%M%S')}.txt")
+
+    def switch(self, path: Optional[str | Path]) -> Optional[Path]:
+        """Chiude il file corrente e, se `path` non è None, ne apre un altro (relativo a logs/ se senza cartella)."""
+        self.close()
+        if path is None:
+            return None
+        target = Path(path)
+        if not target.is_absolute() and target.parent == Path("."):
+            target = self.LOGS_DIR / target
         try:
-            logs_dir.mkdir(exist_ok=True)
-            self.path = logs_dir / f"{kind}-{time.strftime('%Y%m%d-%H%M%S')}.txt"
-            self._fh = open(self.path, "a", encoding="utf-8")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            self._fh = open(target, "a", encoding="utf-8")
+            self.path = target
         except OSError:
             self.path, self._fh = None, None
+        return self.path
 
     def write(self, text: str, raw: bytes = b"") -> None:
         fh = self._fh
@@ -102,15 +119,36 @@ async def cmd_scan(args) -> int:
     return 0
 
 
+def save_capabilities(data: dict, docs_dir: Optional[Path] = None) -> Path:
+    """Scrive la mappa delle funzioni in docs/capabilities-fw-<versione>.json (il nome Bluetooth,
+    che è personale, non viene salvato: la cartella docs/ è pubblicata)."""
+    docs_dir = docs_dir or Path(__file__).resolve().parent.parent / "docs"
+    fw = str((data.get("properties") or {}).get("FW_VERSION", {}).get("value") or "sconosciuta")
+    short = fw.rsplit(".", 1)[0] if fw.count(".") == 3 else fw
+    clean = json.loads(json.dumps(data))
+    if "ADVERTISING_NAME" in (clean.get("properties") or {}):
+        clean["properties"]["ADVERTISING_NAME"] = {"id": "0x01", "raw": "", "value": "(nome omesso)"}
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    path = docs_dir / f"capabilities-fw-{short}.json"
+    path.write_text(json.dumps(clean, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
 async def cmd_info(args) -> int:
     dev = await connect_device(args)
     try:
         await dev.discover(full=not args.quick, progress=say)
+        data = dev.to_dict()
         if args.json:
-            print(json.dumps(dev.to_dict(), indent=2, ensure_ascii=False))
+            print(json.dumps(data, indent=2, ensure_ascii=False))
         else:
             print()
             print(dev.report())
+        if not args.quick and not args.no_save:
+            try:
+                say(f"Mappa delle funzioni salvata in {save_capabilities(data)}")
+            except OSError as exc:
+                say(f"Mappa delle funzioni non salvata: {exc}")
     finally:
         await dev.disconnect()
     return 0
@@ -125,52 +163,103 @@ def parse_subscription(text: str) -> tuple[int, int, int]:
     return port, mode, delta
 
 
+async def _monitor_subscribe(dev: MarioDevice, args, session: SessionLog) -> None:
+    """Attiva le notifiche richieste (o quelle di default); viene ripetuta dopo una riconnessione."""
+    subs = [parse_subscription(x) for x in args.sub] if args.sub else []
+    if not subs:
+        for port, ps in sorted(dev.state.ports.items()):
+            if args.no_battery and ps.io_type == codes.IO_VOLTAGE:
+                continue
+            names = {m: mi.name for m, mi in ps.modes.items()}
+            if args.combined and ps.info and ps.info.capabilities & 0x04 and ps.combinations:
+                modes = ps.combinations[0]
+                entries, deltas = [], {}
+                for mode in modes:
+                    vf = ps.value_format(mode)
+                    entries += [(mode, ds) for ds in range(vf.datasets if vf else 1)]
+                    deltas[mode] = 4 if (ps.io_type == codes.IO_MARIO_ACCELEROMETER and mode == 0) else 1
+                try:
+                    await dev.set_combined_mode(port, 0, entries, deltas=deltas)
+                    text = (f"Modalità combinata: porta {port} modi {modes} "
+                            f"({', '.join(names.get(m, '?') for m in modes)}) insieme")
+                except (LWPError, asyncio.TimeoutError, BleakError) as exc:
+                    text = f"Porta {port}: modalità combinata non attivata ({exc})"
+                say(text)
+                session.write(text)
+                continue
+            prefer = ("RAW",) if args.raw_accel and ps.io_type == codes.IO_MARIO_ACCELEROMETER else ()
+            mode = codes.default_mode(ps.io_type, names, prefer)
+            if mode is not None:
+                subs.append((port, mode, codes.DEFAULT_DELTAS.get(ps.io_type, 1)))
+    for port, mode, delta in subs:
+        ps = dev.state.ports.get(port)
+        mode_name = ps.modes[mode].name if ps and mode in ps.modes else "?"
+        try:
+            await dev.subscribe(port, mode, delta)
+            text = f"Notifiche attive: porta {port} modo {mode} ({mode_name}) delta {delta}"
+        except (LWPError, asyncio.TimeoutError, BleakError) as exc:
+            text = f"Porta {port} modo {mode} ({mode_name}): impossibile attivare ({exc})"
+        say(text)
+        session.write(text)
+    props = [HubProperty.BUTTON] + ([] if args.no_battery else [HubProperty.BATTERY_VOLTAGE])
+    if args.rssi:
+        props.append(HubProperty.RSSI)
+    for prop in props:
+        try:
+            await dev.property_updates(prop, True)
+        except (LWPError, asyncio.TimeoutError, BleakError) as exc:
+            say(f"Aggiornamenti di {prop.name} non attivati ({exc})")
+
+
 async def cmd_monitor(args) -> int:
     dev = await connect_device(args)
+    session = SessionLog("monitor")
+    if session.path:
+        say(f"Log della sessione: {session.path}")
+    started = time.monotonic()
+
+    def on_message(msg, text):
+        if msg.msg_type not in INTERESTING:
+            return
+        if args.json:
+            print(json.dumps(dev.event(msg, text), ensure_ascii=False, default=str), flush=True)
+        else:
+            print(f"[{ts()}] {text}", flush=True)
+        session.write(text, msg.raw)
+
+    dev.add_listener(on_message)
+    first = True
     try:
-        await dev.discover(full=False, progress=say)
-        subs = [parse_subscription(s) for s in args.sub] if args.sub else []
-        if not subs:
-            for port, ps in sorted(dev.state.ports.items()):
-                names = {m: mi.name for m, mi in ps.modes.items()}
-                prefer = ("RAW",) if args.raw_accel and ps.io_type == codes.IO_MARIO_ACCELEROMETER else ()
-                mode = codes.default_mode(ps.io_type, names, prefer)
-                if mode is not None:
-                    subs.append((port, mode, codes.DEFAULT_DELTAS.get(ps.io_type, 1)))
-        session = SessionLog("monitor")
-        if session.path:
-            say(f"Log della sessione: {session.path}")
-        for port, mode, delta in subs:
-            ps = dev.state.ports.get(port)
-            mode_name = ps.modes[mode].name if ps and mode in ps.modes else "?"
+        while True:
+            if first or not all(ps.modes for ps in dev.state.ports.values()):
+                await dev.discover(full=False, progress=say)
+            first = False
+            await _monitor_subscribe(dev, args, session)
+            say("In ascolto: muovi Mario, cambia i pantaloni, appoggialo sui tile. Ctrl+C per uscire."
+                + (f" Mi fermo dopo {args.duration:g} s." if args.duration else ""))
+            remaining = None
+            if args.duration:
+                remaining = max(0.0, args.duration - (time.monotonic() - started))
             try:
-                await dev.subscribe(port, mode, delta)
-                text = f"Notifiche attive: porta {port} modo {mode} ({mode_name}) delta {delta}"
-            except (LWPError, asyncio.TimeoutError, BleakError) as exc:
-                text = f"Porta {port} modo {mode} ({mode_name}): impossibile attivare ({exc})"
-            say(text)
-            session.write(text)
-        props = [HubProperty.BUTTON, HubProperty.BATTERY_VOLTAGE]
-        if args.rssi:
-            props.append(HubProperty.RSSI)
-        for prop in props:
-            await dev.property_updates(prop, True)
-        say("In ascolto: muovi Mario, cambia i pantaloni, appoggialo sui tile. Ctrl+C per uscire.")
-
-        def on_message(msg, text):
-            if msg.msg_type in INTERESTING:
-                print(f"[{ts()}] {text}", flush=True)
-                session.write(text, msg.raw)
-
-        dev.add_listener(on_message)
-        await dev.disconnected.wait()
-        say("Mario si è disconnesso.")
+                await asyncio.wait_for(dev.disconnected.wait(), timeout=remaining)
+            except asyncio.TimeoutError:
+                say(f"Durata di {args.duration:g} s raggiunta: chiudo.")
+                session.write(f"fine della sessione dopo {args.duration:g} s")
+                break
+            say("Mario si è disconnesso.")
+            session.write("Mario si è disconnesso")
+            if args.no_reconnect or (args.duration and time.monotonic() - started >= args.duration):
+                break
+            say("Aspetto che Mario torni visibile per riagganciarlo (premi il tasto Bluetooth; Ctrl+C per uscire)...")
+            try:
+                await dev.connect(args.timeout, progress=say)
+            except BleakError as exc:
+                say(f"Riconnessione non riuscita: {exc}")
+                break
+            session.write("riconnesso")
     finally:
         await dev.disconnect()
-        try:
-            session.close()
-        except NameError:
-            pass
+        session.close()
     return 0
 
 
@@ -203,9 +292,43 @@ Comandi disponibili (i messaggi in arrivo da Mario vengono mostrati con '<-'):
   report                        stampa il report delle funzioni scoperte
   quiet [on|off]                mostra solo i messaggi spontanei (valori, proprietà, errori)
   debug [on|off]                mostra i byte grezzi TX/RX
+  log [FILE|off]                mostra, cambia o sospende il file di log della sessione
   off                           spegne Mario
   disconnect                    chiede a Mario di disconnettersi
-  quit                          esce dalla shell"""
+  quit                          esce dalla shell
+Scrivi 'help <comando>' per i dettagli di un comando; frecce su/giù e Tab (cronologia e completamento) se c'è readline."""
+
+SHELL_DETAILS = {
+    "sub": "Imposta il modo della porta e accende le notifiche sui cambi di valore. Una porta ha un solo modo attivo "
+           "alla volta (porta 3: 0 CHAL, 1 VERS, 2 EVENTS, 3 DEBUG). 'delta' è la variazione minima che genera una "
+           "notifica (batteria: 25). Esempi: sub 1 0 | sub 3 2 | sub 6 0 25 | sub 0 1 1 off",
+    "combo": "Modalità combinata (porte 0 e 1 sono 'combinabili'): più modi insieme sulla stessa porta. "
+             "Esempio accelerometro + gesti: combo 0 0 0:0 0:1 0:2 1:0 1:1 (modo:dataset). Mario manda i valori nel "
+             "messaggio 0x46 con la maschera dei dataset a byte alto per primo; la shell li ricompone per modo.",
+    "out": "Port Output Command (0x81) grezzo: out <porta> <sottocomando> <hex>. Su Mario fw 6.5.01 la porta 4 accetta "
+           "solo 0x51 (WriteDirectModeData: primo byte = modo) e la porta 7 ignora tutto. Esempio: out 4 0x51 00 13 01 b8 00",
+    "msg": "Costruisce l'header LWP3 e invia: msg <tipo> <payload hex>. Esempio: msg 0x01 12 05 (legge il volume).",
+    "raw": "Invia i byte così come sono, header compreso. Esempio: raw 05 00 01 06 05 (legge la batteria).",
+    "alert": "Allarmi dell'hub: alert low_voltage req (richiesta), alert low_voltage on (aggiornamenti spontanei), off.",
+    "watch": "Aggiornamenti automatici di una proprietà: watch button, watch battery, watch rssi off.",
+    "action": "Hub Action grezza. Mai 0x2F (spegnimento di fabbrica). 0x05/0x06 (busy) su Mario rispondono INVALID_USE.",
+    "log": "log -> mostra il file di log; log nome.txt -> scrive in logs/nome.txt; log /percorso/file -> file assoluto; "
+           "log off -> sospende la scrittura.",
+    "modes": "Interroga la porta su tutte le modalità (nome, formato, intervalli, unità) e stampa il report.",
+    "value": "Chiede il valore corrente della porta (Port Information Request, tipo 0): utile per porte senza notifiche.",
+}
+SHELL_COMMANDS = sorted({line.split()[0] for line in SHELL_HELP.splitlines() if line.startswith("  ")}
+                        | {"exit", "q", "combo-reset", "unsub"})
+
+
+def shell_help(topic: str = "") -> str:
+    topic = topic.strip().lower()
+    if not topic:
+        return SHELL_HELP
+    lines = [line.strip() for line in SHELL_HELP.splitlines() if line.startswith(f"  {topic} ") or line.strip() == topic]
+    if topic in SHELL_DETAILS:
+        lines.append(SHELL_DETAILS[topic])
+    return "\n".join(lines) if lines else f"Nessun comando '{topic}'. Scrivi 'help'."
 
 ALERT_ALIASES = {
     "low_voltage": HubAlertType.LOW_VOLTAGE, "voltage": HubAlertType.LOW_VOLTAGE,
@@ -215,12 +338,87 @@ ALERT_ALIASES = {
 }
 
 
-def _stdin_reader(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> None:
+PROMPT = "mario> "
+_readline_active = False  # vero quando il prompt lo disegna input() con readline (terminale interattivo)
+
+
+def _history_file(name: str) -> Optional[Path]:
+    base = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "mario"
     try:
-        for line in sys.stdin:
-            loop.call_soon_threadsafe(queue.put_nowait, line)
+        base.mkdir(parents=True, exist_ok=True)
+        return base / f"{name}_history"
+    except OSError:
+        return None
+
+
+def _stdin_reader(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, prompt: str = PROMPT,
+                  completions: Optional[list[str]] = None, history: str = "") -> None:
+    """Legge le righe dall'utente in un thread. Su un terminale usa readline (cronologia, completamento)."""
+    global _readline_active
+    readline = None
+    if sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("MARIO_NO_READLINE") != "1":
+        try:
+            import readline as _rl
+            readline = _rl
+        except ImportError:
+            readline = None
+    hist = _history_file(history) if (readline and history) else None
+    if readline:
+        words = list(completions or [])
+
+        def complete(text, state):
+            matches = [w for w in words if w.startswith(text)]
+            return matches[state] + " " if state < len(matches) else None
+
+        readline.set_completer(complete)
+        readline.set_completer_delims(" \t\n")
+        readline.parse_and_bind("tab: complete")
+        if hist and hist.exists():
+            try:
+                readline.read_history_file(hist)
+            except OSError:
+                pass
+        readline.set_history_length(500)
+        _readline_active = True
+    try:
+        if readline:
+            while True:
+                try:
+                    line = input(prompt)
+                except EOFError:
+                    break
+                loop.call_soon_threadsafe(queue.put_nowait, line + "\n")
+        else:
+            for line in sys.stdin:
+                loop.call_soon_threadsafe(queue.put_nowait, line)
     finally:
+        if readline and hist:
+            try:
+                readline.write_history_file(hist)
+            except OSError:
+                pass
+        _readline_active = False
         loop.call_soon_threadsafe(queue.put_nowait, None)
+
+
+def show_prompt() -> None:
+    """Stampa il prompt solo quando non lo fa già input() con readline."""
+    if not _readline_active:
+        print(PROMPT, end="", flush=True)
+
+
+def echo(text: str) -> None:
+    """Stampa una riga arrivata mentre l'utente sta scrivendo, ridisegnando il prompt e il testo digitato."""
+    if _readline_active:
+        try:
+            import readline
+            buffer = readline.get_line_buffer()
+        except ImportError:  # pragma: no cover
+            buffer = ""
+        sys.stdout.write(f"\r\x1b[2K{text}\n{PROMPT}{buffer}")
+        sys.stdout.flush()
+    else:
+        print(f"\r{text}\n{PROMPT}", end="", flush=True)
 
 
 def _on_off(args: list[str], index: int, default: bool = True) -> bool:
@@ -233,24 +431,29 @@ class Shell:
     def __init__(self, dev: MarioDevice):
         self.dev = dev
         self.quiet = False
+        self.closed = False  # True quando l'utente chiude (quit, off, disconnect, fine input)
         self.session = SessionLog("shell")
+        self._listening = False
 
     def on_message(self, msg, text) -> None:
         self.session.write("<- " + text, msg.raw)
         if self.quiet and msg.msg_type not in INTERESTING:
             return
-        print(f"\r[{ts()}] <- {text}\nmario> ", end="", flush=True)
+        echo(f"[{ts()}] <- {text}")
 
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
-        threading.Thread(target=_stdin_reader, args=(loop, queue), daemon=True).start()
-        self.dev.add_listener(self.on_message)
-        if self.session.path:
-            say(f"Log della sessione: {self.session.path}")
-        print(SHELL_HELP)
+        if not self._listening:
+            self.dev.add_listener(self.on_message)
+            self._listening = True
+            if self.session.path:
+                say(f"Log della sessione: {self.session.path}")
+            print(SHELL_HELP)
+        threading.Thread(target=_stdin_reader, args=(loop, queue),
+                         kwargs={"completions": SHELL_COMMANDS, "history": "shell"}, daemon=True).start()
         while self.dev.connected:
-            print("mario> ", end="", flush=True)
+            show_prompt()
             getter = asyncio.ensure_future(queue.get())
             waiter = asyncio.ensure_future(self.dev.disconnected.wait())
             done, _ = await asyncio.wait({getter, waiter}, return_when=asyncio.FIRST_COMPLETED)
@@ -262,6 +465,7 @@ class Shell:
             line = getter.result()
             if line is None:
                 print()
+                self.closed = True
                 break
             line = line.strip()
             if not line:
@@ -269,6 +473,7 @@ class Shell:
             self.session.write("-> " + line)
             try:
                 if await self.handle(line):
+                    self.closed = True
                     break
             except LWPError as exc:
                 print(f"Mario risponde con un errore: {exc}")
@@ -291,7 +496,16 @@ class Shell:
         if cmd in ("quit", "exit", "q"):
             return True
         if cmd == "help":
-            print(SHELL_HELP)
+            print(shell_help(" ".join(args)))
+        elif cmd == "log":
+            if not args:
+                print(f"  log: {self.session.path or 'sospeso'}")
+            elif args[0].lower() in ("off", "no", "0"):
+                self.session.switch(None)
+                print("  log sospeso")
+            else:
+                path = self.session.switch(args[0])
+                print(f"  log: {path}" if path else f"  impossibile aprire {args[0]}")
         elif cmd == "props":
             for prop in HubProperty:
                 try:
@@ -386,17 +600,26 @@ class Shell:
 
 async def cmd_shell(args) -> int:
     dev = await connect_device(args)
+    shell = Shell(dev)
     try:
         await dev.discover(full=False, progress=say)
         print()
         print(dev.report())
         print()
-        shell = Shell(dev)
-        try:
+        while True:
             await shell.run()
-        finally:
-            shell.session.close()
+            if shell.closed or args.no_reconnect or dev.connected:
+                break
+            say("Mario si è disconnesso: aspetto che torni visibile per riagganciarlo (premi il tasto Bluetooth; Ctrl+C per uscire)...")
+            try:
+                await dev.connect(args.timeout, progress=say)
+            except BleakError as exc:
+                say(f"Riconnessione non riuscita: {exc}")
+                break
+            shell.session.write("riconnesso")
+            say("Riconnesso: le notifiche vanno riattivate con 'sub'.")
     finally:
+        shell.session.close()
         await dev.disconnect()
     return 0
 
@@ -457,12 +680,87 @@ ASSISTANT_HELP = """Comandi: una riga di testo = messaggio per il modello.
   /emozione NOME   prova un'emozione (gioia, sorpresa, pensieroso, allarme, tristezza, sonno, calma)
   /di TESTO        fa dire un testo con la voce       /stato         stato della sessione
   /regole          regole sensori -> intenti          /aiuto         questo elenco      /esci"""
+ASSISTANT_COMMANDS = ["/stop", "/ripeti", "/nuova", "/ascolto", "/emozione", "/di", "/stato", "/regole", "/aiuto", "/esci"]
+
+
+class AssistantPrinter:
+    """Testo del modello in streaming; le altre righe (intenti, comportamenti) aspettano la fine della risposta."""
+
+    def __init__(self, out=None):
+        self.out = out or sys.stdout
+        self.streaming = False
+        self.side: list[str] = []
+
+    def _write(self, text: str) -> None:
+        self.out.write(text)
+        self.out.flush()
+
+    def line(self, text: str) -> None:
+        if self.streaming:
+            self.side.append(text)
+        elif self.out is sys.stdout:
+            echo(text)
+        else:
+            self._write(f"\n{text}\n{PROMPT}")
+
+    def start(self, header: str) -> None:
+        self.streaming = True
+        self._write(("\r\x1b[2K" if _readline_active else "") + header)
+
+    def delta(self, text: str) -> None:
+        self._write(text)
+
+    def end(self, summary: str) -> None:
+        self._write(f"\n{summary}\n")
+        for text in self.side:
+            self._write(text + "\n")
+        self.side = []
+        self.streaming = False
+        self._write(PROMPT)
+
+
+def handle_assistant_command(session, speaker, line: str) -> tuple[bool, str]:
+    """Esegue un comando '/...' della CLI dell'assistente. Ritorna (uscire?, testo da mostrare)."""
+    from .assistant.emotions import EMOTIONS, SAMPLES
+    parts = line[1:].split(maxsplit=1)
+    cmd, rest = (parts[0].lower() if parts else ""), (parts[1] if len(parts) > 1 else "")
+    if cmd in ("esci", "quit", "exit"):
+        return True, ""
+    if cmd == "stop":
+        session.stop()
+        return False, ""
+    if cmd == "ripeti":
+        return False, "" if session.repeat() else "niente da ripetere"
+    if cmd == "nuova":
+        session.reset()
+        return False, ""
+    if cmd == "ascolto":
+        session.set_listening(_on_off([rest], 0), source="tastiera")
+        return False, ""
+    if cmd == "emozione":
+        key = rest.strip().lower()
+        if key in EMOTIONS:
+            session.say(SAMPLES[key], key)
+            return False, f"{EMOTIONS[key].emoji} {key}: \"{SAMPLES[key]}\"" + ("" if speaker.idle else " (in coda dopo le frasi in corso)")
+        return False, "emozioni: " + ", ".join(EMOTIONS)
+    if cmd == "di":
+        if rest.strip():
+            session.say(rest)
+            return False, ""
+        return False, "uso: /di TESTO"
+    if cmd == "stato":
+        st = session.status()
+        keys = ("listening", "busy", "speaking", "pending", "emotion", "backend", "context", "speaker", "behaviours")
+        return False, json.dumps({k: st[k] for k in keys if k in st}, ensure_ascii=False, indent=1, default=str)
+    if cmd == "regole":
+        return False, "\n".join(f"  {'on ' if r['enabled'] else 'off'} {r['name']:<10} {r['kind']:<7} pausa {r['cooldown']:>4}s  {r['text']}"
+                                for r in session.mapper.rules_dict())
+    return False, ASSISTANT_HELP
 
 
 async def cmd_assistant(args) -> int:
     from .assistant import AssistantBusy, AssistantSession, LLMConfig, Speaker, event_from_message, make_backend
     from .assistant.behaviours import BehaviourEngine, NullActions
-    from .assistant.emotions import EMOTIONS, SAMPLES
 
     loop = asyncio.get_running_loop()
     dev: Optional[MarioDevice] = None
@@ -507,27 +805,7 @@ async def cmd_assistant(args) -> int:
 
     session_log = SessionLog("assistant")
     verbose = bool(args.debug or args.verbose)
-
-    class Printer:
-        """Testo del modello in streaming; le altre righe (intenti, comportamenti) aspettano la fine."""
-        streaming = False
-        side: list[str] = []
-
-        def line(self, text: str) -> None:
-            if self.streaming:
-                self.side.append(text)
-            else:
-                print(f"\n{text}\nmario> ", end="", flush=True)
-
-        def end(self, summary: str) -> None:
-            print(f"\n{summary}")
-            for text in self.side:
-                print(text)
-            self.side = []
-            self.streaming = False
-            print("mario> ", end="", flush=True)
-
-    out = Printer()
+    out = AssistantPrinter()
 
     def emit(ev: dict) -> None:
         kind = ev.get("kind")
@@ -536,12 +814,11 @@ async def cmd_assistant(args) -> int:
             out.line(f"[{ts()}] {who} ({ev.get('source')}): {ev['text']}")
             session_log.write(f"{who} ({ev.get('source')}): {ev['text']}")
         elif kind == "start":
-            out.streaming = True
-            print(f"[{ts()}] Mario ({ev.get('backend')}): ", end="", flush=True)
+            out.start(f"[{ts()}] Mario ({ev.get('backend')}): ")
         elif kind == "emotion" and out.streaming:
-            print(f"{ev.get('emoji', '')} ", end="", flush=True)
+            out.delta(f"{ev.get('emoji', '')} ")
         elif kind == "delta":
-            print(ev["text"], end="", flush=True)
+            out.delta(ev["text"])
         elif kind == "done":
             session_log.write(f"Mario: {ev['text']}")
             out.end(f"[{ts()}] (risposta in {ev.get('elapsed')} s, emozioni: {', '.join(ev.get('emotions') or []) or 'nessuna'})")
@@ -574,7 +851,8 @@ async def cmd_assistant(args) -> int:
         say(f"Log della sessione: {session_log.path}")
     print(ASSISTANT_HELP)
     queue: asyncio.Queue = asyncio.Queue()
-    threading.Thread(target=_stdin_reader, args=(loop, queue), daemon=True).start()
+    threading.Thread(target=_stdin_reader, args=(loop, queue),
+                     kwargs={"completions": ASSISTANT_COMMANDS, "history": "assistant"}, daemon=True).start()
     if dev is not None:
         async def watch():
             await dev.disconnected.wait()
@@ -586,7 +864,7 @@ async def cmd_assistant(args) -> int:
                 await asyncio.sleep(0.5)
                 session.tick()
         loop.create_task(ticker())
-    print("mario> ", end="", flush=True)
+    show_prompt()
     try:
         while True:
             line = await queue.get()
@@ -596,47 +874,21 @@ async def cmd_assistant(args) -> int:
                 break
             line = line.strip()
             if not line:
-                print("mario> ", end="", flush=True)
+                show_prompt()
                 continue
             if line.startswith("/"):
-                parts = line[1:].split(maxsplit=1)
-                cmd, rest = parts[0].lower(), (parts[1] if len(parts) > 1 else "")
-                if cmd in ("esci", "quit", "exit"):
+                leave, text = handle_assistant_command(session, speaker, line)
+                if leave:
                     break
-                elif cmd == "stop":
-                    session.stop()
-                elif cmd == "ripeti":
-                    if not session.repeat():
-                        print("niente da ripetere")
-                elif cmd == "nuova":
-                    session.reset()
-                elif cmd == "ascolto":
-                    session.set_listening(_on_off([rest], 0), source="tastiera")
-                elif cmd == "emozione":
-                    key = rest.strip().lower()
-                    if key in EMOTIONS:
-                        session.say(SAMPLES[key], key)
-                        print(f"{EMOTIONS[key].emoji} {key}: \"{SAMPLES[key]}\"" + ("" if speaker.idle else " (in coda dopo le frasi in corso)"))
-                    else:
-                        print("emozioni: " + ", ".join(EMOTIONS))
-                elif cmd == "di":
-                    session.say(rest)
-                elif cmd == "stato":
-                    st = session.status()
-                    print(json.dumps({k: st[k] for k in ("listening", "busy", "speaking", "pending", "emotion", "backend",
-                                                         "context", "speaker", "behaviours")},
-                                     ensure_ascii=False, indent=1, default=str))
-                elif cmd == "regole":
-                    for r in session.mapper.rules_dict():
-                        print(f"  {'on ' if r['enabled'] else 'off'} {r['name']:<10} {r['kind']:<7} pausa {r['cooldown']:>4}s  {r['text']}")
-                else:
-                    print(ASSISTANT_HELP)
-                print("mario> ", end="", flush=True)
+                if text:
+                    print(text)
+                show_prompt()
                 continue
             try:
                 session.ask(line)
             except AssistantBusy as exc:
-                print(f"{exc}\nmario> ", end="", flush=True)
+                print(exc)
+                show_prompt()
     finally:
         say("Chiudo: fermo la voce e riporto il volume di Mario al valore iniziale...")
         await loop.run_in_executor(None, session.shutdown)  # aspetta il ripristino prima di scollegarsi
@@ -644,6 +896,55 @@ async def cmd_assistant(args) -> int:
             await dev.disconnect()
         session_log.close()
     return 0
+
+def cmd_decode(args) -> int:
+    """Decodifica offline: file btsnoop, log di testo, '-' (stdin) o byte esadecimali."""
+    from . import decode
+    paths, hex_args = [], []
+    for item in args.inputs:
+        if item == "-" or Path(item).is_file():
+            paths.append(item)
+        elif decode._hex_bytes(item.replace("->", "").replace("<-", "")) is not None and len(item.strip()) >= 5:
+            hex_args.append(item)
+        else:
+            print(f"Ingresso non riconosciuto (né file né byte esadecimali): {item}", file=sys.stderr)
+            return 2
+    if not paths and not hex_args:
+        print("Indica almeno un file (btsnoop o log di testo), '-' per lo standard input o dei byte esadecimali.",
+              file=sys.stderr)
+        return 2
+    only_types = decode.parse_type_filter(args.type) if args.type else None
+    return decode.run(paths, hex_args, caps=args.caps, as_json=args.json, only_types=only_types, only_port=args.port,
+                      summary=args.summary, downstream=not args.no_tx, assume_default_modes=not args.no_default_modes)
+
+
+TOOLS = {"live-checks": ("live_checks.py", "verifiche dal vivo guidate a voce (pulsante, pantaloni, gesti, RGB, ...)"),
+         "catalog-tiles": ("catalog_tiles.py", "sessione guidata con le basette reali (codici, eventi, database)"),
+         "probe-port4": ("probe_port4.py", "scritture a scatola nera su porta 4 e 7, osservazione di standby"),
+         "diag-connect": ("diag_connect.py", "diagnostica di connessione: come BlueZ vede Mario")}
+
+
+def run_tool(name: str, argv: list[str]) -> int:
+    """Esegue uno script di tools/ come se fosse lanciato dal venv (`./run.sh live-checks --steps gesti`)."""
+    import runpy
+    script = Path(__file__).resolve().parent.parent / "tools" / TOOLS[name][0]
+    sys.argv = [str(script)] + list(argv)
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as exc:
+        code = exc.code
+        return code if isinstance(code, int) else (0 if code is None else 1)
+    return 0
+
+
+def tool_argv(argv: list[str], name: str) -> list[str]:
+    """Gli argomenti che seguono il nome dello strumento, nell'ordine scritto dall'utente."""
+    return list(argv[argv.index(name) + 1:]) if name in argv else []
+
+
+def cmd_tool(args) -> int:  # raggiunto solo se main() non ha già smistato lo strumento
+    return run_tool(args.command, args.tool_args)
+
 
 def cmd_web(args) -> int:
     """Avvia la dashboard web (Flask). Gira sull'host perché usa BlueZ."""
@@ -678,6 +979,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("info", help="scopre tutte le funzioni del dispositivo")
     p.add_argument("--json", action="store_true", help="output in JSON")
     p.add_argument("--quick", action="store_true", help="solo nomi e formati delle modalità (più veloce)")
+    p.add_argument("--no-save", action="store_true",
+                   help="non aggiornare docs/capabilities-fw-<versione>.json (salvato dopo la scoperta completa)")
     p.set_defaults(func=cmd_info)
 
     p = sub.add_parser("monitor", help="mostra in tempo reale gli eventi dei sensori")
@@ -685,11 +988,38 @@ def build_parser() -> argparse.ArgumentParser:
                    help="porta e modo da attivare (ripetibile, es. --sub 7:0 per la telemetria); "
                         "default: gesti, scanner, pantaloni, eventi porta 3 e 4, batteria")
     p.add_argument("--raw-accel", action="store_true", help="accelerometro grezzo invece dei gesti")
+    p.add_argument("--combined", action="store_true",
+                   help="porte combinabili in modalità combinata: accelerometro + gesti (porta 0), barcode + RGB (porta 1)")
     p.add_argument("--rssi", action="store_true", help="mostra anche gli aggiornamenti RSSI")
+    p.add_argument("--no-battery", action="store_true", help="niente tensione né percentuale della batteria")
+    p.add_argument("--json", action="store_true", help="una riga JSON per evento (porta, modo, valori, decodifica)")
+    p.add_argument("--duration", type=float, default=0.0, metavar="SECONDI", help="si ferma da solo dopo N secondi")
+    p.add_argument("--no-reconnect", action="store_true",
+                   help="esci quando Mario si disconnette invece di aspettare che torni visibile")
     p.set_defaults(func=cmd_monitor)
 
     p = sub.add_parser("shell", help="console interattiva bidirezionale")
+    p.add_argument("--no-reconnect", action="store_true",
+                   help="esci se Mario cade invece di aspettare che torni visibile")
     p.set_defaults(func=cmd_shell)
+
+    p = sub.add_parser("decode", help="decodifica catture btsnoop, log di testo o byte esadecimali (senza Bluetooth)")
+    p.add_argument("inputs", nargs="*", metavar="FILE|HEX",
+                   help="file btsnoop (btmon -w, HCI snoop Android) o log di testo; '-' = stdin; oppure byte, es. '05 00 45 02 21'")
+    p.add_argument("--caps", help="JSON delle funzioni per lo stato iniziale (default docs/capabilities-fw-6.5.01.json)")
+    p.add_argument("--json", action="store_true", help="una riga JSON per messaggio")
+    p.add_argument("--type", help="solo questi tipi di messaggio: numeri esadecimali o nomi, es. 45,46 oppure hub_properties")
+    p.add_argument("--port", type=int, help="solo i valori di questa porta")
+    p.add_argument("--summary", action="store_true", help="riepilogo finale: conteggi per tipo e porta, eventi della porta 3")
+    p.add_argument("--no-tx", action="store_true", help="nasconde i messaggi inviati a Mario")
+    p.add_argument("--no-default-modes", action="store_true",
+                   help="non presumere i modi di default di monitor per le porte senza sottoscrizione nel file")
+    p.set_defaults(func=cmd_decode)
+
+    for name, (_script, help_text) in TOOLS.items():
+        p = sub.add_parser(name, help=f"{help_text} (tools/{_script}; opzioni dopo il nome)")
+        p.add_argument("tool_args", nargs=argparse.REMAINDER)
+        p.set_defaults(func=cmd_tool)
 
     p = sub.add_parser("volume", help="legge o imposta il volume")
     p.add_argument("level", type=int, nargs="?", help="0-100")
@@ -741,7 +1071,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list[str]] = None) -> int:
     from .env import load_dotenv
     load_dotenv()  # .env nella radice del progetto (es. ANTHROPIC_API_KEY), senza sovrascrivere l'ambiente
-    args = build_parser().parse_args(argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in TOOLS:  # gli strumenti hanno le proprie opzioni: non passano da argparse
+        return run_tool(argv[0], argv[1:])
+    parser = build_parser()
+    args, unknown = parser.parse_known_args(argv)
+    if args.command in TOOLS:  # es. `mario -t 60 live-checks --steps gesti`: tutto ciò che segue il nome va allo strumento
+        return run_tool(args.command, tool_argv(argv, args.command))
+    if unknown:
+        parser.error("argomenti non riconosciuti: " + " ".join(unknown))
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
     try:

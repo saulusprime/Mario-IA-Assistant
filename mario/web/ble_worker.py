@@ -60,6 +60,16 @@ class BleWorker:
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
+    def stop(self, timeout: float = 5.0) -> None:
+        """Ferma il loop del worker (test e chiusura ordinata): annulla i task in attesa e aspetta il thread."""
+        def _stop():
+            for task in asyncio.all_tasks(self.loop):
+                task.cancel()
+            self.loop.call_soon(self.loop.stop)
+        if self._thread.is_alive():
+            self.loop.call_soon_threadsafe(_stop)
+            self._thread.join(timeout)
+
     def call(self, factory: Callable[[], Any], timeout: float = 90.0) -> Any:
         """Esegue una coroutine nel loop del worker e ne attende il risultato."""
         future = asyncio.run_coroutine_threadsafe(factory(), self.loop)
@@ -118,24 +128,23 @@ class BleWorker:
                     "interesting": msg.msg_type in INTERESTING}
         p = msg.payload
         try:
+            if dev is not None:
+                ev.update(dev.state.event(msg, text, ts=ev["ts"]))
             if msg.msg_type == MessageType.PORT_VALUE_SINGLE and dev is not None and p:
+                port, data = p[0], bytes(p[1:])
+                self.port_last[port] = {"ts": ev["ts"], "raw": data.hex(" "), "text": ev.get("decoded") or text,
+                                        "mode": ev.get("mode"), "values": ev.get("values") or []}
+                self._track_accessories(ev.get("io_type"), ev.get("mode"), data)
+            elif msg.msg_type == MessageType.PORT_VALUE_COMBINED and dev is not None and p:
                 port = p[0]
-                ps = dev.state.ports.get(port)
-                data = bytes(p[1:])
-                mode = ps.current_mode if ps else None
-                io_type = ps.io_type if ps else None
-                vf = ps.value_format(mode) if ps else None
-                values = vf.decode(data) if vf else []
-                decoded = codes.decode_value(io_type, mode, data, values) if io_type is not None else None
-                ev.update(port=port, mode=mode, io_type=io_type, values=values, decoded=decoded,
-                          io_name=ps.io_name if ps else None)
-                self.port_last[port] = {"ts": ev["ts"], "raw": data.hex(" "), "text": decoded or text,
-                                        "mode": mode, "values": values}
-                self._track_accessories(io_type, mode, data)
+                modes = ev.get("modes") or {}
+                self.port_last[port] = {"ts": ev["ts"], "raw": " / ".join(m["data"] for m in modes.values()),
+                                        "text": ev.get("decoded") or text, "mode": None,
+                                        "values": [m["values"] for m in modes.values()]}
+                for mode_text, m in modes.items():
+                    self._track_accessories(ev.get("io_type"), int(mode_text), bytes.fromhex(m["data"]))
             elif msg.msg_type == MessageType.HUB_PROPERTIES and len(p) >= 2 and p[1] == HubPropertyOperation.UPDATE:
-                prop = p[0]
-                ev.update(prop=lwp3.enum_name(HubProperty, prop), value=lwp3.decode_hub_property(prop, p[2:]))
-                if prop == HubProperty.BATTERY_VOLTAGE:
+                if p[0] == HubProperty.BATTERY_VOLTAGE:
                     self.battery = int(p[2]) if len(p) > 2 else None
             elif msg.msg_type == MessageType.PORT_INPUT_FORMAT_SINGLE and len(p) >= 7:
                 port, mode, notify = p[0], p[1], bool(p[6])

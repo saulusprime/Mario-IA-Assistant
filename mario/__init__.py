@@ -5,7 +5,7 @@ viene importato solo quando serve, cosi' i test offline girano anche senza bleak
 """
 from . import codes, lwp3  # noqa: F401
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["MarioDevice", "LWPError", "lwp3", "codes"]
 
 

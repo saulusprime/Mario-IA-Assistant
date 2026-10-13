@@ -129,8 +129,10 @@ def tile_family(code: int) -> str:
 
 
 def event_data(ev: dict) -> bytes:
-    """Byte del valore di porta: da `data` (CLI) o dal messaggio intero `raw` (dashboard)."""
+    """Byte del valore di porta: da `data` (byte o esadecimale) o dal messaggio intero `raw` (dashboard)."""
     data = ev.get("data")
+    if isinstance(data, str):
+        return bytes.fromhex(data.replace(" ", ""))
     if data is not None:
         return bytes(data)
     raw = ev.get("raw") or ""
@@ -224,6 +226,12 @@ class IntentMapper:
                 out += self._scanner(le16(data[0:2]), le16(data[2:4]), ts, bool(ev.get("settled")))
             elif io_type == codes.IO_MARIO_EVENTS and mode == 2 and len(data) >= 4:
                 out += self._game_event(le16(data[0:2]), le16(data[2:4]), ts)
+        elif etype == "PORT_VALUE_COMBINED":
+            # modalità combinata: ogni modo ricomposto vale come un valore singolo
+            for mode_text, info in (ev.get("modes") or {}).items():
+                sub = {"ts": ts, "type": "PORT_VALUE_SINGLE", "io_type": ev.get("io_type"), "mode": int(mode_text),
+                       "data": info.get("data"), "settled": ev.get("settled")}
+                out += [i for i in self.feed(sub)]
         elif etype == "HUB_PROPERTIES":
             prop, value = ev.get("prop"), ev.get("value")
             if prop == "BUTTON" and value in (True, 1):
@@ -326,13 +334,10 @@ class IntentMapper:
 def event_from_message(dev, msg) -> Optional[dict]:
     """Costruisce, da un `lwp3.Message` ricevuto da `MarioDevice`, lo stesso dizionario che produce
     il worker della dashboard (solo i campi che servono al mapper)."""
-    from ..lwp3 import HubProperty, HubPropertyOperation, MessageType, decode_hub_property, enum_name
+    from ..lwp3 import HubPropertyOperation, MessageType
     p = msg.payload
-    if msg.msg_type == MessageType.PORT_VALUE_SINGLE and p:
-        io_type, mode, _vf, _scale = dev._port_lookup(p[0])
-        return {"ts": time.time(), "type": "PORT_VALUE_SINGLE", "port": p[0], "io_type": io_type, "mode": mode,
-                "data": bytes(p[1:]), "raw": msg.raw.hex(" ")}
+    if msg.msg_type in (MessageType.PORT_VALUE_SINGLE, MessageType.PORT_VALUE_COMBINED) and p:
+        return dev.state.event(msg, "")
     if msg.msg_type == MessageType.HUB_PROPERTIES and len(p) >= 2 and p[1] == HubPropertyOperation.UPDATE:
-        return {"ts": time.time(), "type": "HUB_PROPERTIES", "prop": enum_name(HubProperty, p[0]),
-                "value": decode_hub_property(p[0], p[2:]), "raw": msg.raw.hex(" ")}
+        return dev.state.event(msg, "")
     return None
