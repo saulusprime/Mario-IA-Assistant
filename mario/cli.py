@@ -946,16 +946,39 @@ def cmd_tool(args) -> int:  # raggiunto solo se main() non ha già smistato lo s
     return run_tool(args.command, args.tool_args)
 
 
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
 def cmd_web(args) -> int:
-    """Avvia la dashboard web (Flask). Gira sull'host perché usa BlueZ."""
+    """Avvia la dashboard web. Gira sull'host perché usa BlueZ. Server: waitress se installato
+    (`pip install waitress`), altrimenti quello di sviluppo di Flask. Oltre 127.0.0.1 l'accesso è
+    protetto da un token (generato se non indicato)."""
+    import importlib.util
+    import secrets
     import webbrowser
     from .web import create_app
-    app = create_app(db_path=args.db, adapter=args.adapter, pair=not args.no_pair)
+    token = args.token or os.environ.get("MARIO_WEB_TOKEN", "")
+    exposed = args.host not in LOOPBACK_HOSTS
+    if exposed and not token and not args.no_token:
+        token = secrets.token_urlsafe(12)
     url = f"http://{args.host}:{args.port}/"
-    print(f"Dashboard LEGO Mario su {url}  (Ctrl+C per uscire)", file=sys.stderr)
+    app = create_app(db_path=args.db, adapter=args.adapter, pair=not args.no_pair, token=token or None)
+    server = args.server
+    if server == "auto":
+        server = "waitress" if importlib.util.find_spec("waitress") else "flask"
+    print(f"Dashboard LEGO Mario su {url}  (server {server}, Ctrl+C per uscire)", file=sys.stderr)
+    if token:
+        print(f"Accesso protetto: apri {url}?token={token}  oppure inserisci il token nella pagina di accesso "
+              f"(--token per sceglierlo, --no-token per disattivare)", file=sys.stderr)
+    elif exposed:
+        print("Attenzione: dashboard raggiungibile dalla rete senza token (--no-token).", file=sys.stderr)
     if args.open:
-        webbrowser.open(url)
-    app.run(host=args.host, port=args.port, threaded=True, debug=False, use_reloader=False)
+        webbrowser.open(url + (f"?token={token}" if token else ""))
+    if server == "waitress":
+        from waitress import serve
+        serve(app, host=args.host, port=args.port, threads=args.threads, ident="mario-dashboard")
+    else:
+        app.run(host=args.host, port=args.port, threaded=True, debug=False, use_reloader=False)
     return 0
 
 
@@ -1054,11 +1077,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-v", "--verbose", action="store_true", help="mostra anche i comportamenti (volume, busy) riga per riga")
     p.set_defaults(func=cmd_assistant)
 
-    p = sub.add_parser("web", help="avvia la dashboard web (Flask)")
-    p.add_argument("--host", default="127.0.0.1")
+    p = sub.add_parser("web", help="avvia la dashboard web")
+    p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 per esporla sulla rete locale (con token)")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--db", help="percorso del database SQLite (default data/mario.sqlite3)")
     p.add_argument("--open", action="store_true", help="apre il browser")
+    p.add_argument("--server", choices=["auto", "flask", "waitress"], default="auto",
+                   help="auto = waitress se installato (pip install waitress), altrimenti il server di sviluppo Flask")
+    p.add_argument("--threads", type=int, default=16, help="thread di waitress (ogni pagina aperta tiene un flusso SSE)")
+    p.add_argument("--token", help="token di accesso (anche MARIO_WEB_TOKEN); generato se l'host non è locale")
+    p.add_argument("--no-token", action="store_true", help="nessun token anche se esposta oltre 127.0.0.1")
     p.set_defaults(func=cmd_web)
 
     p = sub.add_parser("raw", help="invia byte grezzi e mostra le risposte")

@@ -1,0 +1,610 @@
+{
+ "_descrizione": "Tabelle di LEGO Mario (fw 6.5.01). Chiavi esadecimali. 'fonte': community (bricklife, legomario.py, pyLegoMario, node-poweredup) o 'dal vivo' (questo progetto); 'verificato': confermato con il Mario dell'utente, con la data.",
+ "pants": {
+  "0x00": {
+   "name": "nessun pantalone",
+   "source": "bricklife",
+   "verified": "12/10/2026"
+  },
+  "0x03": {
+   "name": "Ape (Bee)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x05": {
+   "name": "Luigi",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x06": {
+   "name": "Rana (Frog)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x0A": {
+   "name": "Tanuki (Tanooki)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x0C": {
+   "name": "Elica (Propeller)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x11": {
+   "name": "Gatto (Cat)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x12": {
+   "name": "Fuoco (Fire)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x14": {
+   "name": "Pinguino (Penguin)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x18": {
+   "name": "Peach",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x21": {
+   "name": "Mario normale",
+   "source": "bricklife",
+   "verified": "12/10/2026"
+  },
+  "0x22": {
+   "name": "Costruttore (Builder)",
+   "source": "bricklife",
+   "verified": null
+  },
+  "0x23": {
+   "name": "Ghiaccio (Ice)",
+   "source": "bricklife",
+   "verified": null
+  }
+ },
+ "gestures": {
+  "0x0001": {
+   "name": "urto (bump)",
+   "source": "legomario.py",
+   "verified": "12/10/2026"
+  },
+  "0x0010": {
+   "name": "scossa (shake)",
+   "source": "legomario.py",
+   "verified": "12/10/2026"
+  },
+  "0x0100": {
+   "name": "rotazione (turning)",
+   "source": "legomario.py",
+   "verified": "12/10/2026"
+  },
+  "0x0200": {
+   "name": "movimento rapido (fast move)",
+   "source": "legomario.py",
+   "verified": null
+  },
+  "0x0400": {
+   "name": "traslazione (translation)",
+   "source": "legomario.py",
+   "verified": null
+  },
+  "0x0800": {
+   "name": "caduta / impatto forte (high fall crash)",
+   "source": "legomario.py",
+   "verified": null
+  },
+  "0x1000": {
+   "name": "cambio di direzione",
+   "source": "legomario.py",
+   "verified": null
+  },
+  "0x2000": {
+   "name": "inversione (reverse)",
+   "source": "legomario.py",
+   "verified": "12/10/2026"
+  },
+  "0x8000": {
+   "name": "salto (jump)",
+   "source": "legomario.py",
+   "verified": "12/10/2026"
+  }
+ },
+ "barcodes": {
+  "0x0002": {
+   "name": "Goomba (verificato dal vivo il 12/10/2026 con due basette; stesso codice: Fly Guy, Foo, Ant Trooper, Ninji, Para-Goomba, Goombrat, Bone Goomba, Bullet Bill, Swoop, Scuttlebug)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": "12/10/2026"
+  },
+  "0x0003": {
+   "name": "Shy Guy / Tipo Timido (secondo legomario.py)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0004": {
+   "name": "Womp (Whomp)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x000B": {
+   "name": "LEGO NES",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x000D": {
+   "name": "Twimp (Thwimp)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x000E": {
+   "name": "Bob-omba",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0014": {
+   "name": "Rotazione (piattaforma rotante: girando Mario conta i giri e dà monete; per legomario.py: Refresh; verificata il 12/10/2026)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": "12/10/2026"
+  },
+  "0x0015": {
+   "name": "Blocco tempo",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x001D": {
+   "name": "Bowser",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0020": {
+   "name": "Toadette",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0021": {
+   "name": "Tesoro 1",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0023": {
+   "name": "Fungo velenoso",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0029": {
+   "name": "Blocco ?",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x002B": {
+   "name": "Tesoro 2",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x002C": {
+   "name": "Ponte scorrevole",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x002E": {
+   "name": "Nuvola (zattera di nuvole del set 71360, verificata dal vivo il 12/10/2026)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": "12/10/2026"
+  },
+  "0x0030": {
+   "name": "Nella (Buzzy Beetle) (stesso codice: Para-Beetle, Mechakoopa)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0031": {
+   "name": "Piattaforma mobile",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0035": {
+   "name": "Fiammetto (Lava Bubble)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0037": {
+   "name": "Twomp (Thwomp)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x003C": {
+   "name": "Toad",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x005B": {
+   "name": "Blocco POW",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x005F": {
+   "name": "Interruttore P",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0060": {
+   "name": "Boom Boom",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0063": {
+   "name": "Super Fungo",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x006A": {
+   "name": "Castello di Peach",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x006B": {
+   "name": "Occhio di pietra",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x006E": {
+   "name": "Marghibruco (Pokey)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x006F": {
+   "name": "Piattaforma scorrevole",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0079": {
+   "name": "Pipistrello Swoop (secondo legomario.py)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x007B": {
+   "name": "Super Stella",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x007E": {
+   "name": "Pianta Piranha",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0080": {
+   "name": "Tesoro 3",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0081": {
+   "name": "Peeper",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0088": {
+   "name": "Re Boo",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0089": {
+   "name": "Cheep Cheep (stesso codice: Urchin, Spiny Cheep Cheep, Torpedo Ted)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x008B": {
+   "name": "Pinguino piccolo",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0091": {
+   "name": "Chiave inglese",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0092": {
+   "name": "Ampere (Amp)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0099": {
+   "name": "Bowser Jr.",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x009F": {
+   "name": "Yoshi rosa",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x00A0": {
+   "name": "Ingranaggio",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x00AB": {
+   "name": "Altalena",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x00AE": {
+   "name": "Boo",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x00AF": {
+   "name": "Start Luigi (tubo di partenza)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x00B7": {
+   "name": "Traguardo (bandiera)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x00B8": {
+   "name": "Start Mario (tubo di partenza)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": "11/10/2026"
+  },
+  "0x00F2": {
+   "name": "Bulbo (Bully)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x00F5": {
+   "name": "Bowser Jr. nel Clown Koopa (letta dal vivo il 12/10/2026: icona del Clown Koopa; pyLegoMario dà Bowser Jr. = 0x99, forse basetta di un altro set)",
+   "source": "dal vivo",
+   "verified": "12/10/2026"
+  },
+  "0x00F4": {
+   "name": "Forziere di monete",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x012F": {
+   "name": "Dondolo (Swing)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0136": {
+   "name": "Regalo",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x013D": {
+   "name": "Ruboniglio (Nabbit)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0144": {
+   "name": "Frutto rosso",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x014B": {
+   "name": "Lemmy",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x014D": {
+   "name": "Start Peach (tubo di partenza)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0154": {
+   "name": "Martelkoopa (Hammer Bro)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x015B": {
+   "name": "Carrello minerario (set 71425 Corsa nella miniera di Diddy Kong; letto dal vivo il 12/10/2026)",
+   "source": "dal vivo",
+   "verified": "12/10/2026"
+  },
+  "0x015E": {
+   "name": "Bowser gigante (The Mighty Bowser)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  },
+  "0x0160": {
+   "name": "Aereo (set 71425 Corsa nella miniera di Diddy Kong; dà 6 o 8 monete circa 3 s dopo la lettura; letto dal vivo il 12/10/2026)",
+   "source": "dal vivo",
+   "verified": "12/10/2026"
+  },
+  "0x0164": {
+   "name": "Strutzi (Birdo)",
+   "source": "pyLegoMario / legomario.py",
+   "verified": null
+  }
+ },
+ "colors": {
+  "0x0013": {
+   "name": "bianco",
+   "source": "bricklife / node-poweredup",
+   "verified": "12/10/2026"
+  },
+  "0x0015": {
+   "name": "rosso (lava / fuoco)",
+   "source": "bricklife / node-poweredup",
+   "verified": "12/10/2026"
+  },
+  "0x0017": {
+   "name": "blu (acqua)",
+   "source": "bricklife / node-poweredup",
+   "verified": "12/10/2026"
+  },
+  "0x0018": {
+   "name": "giallo (deserto / sabbia)",
+   "source": "bricklife / node-poweredup",
+   "verified": "12/10/2026"
+  },
+  "0x001A": {
+   "name": "nero",
+   "source": "bricklife / node-poweredup",
+   "verified": "12/10/2026"
+  },
+  "0x0025": {
+   "name": "verde (erba)",
+   "source": "bricklife / node-poweredup",
+   "verified": "12/10/2026"
+  },
+  "0x006A": {
+   "name": "marrone",
+   "source": "bricklife / node-poweredup",
+   "verified": null
+  },
+  "0x010C": {
+   "name": "viola (veleno)",
+   "source": "bricklife / node-poweredup",
+   "verified": null
+  },
+  "0x0138": {
+   "name": "nougat (torre)",
+   "source": "bricklife / node-poweredup",
+   "verified": "12/10/2026"
+  },
+  "0x0142": {
+   "name": "ciano (ghiaccio)",
+   "source": "bricklife / node-poweredup",
+   "verified": null
+  }
+ },
+ "game_events": {
+  "0x3861": {
+   "name": "contatore (1..8 in sequenza, probabilmente monete raccolte)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3862": {
+   "name": "evento 0x38/0x62 (valori 0, 2 e 4; 0 quasi a ogni basetta letta o sollevata, 4 alla connessione delle 17:39 del 12/10)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3857": {
+   "name": "evento 0x38/0x57 (valori 0 e 1 osservati)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3866": {
+   "name": "evento 0x38/0x66 (valori 0 e 1 osservati)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3803": {
+   "name": "evento 0x38/0x03 (0 subito dopo alcune basette, 100 alla fine del livello e poco dopo: forse avanzamento di un'animazione)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x200E": {
+   "name": "evento 0x20/0x0E (valore 2 osservato)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x1802": {
+   "name": "evento 0x18/0x02 (valori 1 e 2 osservati)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x0000": {
+   "name": "evento nullo 0x00/0x00",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x0113": {
+   "name": "basetta letta: il valore è il codice del barcode (visto 184 = 0xB8 Start Mario)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x1801": {
+   "name": "evento 0x18/0x01 (valori 0 e 1; 0 all'uscita dal livello, 12/10)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x1803": {
+   "name": "evento 0x18/0x03 (12/10: 4 subito dopo Start, 3 a fine livello, 0 fuori dal livello: forse fase di gioco o vite)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x2009": {
+   "name": "evento 0x20/0x09 (valore 1 osservato)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x200C": {
+   "name": "evento 0x20/0x0C (valori 2 e 4 osservati)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3004": {
+   "name": "evento 0x30/0x04 (sempre 601: visto al tempo scaduto del 12/10 17:33 e 8 s dopo la basetta Clown Koopa alle 18:10 senza fine livello; significato da chiarire)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3812": {
+   "name": "evento 0x38/0x12 (12/10: 2 a fine livello, 1 fuori dal livello: forse stato del gioco)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3852": {
+   "name": "evento 0x38/0x52 (valore 0, nella sequenza di fine livello)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x386B": {
+   "name": "totale monete del livello (12/10 18:25: 1 dopo un Goomba, 7 dopo la basetta 0x0160 che ne dà 6, 8 dopo un altro nemico)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x386E": {
+   "name": "evento 0x38/0x6E (valore 0, nella sequenza di fine livello)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x2042": {
+   "name": "nemici sconfitti nel livello: 1, 2, 3 a ogni basetta con codice Goomba (0x0002)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x3712": {
+   "name": "evento 0x37/0x12 = 1 circa 1 s dopo ogni nemico sconfitto (fine dell'animazione dello schiacciamento?)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x20C2": {
+   "name": "monete date dalla basetta appena letta (6 o 8 con l'aereo 0x0160 del set 71425, circa 3 s dopo), il totale va in 0x386B",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x2022": {
+   "name": "contatore legato alla basetta Rotazione 0x0014: 1, 2, 3 mentre Mario viene fatto girare (giri contati?)",
+   "source": "dal vivo",
+   "verified": "12/10/2026",
+   "hypothesis": true
+  }
+ }
+}

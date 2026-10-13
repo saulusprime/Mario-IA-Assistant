@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import concurrent.futures
+import csv
+import hmac
+import io
 import json
 import queue
 import time
@@ -9,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from bleak.exc import BleakError
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 
 from .. import codes, lwp3
 from ..assistant import AssistantBusy
@@ -30,6 +33,7 @@ MENU = [
     ("scan", "Scansione", "/scan"),
     ("devices", "Dispositivi", "/devices"),
     ("monitor", "Monitor", "/monitor"),
+    ("events", "Eventi", "/events"),
     ("console", "Console", "/console"),
     ("accessories", "Accessori", "/accessories"),
     ("assistant", "Assistente", "/assistant"),
@@ -97,11 +101,20 @@ def capabilities_text(caps: dict) -> str:
     return "\n".join(lines)
 
 
+EVENT_TYPES = ["PORT_VALUE_SINGLE", "PORT_VALUE_COMBINED", "HUB_PROPERTIES", "HUB_ATTACHED_IO", "HUB_ACTIONS",
+               "HUB_ALERTS", "GENERIC_ERROR"]
+TOKEN_COOKIE = "mario_token"
+
+
 def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = None,
-               pair: bool = True, start_worker: bool = True, quiet_assistant: bool = False) -> Flask:
+               pair: bool = True, start_worker: bool = True, quiet_assistant: bool = False,
+               token: Optional[str] = None) -> Flask:
+    """`token`: se impostato, ogni pagina e API richiede il token (cookie dopo /login, ?token=... o
+    header Authorization: Bearer). Serve quando la dashboard viene esposta oltre 127.0.0.1."""
     load_dotenv()
     app = Flask(__name__)
     app.json.ensure_ascii = False
+    app.config["MARIO_TOKEN"] = token or ""
     db = Database(db_path or DEFAULT_DB)
     db.seed_accessories(codes.PANTS, codes.BARCODES, codes.COLORS)
     worker = BleWorker(db, adapter=adapter, pair=pair)
@@ -114,7 +127,45 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
 
     @app.context_processor
     def inject_globals():
-        return {"menu": MENU, "kind_labels": KIND_LABELS, "fmt_time": fmt_time}
+        return {"menu": MENU, "kind_labels": KIND_LABELS, "fmt_time": fmt_time, "protected": bool(app.config["MARIO_TOKEN"])}
+
+    # ----- accesso con token (solo se configurato) ---------------------------------------------
+
+    def token_given() -> str:
+        auth = request.headers.get("Authorization", "")
+        return (request.args.get("token") or request.cookies.get(TOKEN_COOKIE)
+                or (auth[7:].strip() if auth.lower().startswith("bearer ") else "") or "")
+
+    def with_cookie(resp, value: str):
+        resp.set_cookie(TOKEN_COOKIE, value, max_age=30 * 24 * 3600, httponly=True, samesite="Lax")
+        return resp
+
+    @app.before_request
+    def require_token():
+        expected = app.config["MARIO_TOKEN"]
+        if not expected or request.endpoint in ("static", "page_login"):
+            return None
+        if hmac.compare_digest(token_given(), expected):
+            if request.args.get("token") and request.method == "GET" and not request.path.startswith("/api/"):
+                return with_cookie(redirect(request.path), expected)  # il token esce dall'URL e resta nel cookie
+            return None
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": "accesso negato: token mancante o errato"}), 401
+        return redirect(url_for("page_login", next=request.path))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def page_login():
+        expected = app.config["MARIO_TOKEN"]
+        error = ""
+        if not expected:
+            return redirect("/")
+        if request.method == "POST":
+            given = (request.form.get("token") or "").strip()
+            if hmac.compare_digest(given, expected):
+                target = request.form.get("next") or "/"
+                return with_cookie(redirect(target if target.startswith("/") else "/"), expected)
+            error = "token errato"
+        return render_template("login.html", page="login", error=error, next=request.args.get("next", "/")), (200 if not error else 403)
 
     def body() -> dict:
         return request.get_json(silent=True) or request.form.to_dict() or {}
@@ -171,6 +222,11 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @app.get("/monitor")
     def page_monitor():
         return render_template("monitor.html", page="monitor", status=worker.status())
+
+    @app.get("/events")
+    def page_events():
+        return render_template("events.html", page="events", devices=db.list_devices(), types=EVENT_TYPES,
+                               stats=db.event_stats())
 
     @app.get("/console")
     def page_console():
@@ -288,18 +344,57 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
         return Response(generate(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+    def history_filters() -> dict:
+        a = request.args
+        port, device_id = a.get("port"), a.get("device_id")
+        return {"port": int(port) if port not in (None, "") else None, "type_name": a.get("type") or None,
+                "device_id": int(device_id) if device_id not in (None, "") else None, "query": a.get("q", ""),
+                "since_id": int(a.get("since_id", 0) or 0)}
+
     @app.get("/api/history")
     @api
     def api_history():
-        a = request.args
-        port = a.get("port")
-        device_id = a.get("device_id")
-        rows = db.list_events(since_id=int(a.get("since_id", 0)), limit=int(a.get("limit", 200)),
-                              port=int(port) if port not in (None, "") else None,
-                              type_name=a.get("type") or None,
-                              device_id=int(device_id) if device_id not in (None, "") else None,
-                              query=a.get("q", ""))
+        rows = db.list_events(limit=int(request.args.get("limit", 200)), **history_filters())
         return ok(events=rows, stats=db.event_stats())
+
+    def export_rows() -> list[dict]:
+        a = request.args
+        extra = {}
+        for key, name in (("from", "since_ts"), ("to", "until_ts")):
+            if a.get(key):
+                try:
+                    extra[name] = float(a[key])
+                except ValueError:
+                    extra[name] = time.mktime(time.strptime(a[key][:16], "%Y-%m-%dT%H:%M"))
+        return db.iter_events(limit=int(a.get("limit", 50000)), **history_filters(), **extra)
+
+    @app.get("/api/history.csv")
+    @api
+    def api_history_csv():
+        buf = io.StringIO()
+        writer = csv.writer(buf, delimiter=";")
+        writer.writerow(["id", "data_ora", "ts", "dispositivo", "tipo", "porta", "modo", "grezzo", "testo", "decodifica"])
+        for r in export_rows():
+            writer.writerow([r["id"], fmt_time(r["ts"]), r["ts"], r["device_id"], r["type"], r["port"], r["mode"],
+                             r["raw"], r["text"], r["decoded"]])
+        name = f"mario-eventi-{time.strftime('%Y%m%d-%H%M%S')}.csv"
+        return Response("\ufeff" + buf.getvalue(), mimetype="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f"attachment; filename={name}"})
+
+    @app.get("/api/history.json")
+    @api
+    def api_history_json():
+        name = f"mario-eventi-{time.strftime('%Y%m%d-%H%M%S')}.json"
+        return Response(json.dumps(export_rows(), ensure_ascii=False, indent=1), mimetype="application/json",
+                        headers={"Content-Disposition": f"attachment; filename={name}"})
+
+    @app.get("/api/charts")
+    @api
+    def api_charts():
+        device_id = request.args.get("device_id")
+        dev_id = int(device_id) if device_id not in (None, "") else None
+        return ok(battery=db.battery_series(device_id=dev_id), gestures=db.gesture_histogram(dev_id),
+                  tiles=db.tile_counts(dev_id), types=db.event_type_counts(dev_id), stats=db.event_stats())
 
     # ----- API: porte e comandi ------------------------------------------------------------
 
@@ -417,7 +512,9 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @api
     def api_device_update(device_id: int):
         d = body()
-        fields = {k: d[k] for k in ("notes", "name") if k in d}
+        fields = {k: d[k] for k in ("notes", "name", "volume") if k in d}
+        if "volume" in fields:
+            fields["volume"] = int(fields["volume"])
         return ok(updated=db.update_device(device_id, **fields))
 
     @app.delete("/api/devices/<int:device_id>")

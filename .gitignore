@@ -1,8 +1,8 @@
 .venv/
 __pycache__/
 *.pyc
-logs/
-data/
+/logs/
+/data/
 .env
 # cloni di repository di terze parti (fonti consultate), non fanno parte del progetto
 LEGO-Mario-Reveng/

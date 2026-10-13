@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}Accesso{% endblock %}
+{% block content %}
+<section class="card" style="max-width:28em; margin:2rem auto">
+  <h1>Accesso alla dashboard</h1>
+  <p class="muted">Questa dashboard è esposta oltre il PC: serve il token mostrato all'avvio del server (`./run.sh web --host 0.0.0.0`).</p>
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="actions"><input type="password" name="token" placeholder="token" style="flex:1" autofocus> <button class="primary" type="submit">Entra</button></div>
+    {% if error %}<p id="login-error" style="color:var(--red)">{{ error }}</p>{% endif %}
+  </form>
+</section>
+{% endblock %}

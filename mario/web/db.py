@@ -10,6 +10,7 @@ Tabelle:
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 import time
@@ -265,6 +266,94 @@ class Database:
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(max(1, min(int(limit), 2000)))
         return self._all(sql, params)
+
+    def iter_events(self, limit: int = 50000, port: Optional[int] = None, type_name: Optional[str] = None,
+                    device_id: Optional[int] = None, query: str = "", since_id: int = 0,
+                    since_ts: Optional[float] = None, until_ts: Optional[float] = None) -> list[dict]:
+        """Eventi in ordine cronologico per l'esportazione (limite alto, stessi filtri di list_events)."""
+        sql, params = "SELECT * FROM events WHERE id>?", [since_id]
+        if port is not None:
+            sql += " AND port=?"
+            params.append(port)
+        if type_name:
+            sql += " AND type=?"
+            params.append(type_name)
+        if device_id is not None:
+            sql += " AND device_id=?"
+            params.append(device_id)
+        if query:
+            sql += " AND (text LIKE ? OR decoded LIKE ?)"
+            params += [f"%{query}%"] * 2
+        if since_ts is not None:
+            sql += " AND ts>=?"
+            params.append(since_ts)
+        if until_ts is not None:
+            sql += " AND ts<=?"
+            params.append(until_ts)
+        sql += " ORDER BY id ASC LIMIT ?"
+        params.append(max(1, min(int(limit), 200000)))
+        return self._all(sql, params)
+
+    _PCT = re.compile(r": (\d+) %")
+    _MV = re.compile(r"circa (\d+) mV")
+    _GESTURE_TAIL = re.compile(r"\s*\(0x[0-9A-Fa-f]{4}\)\s*$")
+
+    def battery_series(self, limit: int = 2000, device_id: Optional[int] = None) -> dict:
+        """Percentuale (proprietà BATTERY_VOLTAGE) e millivolt (porta 6) nel tempo, dal più vecchio."""
+        sql = ("SELECT ts, type, text, decoded FROM events WHERE ((type='HUB_PROPERTIES' AND text LIKE 'Proprietà BATTERY_VOLTAGE%')"
+               " OR (port=6 AND decoded LIKE 'batteria circa%'))")
+        params: list = []
+        if device_id is not None:
+            sql += " AND device_id=?"
+            params.append(device_id)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(max(1, min(int(limit), 20000)))
+        percent, millivolt = [], []
+        for r in reversed(self._all(sql, params)):
+            if r["type"] == "HUB_PROPERTIES":
+                m = self._PCT.search(r["text"] or "")
+                if m:
+                    percent.append({"ts": r["ts"], "value": int(m.group(1))})
+            else:
+                m = self._MV.search(r["decoded"] or "")
+                if m:
+                    millivolt.append({"ts": r["ts"], "value": int(m.group(1))})
+        return {"percent": percent, "millivolt": millivolt}
+
+    def gesture_histogram(self, device_id: Optional[int] = None) -> dict[str, int]:
+        sql, params = "SELECT decoded FROM events WHERE port=0 AND decoded LIKE 'gesto:%' AND decoded NOT LIKE 'gesto: nessuno%'", []
+        if device_id is not None:
+            sql += " AND device_id=?"
+            params.append(device_id)
+        counts: dict[str, int] = {}
+        for r in self._all(sql, params):
+            body = self._GESTURE_TAIL.sub("", (r["decoded"] or "")[len("gesto:"):]).strip()
+            for name in body.split(", "):
+                name = name.strip()
+                if name:
+                    counts[name] = counts.get(name, 0) + 1
+        return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
+    def tile_counts(self, device_id: Optional[int] = None) -> dict[str, int]:
+        sql, params = "SELECT decoded FROM events WHERE port=1 AND decoded LIKE 'barcode 0x%'", []
+        if device_id is not None:
+            sql += " AND device_id=?"
+            params.append(device_id)
+        counts: dict[str, int] = {}
+        for r in self._all(sql, params):
+            part = (r["decoded"] or "").split(";", 1)[0]
+            name = part.split("= ", 1)[1] if "= " in part else part
+            name = name.split(" (", 1)[0].strip()
+            counts[name] = counts.get(name, 0) + 1
+        return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
+    def event_type_counts(self, device_id: Optional[int] = None) -> dict[str, int]:
+        sql, params = "SELECT type, COUNT(*) AS n FROM events", []
+        if device_id is not None:
+            sql += " WHERE device_id=?"
+            params.append(device_id)
+        sql += " GROUP BY type ORDER BY n DESC"
+        return {r["type"]: r["n"] for r in self._all(sql, params)}
 
     def prune_events(self, max_rows: int = 50000) -> int:
         return self._exec("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)",

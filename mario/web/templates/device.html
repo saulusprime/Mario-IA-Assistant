@@ -27,6 +27,15 @@
         <button class="ghost" data-unpair="{{ device.last_address or '' }}">Dimentica associazione</button>
       </div>
       <p id="dev-msg" class="muted"></p>
+      <h2>Nome e volume <small class="muted">(con Mario connesso)</small></h2>
+      <div class="actions">
+        <label>Nome Bluetooth <input type="text" id="dev-name-new" maxlength="14" value="{{ device.name or '' }}" data-device-id="{{ device.id }}"></label>
+        <button id="dev-name-set">Rinomina</button>
+      </div>
+      <div class="actions">
+        <label>Volume <input type="range" id="dev-vol" min="0" max="100" value="{{ device.volume if device.volume is not none else 50 }}"> <span id="dev-vol-val">{{ device.volume if device.volume is not none else 50 }}</span> %</label>
+        <button id="dev-vol-set">Imposta volume</button>
+      </div>
     </div>
   </div>
 </section>

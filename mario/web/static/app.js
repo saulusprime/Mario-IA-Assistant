@@ -106,11 +106,57 @@
   }
 
   if (page === "devices") {
+    const vol = $("#dev-vol"); if (vol) vol.addEventListener("input", () => { $("#dev-vol-val").textContent = vol.value; });
     document.addEventListener("click", async (ev) => {
       const b = ev.target.closest("button"); if (!b) return;
       if (b.dataset.deleteDevice) { if (confirm("Eliminare il dispositivo e i suoi eventi dal database?")) { await api("/api/devices/" + b.dataset.deleteDevice, "DELETE"); location.reload(); } }
       if (b.id === "dev-save-notes") { const ta = $("#dev-notes"); try { await api("/api/devices/" + ta.dataset.deviceId, "POST", { notes: ta.value }); flash($("#dev-msg"), "note salvate"); } catch (e) { flash($("#dev-msg"), e.message, true); } }
+      if (b.id === "dev-name-set") { const inp = $("#dev-name-new"); busy(b, true); try { const r = await api("/api/name", "POST", { name: inp.value }); await api("/api/devices/" + inp.dataset.deviceId, "POST", { name: r.name }); flash($("#dev-msg"), `nome impostato: ${r.name}`); } catch (e) { flash($("#dev-msg"), e.message, true); } finally { busy(b, false); } }
+      if (b.id === "dev-vol-set") { const inp = $("#dev-name-new"); busy(b, true); try { const r = await api("/api/volume", "POST", { level: vol.value }); await api("/api/devices/" + inp.dataset.deviceId, "POST", { volume: r.volume }); flash($("#dev-msg"), `volume impostato: ${r.volume} %`); } catch (e) { flash($("#dev-msg"), e.message, true); } finally { busy(b, false); } }
     });
+  }
+
+  if (page === "events") {
+    const msg = $("#evp-msg"), tbody = $("#evp-table tbody");
+    const isoToTs = (v) => v ? String(new Date(v).getTime() / 1000) : "";
+    function query(extra) {
+      const q = new URLSearchParams({ device_id: $("#evp-device").value, port: $("#evp-port").value, type: $("#evp-type").value, q: $("#evp-q").value, limit: $("#evp-limit").value });
+      const f = isoToTs($("#evp-from").value), t = isoToTs($("#evp-to").value); if (f) q.set("from", f); if (t) q.set("to", t);
+      Object.entries(extra || {}).forEach(([k, v]) => q.set(k, v));
+      return q;
+    }
+    async function loadTable() {
+      try { const r = await api("/api/history?" + query()); tbody.innerHTML = "";
+        r.events.forEach((e) => tbody.appendChild(eventRow(e, [fmtDate(e.ts), e.device_id ?? "", e.port ?? "", e.mode ?? "", esc(e.type), esc(e.decoded || e.text), `<code>${esc(e.raw)}</code>`])));
+        flash(msg, `${r.events.length} eventi mostrati, ${r.stats.total} in archivio`); } catch (e) { flash(msg, e.message, true); }
+    }
+    function drawBars(el, data, alt) {
+      el.innerHTML = ""; const entries = Object.entries(data || {}); const max = Math.max(1, ...entries.map(([, v]) => v));
+      if (!entries.length) { el.innerHTML = '<span class="muted">nessun dato</span>'; return; }
+      entries.slice(0, 16).forEach(([k, v]) => { el.insertAdjacentHTML("beforeend", `<span>${esc(k)}</span><div class="bar${alt ? " alt" : ""}" style="width:${Math.round(100 * v / max)}%"></div><span>${v}</span>`); });
+    }
+    function drawBattery(svg, series) {
+      const W = 600, H = 220, pad = 28; svg.innerHTML = "";
+      const all = [...series.percent, ...series.millivolt]; if (!all.length) { svg.innerHTML = '<text x="20" y="40" fill="#6b6f7a">nessun dato</text>'; return; }
+      const t0 = Math.min(...all.map((p) => p.ts)), t1 = Math.max(...all.map((p) => p.ts)) || t0 + 1;
+      const x = (ts) => pad + (W - 2 * pad) * (t1 > t0 ? (ts - t0) / (t1 - t0) : 0.5), y = (v) => H - pad - (H - 2 * pad) * Math.max(0, Math.min(100, v)) / 100;
+      let g = `<line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#ccc"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#ccc"/>`;
+      [0, 50, 100].forEach((v) => { g += `<text x="2" y="${y(v) + 4}" font-size="10" fill="#6b6f7a">${v}</text>`; });
+      const line = (pts, style) => pts.length ? `<polyline fill="none" ${style} points="${pts.map((p) => `${x(p.ts).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}"/>` : "";
+      g += line(series.percent.map((p) => ({ ts: p.ts, v: p.value })), 'stroke="#1f5fbf" stroke-width="2"');
+      g += line(series.millivolt.map((p) => ({ ts: p.ts, v: (p.value - 2000) / 13 })), 'stroke="#d7262c" stroke-width="1.5" stroke-dasharray="4 3"');
+      svg.innerHTML = g;
+      $("#chart-battery-info").textContent = `${series.percent.length} letture %, ${series.millivolt.length} letture mV, ${fmtDate(t0)} → ${fmtDate(t1)}`;
+    }
+    async function loadCharts() {
+      try { const r = await api("/api/charts?device_id=" + encodeURIComponent($("#evp-device").value));
+        drawBattery($("#chart-battery"), r.battery); drawBars($("#chart-gestures"), r.gestures); drawBars($("#chart-tiles"), r.tiles, true); drawBars($("#chart-types"), r.types); } catch (e) { flash(msg, e.message, true); }
+    }
+    $("#evp-load").addEventListener("click", () => { loadTable(); loadCharts(); });
+    $("#evp-csv").addEventListener("click", () => { location.href = "/api/history.csv?" + query({ limit: 50000 }); });
+    $("#evp-json").addEventListener("click", () => { location.href = "/api/history.json?" + query({ limit: 50000 }); });
+    $("#evp-device").addEventListener("change", loadCharts);
+    loadTable(); loadCharts();
   }
 
   if (page === "monitor") {

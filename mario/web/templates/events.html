@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Eventi{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Eventi salvati <small class="muted">({{ stats.total }} in archivio{% if stats.first %}, dal {{ fmt_time(stats.first) }}{% endif %})</small></h1>
+  <div class="actions">
+    <label>Dispositivo <select id="evp-device"><option value="">tutti</option>{% for d in devices %}<option value="{{ d.id }}">{{ d.name or d.identity }}</option>{% endfor %}</select></label>
+    <label>Porta <select id="evp-port"><option value="">tutte</option>{% for p in range(0, 8) %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></label>
+    <label>Tipo <select id="evp-type"><option value="">tutti</option>{% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select></label>
+    <label>Testo <input type="text" id="evp-q" placeholder="es. Goomba, salto, 0x386B" style="width:12em"></label>
+    <label>Dal <input type="datetime-local" id="evp-from"></label>
+    <label>Al <input type="datetime-local" id="evp-to"></label>
+    <label>Limite <input type="number" id="evp-limit" value="200" min="1" max="2000" style="width:5em"></label>
+    <button id="evp-load" class="primary">Carica</button>
+    <button id="evp-csv">Esporta CSV</button>
+    <button id="evp-json" class="ghost">Esporta JSON</button>
+    <span id="evp-msg" class="muted"></span>
+  </div>
+  <table class="events" id="evp-table"><thead><tr><th>Data</th><th>Disp.</th><th>Porta</th><th>Modo</th><th>Tipo</th><th>Decodifica</th><th>Grezzo</th></tr></thead><tbody></tbody></table>
+</section>
+<div class="grid two">
+  <section class="card">
+    <h1>Batteria nel tempo <small class="muted" id="chart-battery-info"></small></h1>
+    <svg id="chart-battery" class="chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
+    <p class="hint">Linea piena: percentuale (proprietà BATTERY_VOLTAGE); tratteggiata: millivolt della porta 6 riportati su 0–100 (2000–3300 mV).</p>
+  </section>
+  <section class="card">
+    <h1>Gesti <small class="muted">(porta 0, modo GEST)</small></h1>
+    <div id="chart-gestures" class="bars"></div>
+  </section>
+  <section class="card">
+    <h1>Basette lette <small class="muted">(porta 1)</small></h1>
+    <div id="chart-tiles" class="bars"></div>
+  </section>
+  <section class="card">
+    <h1>Eventi per tipo</h1>
+    <div id="chart-types" class="bars"></div>
+  </section>
+</div>
+{% endblock %}

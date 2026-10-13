@@ -1,0 +1,11 @@
+# Regola udev per il Bluetooth Broadcom del MacBook (05ac:8290): niente autosospensione USB.
+# Senza, BlueZ interrompe il collegamento LE a Mario subito dopo averlo stabilito (vedi README,
+# "Problemi di connessione"). L'opzione del modulo in /etc/modprobe.d/btusb.conf
+# (options btusb enable_autosuspend=0) fa lo stesso al caricamento del driver; questa regola
+# copre anche il caso in cui il parametro non venga applicato (driver già caricato dall'initrd).
+#
+# Installazione (serve sudo):
+#   sudo cp tools/99-mario-btusb.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=usb
+#   cat /sys/bus/usb/devices/1-3/power/control     # atteso: on
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", ATTR{idProduct}=="8290", ATTR{power/control}="on"
