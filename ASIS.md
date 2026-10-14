@@ -149,7 +149,12 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   messaggio in WAV. Provato sull'host: frasi pronte in 0,2–0,35 s più 0,16–0,19 s di effetto, altezza
   misurata 207 Hz come previsto; messaggio di 8,5 s suonato dal PC. Lo stile c'è anche nelle
   impostazioni dell'assistente. Non ancora valutato a orecchio dall'utente.
-- **Test**: 152 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Voce stile Mario nella sessione con il modello (14/10)**: `assistant --effect mario` e l'impostazione
+  "Effetto: stile Mario"; il modello può far suonare le esclamazioni originali scrivendo `{nome}` (elenco
+  delle disponibili nel prompt, massimo due per risposta, testo salvato senza graffe). Provato con
+  `claude-sonnet-5-5`: risposta aperta da `{herewego}`, esclamazione suonata prima delle frasi, prima
+  frase dopo 1,8 s, log pulito.
+- **Test**: 155 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

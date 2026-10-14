@@ -177,6 +177,83 @@ class SessionExtTests(unittest.TestCase):
         self.assertEqual(session.turn, 3)
 
 
+class ExclamationTests(unittest.TestCase):
+    """{letsago} nelle risposte: riconosciuto anche spezzato, suonato al suo posto, mai letto né salvato nel diario."""
+
+    def setUp(self):
+        import json
+        import wave
+        from mario.assistant.soundpack import SoundPack
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        items = []
+        for game, desc, rel in (("sm64", "\"Let's-a go!\"", "sm64/letsago.wav"), ("sm64", "\"Mamma-mia\"", "sm64/mammamia.wav"),
+                                ("sm64", "\"Wa-ha!\"", "sm64/waha.wav")):
+            path = root / "tmk" / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with wave.open(str(path), "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000); w.writeframes(b"\0\0" * 800)
+            items.append({"section": "wav", "game": game, "description": desc, "file": rel})
+        (root / "tmk" / "catalogo.json").write_text(json.dumps({"items": items}), encoding="utf-8")
+        calls = self.calls = []
+
+        class RecordingSpeaker(Speaker):  # registra frasi ed esclamazioni invece di suonarle
+            def speak(self, text, emotion=None):
+                calls.append(("frase", text))
+
+            def speak_sound(self, name, style="voce"):
+                calls.append(("suono", name))
+
+        self.speaker = RecordingSpeaker(enabled=True, engine="spd-say", sounds=False, soundpack=SoundPack(root))
+        self.events = []
+        self.engine = BehaviourEngine(NullActions(), emit=lambda ev: None)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def session(self, text, **kw):
+        backend = ScriptedBackend(text)
+        session = AssistantSession(lambda: backend, self.speaker, self.engine, emit=self.events.append, **kw)
+        return session, backend
+
+    def test_stream_parser_and_strip(self):
+        es = EmotionStream()
+        items = es.feed("[gioia] {lets") + es.feed("ago} Ciao! {Non è un nome} e {mamma") + es.feed("mia} fine")
+        self.assertEqual(items, [("emotion", "gioia"), ("sound", "letsago"), ("text", "Ciao! {Non è un nome} e "),
+                                 ("sound", "mammamia"), ("text", "fine")])
+        self.assertEqual(es.sounds, ["letsago", "mammamia"])
+        es = EmotionStream()
+        self.assertEqual(es.feed("{" + "x" * 40 + " testo"), [("text", "{" + "x" * 40 + " testo")])
+        self.assertEqual(strip_tags("[gioia] {letsago} Ciao! [calma] {wahoo} Fine."), "Ciao! Fine.")
+        from mario.assistant.emotions import sound_tags
+        self.assertEqual(sound_tags("{letsago} Ciao {wahoo}"), ["letsago", "wahoo"])
+
+    def test_session_plays_exclamations_in_place(self):
+        session, backend = self.session("[gioia] {letsago} Ciao! Sono Mario. {boh} {mammamia} {wahoo} [calma] Fine.")
+        prompt = session.build_system_prompt()
+        self.assertIn("{letsago} = \"Let's-a go!\"", prompt)
+        self.assertIn("{wahoo}", prompt)
+        self.assertNotIn("{yippee}", prompt)  # nessun file: non viene offerta
+        session.ask("ciao")
+        self.assertTrue(wait_idle(session))
+        # al massimo due per risposta, nomi sconosciuti ignorati, frase in corso detta prima dell'esclamazione
+        self.assertEqual(self.calls, [("suono", "letsago"), ("frase", "Ciao!"), ("frase", "Sono Mario."),
+                                      ("suono", "mammamia"), ("frase", "Fine.")])
+        done = [e for e in self.events if e["kind"] == "done"][-1]
+        self.assertEqual(done["text"], "Ciao! Sono Mario. Fine.")
+        self.assertIn("🔊 Let's-a go!", done["display"])
+        self.assertEqual([e["name"] for e in self.events if e["kind"] == "sound"], ["letsago", "mammamia"])
+        self.assertEqual(session.last_answer, "Ciao! Sono Mario. Fine.")
+        self.assertIn("{letsago}", backend.system)  # la regola era nel prompt di sistema
+
+    def test_disabled_exclamations_are_silent(self):
+        session, backend = self.session("{letsago} Ciao!", exclamations=False)
+        self.assertNotIn("graffe", session.build_system_prompt())
+        session.ask("ciao")
+        self.assertTrue(wait_idle(session))
+        self.assertEqual(self.calls, [("frase", "Ciao!")])  # niente suono, e la parola tra graffe non viene letta
+
+
 class PiperTests(unittest.TestCase):
     def test_piper_command_and_detection(self):
         sp = Speaker(enabled=True, engine="piper", piper_model="/tmp/it_IT-x.onnx", rate=0)

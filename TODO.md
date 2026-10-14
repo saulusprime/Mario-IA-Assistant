@@ -33,6 +33,10 @@ dentro ogni gruppo le prime sono le più utili.
       `./run.sh voice "..." --openvoice-ref data/voices/<file>.wav` con `--openvoice-tau` 0, 0,3 e 0,6;
       poi una sessione `assistant` con Mario e la voce IA: pause tra le frasi, primo avvio mentre
       carica (voce di riserva), consumo di CPU e memoria con dashboard e Bluetooth attivi.
+- [ ] **Esclamazioni scelte dal modello (14/10)**: provate da terminale con Claude (una risposta,
+      `{herewego}` al posto giusto). Da verificare in una sessione lunga con Mario: frequenza (la regola
+      dice "non in tutte"), scelte adatte al momento, sovrapposizione con l'effetto dell'emozione nello
+      stile "voce di Mario" (due esclamazioni di fila?).
 - [ ] **Messaggio stile Mario (14/10)**: ascoltare `logs/messaggio-mario-cartone.wav` e
       `logs/messaggio-mario-naturale.wav`, scegliere tra formanti spostate e conservate e regolare
       `--semitones` (6) e `--tempo` (1,1); poi provare "Effetto: stile Mario" in una sessione
@@ -300,8 +304,6 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 - Far dialogare due personaggi tramite il PC (Mario e Luigi) emulando ciò che fanno via
   radio tra loro, una volta capito il formato della porta 4.
 - Esporre Mario via MQTT o WebSocket per domotica e notifiche.
-- Esclamazioni scelte dal modello: chiedere al modello di inserire `{letsago}`, `{wahoo}`,
-  `{mammamia}` nelle risposte e farle suonare al loro posto tra le frasi (`Speaker.speak_sound`).
 - Musica di sottofondo nelle avventure: un'azione "music" che avvia e ferma in ciclo un brano
   dell'archivio (NSF, SPC, MP3 convertiti) a volume basso, sotto voce ed effetti.
 - Voce IA con le emozioni: OpenVoice cambia il timbro ma non il tono; una registrazione di riferimento

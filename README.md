@@ -29,6 +29,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh web                  # dashboard web su http://127.0.0.1:8765
 ./run.sh assistant            # Mario come ingresso/uscita di una sessione con un modello (voce dal PC)
 ./run.sh assistant --no-mario # idem senza Bluetooth: tastiera, modello e voce (chiave Claude in .env)
+./run.sh assistant --effect mario --sound-style voce   # voce stile Mario ed esclamazioni originali scelte dal modello
 ./run.sh voice "Ciao!" --openvoice-ref voce.wav   # prova della voce IA (OpenVoice) con i tempi
 ./run.sh voice "{letsago} Ciao, sono Mario! {wahoo}" --effect mario --save messaggio.wav   # messaggio stile Mario
 ./run.sh fetch-sounds --all   # archivio di suoni, voci e musiche di Mario in locale (uso privato); pagina Suoni
@@ -209,6 +210,16 @@ piper gira in un processo che tiene il modello caricato: una frase in 0,1–0,2 
 comando `piper`, che ricarica il modello ogni volta. Due thread separano la preparazione dalla
 riproduzione: la frase successiva si prepara mentre quella corrente suona.
 
+**Esclamazioni scelte dal modello.** Se la voce è attiva e l'archivio dei suoni contiene le esclamazioni,
+il prompt di sistema elenca quelle disponibili (`{letsago}`, `{herewego}`, `{wahoo}`, `{yippee}`,
+`{mammamia}`, `{okeydokey}`, `{hello}`, `{goodbye}`, `{snore}`) con il momento giusto per usarle. Il modello
+scrive il nome tra graffe all'inizio della risposta o tra due frasi. Il parser lo riconosce anche se arriva
+spezzato e la frase in corso viene detta prima; poi suona la registrazione originale, mai letta a voce.
+Al massimo due per risposta; nomi sconosciuti ignorati. Diario, cronologia e "ripeti" restano senza graffe;
+la chat mostra "🔊 Let's-a go!" al posto giusto. Si spegne con "esclamazioni di Mario scelte dal modello"
+nelle impostazioni (`assistant.exclamations`) o con `--no-exclamations`. Provato con `claude-sonnet-5-5`:
+alla domanda "Partiamo per una nuova avventura?" ha aperto con `{herewego}`, prima frase dopo 1,8 s.
+
 **Stile Mario.** Un messaggio "alla Mario" si compone così: le esclamazioni originali dei giochi suonate
 così come sono, scritte tra graffe nel testo (`{letsago}`, `{wahoo}`, `{mammamia}`, oppure un file
 dell'archivio), e le frasi in italiano dette da piper con l'effetto `mario`. L'effetto usa il filtro
@@ -216,8 +227,10 @@ rubberband di ffmpeg: +6 semitoni e velocità ×1,1, formanti spostate come un p
 (`--formant preserved` per un suono più naturale, `--semitones` e `--tempo` per regolare). Come base
 usa la voce maschile `it_IT-riccardo-x_low`, che parla a 147 Hz e con l'effetto sale a 207 Hz; le
 esclamazioni urlate di Mario misurano 250–570 Hz. `--save` unisce frasi ed esclamazioni in un solo
-WAV, `--no-play` non lo suona. Nella pagina Assistente lo stile si sceglie con "Effetto: stile Mario"
-(con spd-say alza tono e velocità del motore). La voce di Mario non viene clonata: è la voce di un
+WAV, `--no-play` non lo suona. Nella sessione con il modello lo stile si sceglie con "Effetto: stile
+Mario" nella pagina Assistente o con `./run.sh assistant --effect mario` (stesse opzioni `--semitones`,
+`--tempo`, `--formant`; senza `--piper-model` usa la voce maschile riccardo); con spd-say alza tono e
+velocità del motore. La voce di Mario non viene clonata: è la voce di un
 doppiatore reale. Per un timbro più vicino si può registrare la propria imitazione di Mario e usarla
 come riferimento della voce IA.
 
@@ -691,7 +704,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centocinquantadue test senza Bluetooth né rete esterna, raggruppati per file:
+Centocinquantacinque test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -700,7 +713,7 @@ Centocinquantadue test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_decode` (9) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri |
 | `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata |
 | `test_db` (6) | database della dashboard |
-| `test_assistant` (30), `test_assistant_ext` (12) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
+| `test_assistant` (30), `test_assistant_ext` (15) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
 | `test_openvoice` (20) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni, lettura del catalogo del sito |
 | `test_sounds_web` (3) | pagina Suoni: catalogo, file per l'anteprima e percorsi vietati, assegnazioni, stile, caricamento e cancellazione |
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
@@ -734,7 +747,7 @@ mario/env.py            caricamento di .env (chiave API) senza dipendenze
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), fetch_mario_sounds.py (suoni dei giochi)
-tests/                  test offline (152)
+tests/                  test offline (155)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il

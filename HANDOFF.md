@@ -12,7 +12,7 @@ Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claud
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
 versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
 con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato); messaggi
-"stile Mario" (esclamazioni originali + piper più acuto); 152 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+"stile Mario" (esclamazioni originali + piper più acuto), anche nella sessione con il modello; 155 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -650,6 +650,25 @@ le registrazioni sono esclamazioni brevi con musica. Fatto invece un messaggio "
   `logs/messaggio-mario-naturale.wav`; impostazione "Effetto: stile Mario" nella pagina Assistente.
 - Test: da 149 a 152.
 
+### 14/10 sera — Voce stile Mario collegata alla sessione con il modello
+
+Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiungi tutto").
+
+- La sessione usava già `Speaker` per frasi ed effetti; mancavano l'effetto da CLI e le esclamazioni
+  scelte dal modello.
+- **CLI**: `assistant --effect mario --semitones --tempo --formant` (opzioni condivise con `voice`;
+  senza `--piper-model` usa riccardo), `--no-exclamations`.
+- **Esclamazioni**: `EmotionStream` riconosce `{nome}` (anche spezzato tra due pezzi); `SoundPack.
+  exclamations()` dà le disponibili con frase e momento d'uso; `AssistantSession` aggiunge `SOUND_RULE` al
+  prompt (solo con voce attiva e file presenti), suona l'esclamazione con `speak_sound` dopo la frase in
+  corso, massimo due per risposta, ignora i nomi sconosciuti; `strip_tags` toglie le graffe da diario e
+  cronologia; evento `sound` e campo `display` del `done` per la chat ("🔊 Let's-a go!").
+- **Impostazione** `assistant.exclamations` (casella nella pagina Assistente).
+- **Prova con Claude** (`claude-sonnet-5-5`, `--effect mario --sound-style voce`): "Partiamo per una nuova
+  avventura?" → `{herewego}` all'inizio, poi tre frasi con l'effetto; prima frase dopo 1,78 s; nel log
+  "🔊 Here we go!" e nessuna graffa.
+- Test: da 152 a 155.
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -664,7 +683,7 @@ le registrazioni sono esclamazioni brevi con musica. Fatto invece un messaggio "
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 152 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 155 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -698,7 +717,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (152); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (155); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

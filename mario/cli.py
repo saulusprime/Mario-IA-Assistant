@@ -846,6 +846,9 @@ async def cmd_assistant(args) -> int:
             out.delta(f"{ev.get('emoji', '')} ")
         elif kind == "delta":
             out.delta(ev["text"])
+        elif kind == "sound":
+            out.delta(f" {ev['text']} ")
+            session_log.write(ev["text"])
         elif kind == "done":
             session_log.write(f"Mario: {ev['text']}")
             first = f", prima frase dopo {ev['first_sentence']} s" if ev.get("first_sentence") else ""
@@ -868,9 +871,11 @@ async def cmd_assistant(args) -> int:
                 out.line(f"[{ts()}] · Mario: {ev['text']}")
 
     cfg = LLMConfig(backend=args.backend, model=args.model or "", base_url=args.base_url or "")
-    speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts, piper_model=args.piper_model or "",
+    speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts, piper_model=effect_piper_model(args),
                       openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
-                      openvoice_watermark=args.openvoice_watermark, sound_style=args.sound_style)
+                      openvoice_watermark=args.openvoice_watermark, sound_style=args.sound_style,
+                      voice_effect="" if args.effect == "nessuno" else args.effect, effect_semitones=args.semitones,
+                      effect_tempo=args.tempo, effect_formant=args.formant)
     if args.openvoice_ref and speaker.engine != "openvoice":
         say(f"Voce IA non disponibile, uso {speaker.engine or 'nessun motore'}: {speaker.openvoice_reason()}")
     engine = BehaviourEngine(LoopActions() if dev else NullActions(), emit=emit, enabled=not args.no_behaviours)
@@ -894,7 +899,8 @@ async def cmd_assistant(args) -> int:
     session = AssistantSession(lambda: make_backend(cfg), speaker, engine, emit=emit, persona=args.persona or "",
                                memory=memory, memory_enabled=not args.no_memory, on_message=on_message,
                                session_limit=max(0.0, float(args.minutes or 0)) * 60,
-                               blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()])
+                               blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()],
+                               exclamations=not args.no_exclamations)
     if dev is not None:
         def on_message(msg, text):
             ev = event_from_message(dev, msg)
@@ -902,7 +908,10 @@ async def cmd_assistant(args) -> int:
                 session.handle_event(ev)
         dev.add_listener(on_message)
     say(f"Backend: {cfg.resolved_backend()}" + (f" ({cfg.model})" if cfg.model else "")
-        + f" · voce: {speaker.engine or 'nessun motore trovato'}" + (" · senza Mario" if dev is None else ""))
+        + f" · voce: {speaker.engine or 'nessun motore trovato'}"
+        + (f" con effetto {args.effect}" if args.effect != "nessuno" else "")
+        + (f" · {len(session.available_exclamations())} esclamazioni di Mario" if session.available_exclamations() else "")
+        + (" · senza Mario" if dev is None else ""))
     if speaker.engine == "openvoice":
         say("Voce IA in caricamento in background (10-25 s): fino ad allora parla la voce di riserva")
     if session_log.path:
@@ -1000,9 +1009,7 @@ def cmd_voice(args) -> int:
     import tempfile
     from .assistant import openvoice as ov
     from .assistant.tts import Speaker
-    piper_model = args.piper_model or ""
-    if args.effect == "mario" and not piper_model and not args.openvoice_ref:
-        piper_model = ov.mario_base_voice()  # voce maschile come base dello stile Mario
+    piper_model = effect_piper_model(args)  # con l'effetto mario: voce maschile come base
     speaker = Speaker(enabled=True, sounds=bool(args.play), piper_model=piper_model,
                       openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
                       openvoice_watermark=args.openvoice_watermark, openvoice_wait=args.wait,
@@ -1331,6 +1338,23 @@ def cmd_web(args) -> int:
 
 # ---------------------------------------------------------------------------
 
+def add_effect_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--effect", default="nessuno", choices=["nessuno", "mario"],
+                   help="mario: voce più acuta e veloce da personaggio (base piper riccardo se non indicata)")
+    p.add_argument("--semitones", type=float, default=6.0, help="effetto mario: semitoni in più (default 6)")
+    p.add_argument("--tempo", type=float, default=1.1, help="effetto mario: velocità (default 1.1)")
+    p.add_argument("--formant", default="shifted", choices=["shifted", "preserved"],
+                   help="effetto mario: formanti spostate (cartone) o conservate (più naturale)")
+
+
+def effect_piper_model(args) -> str:
+    """Il modello piper indicato; con l'effetto mario e nessuna voce scelta, la voce maschile di base."""
+    from .assistant.openvoice import mario_base_voice
+    if args.piper_model or args.effect != "mario" or getattr(args, "openvoice_ref", None):
+        return args.piper_model or ""
+    return mario_base_voice()
+
+
 def add_openvoice_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--openvoice-ref", metavar="WAV",
                    help="voce IA: registrazione della voce da imitare (WAV, 10-30 s); serve tools/setup_openvoice.sh")
@@ -1435,6 +1459,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_openvoice_args(p)
     p.add_argument("--sound-style", default="giochi", choices=["giochi", "voce", "sintetici"],
                    help="effetti sonori: dei giochi (./run.sh fetch-sounds), esclamazioni di Mario o sintetizzati")
+    add_effect_args(p)
+    p.add_argument("--no-exclamations", action="store_true",
+                   help="il modello non può far suonare le esclamazioni di Mario ({letsago}, {wahoo}, ...)")
     p.add_argument("--minutes", type=float, default=0.0, help="minuti di gioco per sessione (0 = nessun limite)")
     p.add_argument("--block", help="parole bloccate, separate da virgola")
     p.add_argument("--no-memory", action="store_true", help="niente ricordi tra le sessioni")
@@ -1461,12 +1488,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--piper-model", help="voce piper (.onnx); con la voce IA è la voce di base")
     add_openvoice_args(p)
     p.add_argument("--wait", type=float, default=120.0, help="secondi massimi di attesa del caricamento della voce IA")
-    p.add_argument("--effect", default="nessuno", choices=["nessuno", "mario"],
-                   help="mario: voce più acuta e veloce da personaggio (base piper riccardo se non indicata)")
-    p.add_argument("--semitones", type=float, default=6.0, help="effetto mario: semitoni in più (default 6)")
-    p.add_argument("--tempo", type=float, default=1.1, help="effetto mario: velocità (default 1.1)")
-    p.add_argument("--formant", default="shifted", choices=["shifted", "preserved"],
-                   help="effetto mario: formanti spostate (cartone) o conservate (più naturale)")
+    add_effect_args(p)
     p.add_argument("--save", metavar="FILE.wav", help="salva il messaggio intero (frasi ed effetti) in un WAV")
     p.add_argument("--no-play", action="store_true", help="non suonare (utile con --save)")
     p.set_defaults(func=cmd_voice)

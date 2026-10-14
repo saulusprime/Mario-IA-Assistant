@@ -29,6 +29,7 @@ Ogni frase inizia con un'emozione tra parentesi quadre, scelta solo tra: {tags}.
 I messaggi che iniziano con "[sensore: ...]" non li scrive una persona: arrivano dal tuo corpo (gesti, pantaloni, basette con il codice a barre, colore del terreno, pulsante, batteria). Reagisci come farebbe Mario nel gioco, in una o due frasi.
 Le righe "(Stato del corpo: ...)" descrivono come sei in questo momento: tienine conto senza ripeterle.
 {memory_rule}
+{sound_rule}
 {persona}
 {memory}
 Stato del corpo adesso: {context}."""
@@ -36,6 +37,11 @@ Stato del corpo adesso: {context}."""
 MEMORY_RULE = ("Se scopri qualcosa che vale la pena ricordare per le prossime volte (il nome di chi gioca, un gusto, "
                "una cosa successa), aggiungi alla fine un tag [ricorda: una frase breve in terza persona]. "
                "Al massimo uno per risposta, e solo se è davvero nuovo.")
+
+SOUND_RULE = ("Puoi far sentire la tua vera voce del videogioco con un'esclamazione: scrivi il suo nome tra parentesi "
+              "graffe all'inizio della risposta o tra due frasi, al massimo una per risposta e non in tutte. "
+              "Non la ripetere a parole. Esclamazioni: {items}.")
+SOUNDS_PER_TURN = 2
 
 FALLBACK_ERROR_SPEECH = "Ops, adesso non riesco a rispondere."
 BLOCKED_SPEECH = "Mmm, di questo preferisco non parlare. Facciamo un bel salto, piuttosto!"
@@ -52,7 +58,8 @@ class AssistantSession:
                  persona: str = "", history_limit: int = 20,
                  on_message: Optional[Callable[[dict], None]] = None,
                  memory: Optional[MemoryStore] = None, memory_enabled: bool = True,
-                 session_limit: float = 0.0, blocked_words: Optional[list[str]] = None):
+                 session_limit: float = 0.0, blocked_words: Optional[list[str]] = None,
+                 exclamations: bool = True):
         self.backend_factory = backend_factory
         self.speaker = speaker
         self.behaviours = behaviours
@@ -65,6 +72,8 @@ class AssistantSession:
         self.memory_enabled = memory_enabled
         self.session_limit = float(session_limit or 0.0)   # secondi di gioco per sessione (0 = nessun limite)
         self.blocked_words: list[str] = [w for w in (blocked_words or []) if w]
+        self.exclamations_enabled = exclamations   # {letsago} nelle risposte = esclamazione originale di Mario
+        self._turn_sounds = 0
         self.started = time.time()
         self.time_up = False
         self.listening = True
@@ -133,11 +142,21 @@ class AssistantSession:
                 "speaker": self.speaker.status(), "behaviours": self.behaviours.status(),
                 "rules": self.mapper.rules_dict(), "emotions": [EMOTIONS[k].to_dict() for k in EMOTIONS]}
 
+    def available_exclamations(self) -> dict[str, tuple[str, str]]:
+        """Esclamazioni che il modello può usare: attive, con la voce accesa e un file da suonare."""
+        pack = getattr(self.speaker, "pack", None)
+        if not (self.exclamations_enabled and self._voice_active() and pack is not None):
+            return {}
+        return pack.exclamations()
+
     def build_system_prompt(self) -> str:
         memories = memory_prompt(self.memory.list()) if self.memory_enabled else ""
+        found = self.available_exclamations()
+        sound_rule = SOUND_RULE.format(items="; ".join(f"{{{n}}} = \"{phrase}\", {when}" for n, (phrase, when)
+                                                       in found.items())) if found else ""
         text = BASE_PROMPT.format(tags=" ".join(f"[{k}]" for k in MODEL_EMOTIONS), persona=self.persona.strip(),
                                   memory_rule=MEMORY_RULE if self.memory_enabled else "", memory=memories,
-                                  context=self.mapper.context_text())
+                                  sound_rule=sound_rule, context=self.mapper.context_text())
         return "\n".join(line for line in text.splitlines() if line.strip()).strip()
 
     # ----- sicurezza: parole bloccate e limite di tempo --------------------------------------------
@@ -313,6 +332,8 @@ class AssistantSession:
         self.behaviours.express("attesa")
         parser, sentences = EmotionStream(), SentenceBuffer()
         answer_raw: list[str] = []
+        self._turn_sounds = 0
+        self._turn_allowed = self.available_exclamations()
         try:
             backend = self.backend_factory()
             self.backend_name = backend.describe()
@@ -356,7 +377,8 @@ class AssistantSession:
                             self.emit("memory", turn=turn, text=memory, id=mid)
                 first = self._first_sentence_at
                 self.emit("done", turn=turn, text=plain, emotions=parser.seen, elapsed=round(time.time() - started, 2),
-                          first_sentence=round(first - started, 2) if first else None)
+                          first_sentence=round(first - started, 2) if first else None,
+                          display=self._display(full_raw), sounds=parser.sounds)
         except LLMError as exc:
             self.last_error = str(exc)
             self.emit("error", turn=turn, text=str(exc))
@@ -385,10 +407,34 @@ class AssistantSession:
                 self._set_emotion(value)
             elif kind == "memory":
                 continue  # salvata a fine risposta (vedi _run_turn), mai letta a voce
+            elif kind == "sound":
+                self._exclamation(value, sentences, turn)
             else:
                 self.emit("delta", turn=turn, text=self._clean(value), emotion=self.emotion)
                 for sentence in sentences.feed(value):
                     self._sentence(sentence, turn)
+
+    def _exclamation(self, name: str, sentences: SentenceBuffer, turn: int) -> None:
+        """{nome} nella risposta: l'esclamazione originale suona al suo posto tra le frasi (mai letta). Nomi
+        sconosciuti o oltre il massimo per risposta vengono ignorati in silenzio."""
+        allowed = getattr(self, "_turn_allowed", None)
+        if allowed is None:
+            allowed = self.available_exclamations()
+        if name not in allowed or self._turn_sounds >= SOUNDS_PER_TURN:
+            return
+        self._turn_sounds += 1
+        rest = sentences.flush()  # la frase in corso viene detta prima dell'esclamazione
+        if rest:
+            self._sentence(rest, turn)
+        self.emit("sound", turn=turn, name=name, text=f"🔊 {allowed[name][0]}")
+        self.speaker.speak_sound(name, "voce")
+
+    def _display(self, raw: str) -> str:
+        """Testo per la chat: senza tag, con le esclamazioni suonate scritte come 🔊 frase."""
+        allowed = getattr(self, "_turn_allowed", None) or {}
+        marked = re.sub(r"\{\s*([a-z0-9_]{1,24})\s*\}", lambda m: f"🔊 {allowed[m.group(1)][0]} " if m.group(1) in allowed
+                        else m.group(0), raw)
+        return self._clean(strip_tags(marked))
 
     def _sentence(self, sentence: str, turn: int) -> None:
         sentence = self._clean(sentence)

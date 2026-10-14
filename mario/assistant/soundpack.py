@@ -116,6 +116,19 @@ VOICE: dict[str, list[Rule]] = {
     "snore": [("sm64", "Snore part 1"), ("smsunshine", "Snore part 1")],
 }
 
+# esclamazioni che il modello può far suonare tra le frasi scrivendo {nome}: (frase, quando usarla)
+EXCLAMATIONS: dict[str, tuple[str, str]] = {
+    "letsago": ("Let's-a go!", "quando si parte o si comincia un gioco"),
+    "herewego": ("Here we go!", "quando inizia un'avventura"),
+    "wahoo": ("Wa-ha!", "per un salto o una gioia improvvisa"),
+    "yippee": ("Yippee!", "per festeggiare"),
+    "mammamia": ("Mamma mia!", "per uno spavento o una brutta sorpresa"),
+    "okeydokey": ("Okey-dokey!", "per dire d'accordo"),
+    "hello": ("It's-a me, Mario!", "per presentarti"),
+    "goodbye": ("Arrivederci!", "per salutare alla fine"),
+    "snore": ("un russare", "quando hai tanto sonno"),
+}
+
 # a cosa servono i nomi (pagina Suoni)
 USES: dict[str, str] = {
     "coin": "emozione gioia; punti nelle avventure", "powerup": "emozione sorpresa; avventura completata",
@@ -434,6 +447,10 @@ class SoundPack:
         for style, table in (("giochi", EFFECTS), ("voce", VOICE)):
             result[style] = sorted({n for n in table if self._defaults(style, n)} | set(self.assignments[style]))
         return result
+
+    def exclamations(self) -> dict[str, tuple[str, str]]:
+        """Le esclamazioni per il modello che hanno davvero un file (scaricato o scelto dall'utente)."""
+        return {name: info for name, info in EXCLAMATIONS.items() if self.candidates(name, "voce")}
 
     def all_names(self) -> list[str]:
         return sorted(set(EFFECTS) | set(VOICE) | set(self.assignments["giochi"]) | set(self.assignments["voce"]))

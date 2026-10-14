@@ -31,10 +31,10 @@ DEFAULTS: dict[str, str] = {
     "assistant.listening": "1", "assistant.persona": "", "assistant.rules": "{}",
     "assistant.piper_model": "", "assistant.session_minutes": "0", "assistant.blocked_words": "", "assistant.memory": "1",
     "assistant.openvoice_reference": "", "assistant.openvoice_tau": "0.3", "assistant.openvoice_watermark": "0",
-    "assistant.sound_style": "giochi", "assistant.voice_effect": "",
+    "assistant.sound_style": "giochi", "assistant.voice_effect": "", "assistant.exclamations": "1",
 }
 BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
-             "openvoice_watermark"}
+             "openvoice_watermark", "exclamations"}
 SECRET_KEYS = {"api_key"}
 
 
@@ -108,7 +108,8 @@ class AssistantService:
                                         mapper=IntentMapper(), persona=s["persona"], on_message=self._store,
                                         memory=DatabaseMemory(db), memory_enabled=as_bool(s["memory"]),
                                         session_limit=minutes_to_seconds(s["session_minutes"]),
-                                        blocked_words=split_words(s["blocked_words"]))
+                                        blocked_words=split_words(s["blocked_words"]),
+                                        exclamations=as_bool(s["exclamations"]))
         self.session.listening = as_bool(s["listening"])
         self._apply_rules(self._json(s["rules"]))
         self._thread = threading.Thread(target=self._consume, name="assistant-events", daemon=True)
@@ -178,6 +179,7 @@ class AssistantService:
                                   busy_indication=as_bool(s["busy_indication"]), port_writes=as_bool(s["port_writes"]),
                                   port_payloads=self._json(s["port_payloads"]))
         self.session.persona = s["persona"]
+        self.session.exclamations_enabled = as_bool(s["exclamations"])
         if "listening" in data and as_bool(data["listening"]) != self.session.listening:
             self.session.set_listening(as_bool(data["listening"]))
         self._apply_rules(self._json(s["rules"]))
