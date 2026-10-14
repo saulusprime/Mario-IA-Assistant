@@ -284,14 +284,20 @@ Senza opzioni scarica gli effetti, i jingle e le voci di 16 giochi (833 WAV, 49 
 Super Mario Bros. a 3D Land, Mario Kart 64 e i giochi Mario & Luigi. Con `--all` scarica l'archivio
 intero:
 
-| Sezione | Contenuto | Voci di catalogo |
+| Sezione | Contenuto | File in locale (14/10) |
 |---|---|---|
-| wav | effetti, voci e jingle di 31 giochi | 1.415 |
+| wav | effetti, voci e jingle di 31 giochi | 1.374 |
 | mp3 | sigle dei cartoni e medley | 13 |
-| mid | arrangiamenti MIDI di 47 giochi | 906 |
-| mod | moduli tracker (IT, XM, MOD) di 14 giochi, estratti dai `.mdr` con 7z | 114 |
-| nsf | colonne sonore NES originali (8 zip, estratti) | 8 zip |
-| spc | colonne sonore Super NES originali (14 zip, estratti) | 14 zip |
+| mid | arrangiamenti MIDI di 47 giochi | 904 |
+| mod | moduli tracker di 14 giochi (`.mdr`, cioè moduli compressi RAR) | 114 |
+| nsf | colonne sonore NES originali, da 8 zip estratti | 10 brani a più tracce |
+| spc | colonne sonore Super NES originali, da 14 zip estratti | 348 |
+
+In tutto 2.783 voci di catalogo, 170 MB. I `.mdr` sono quasi tutti RAR 2.0 del 2001: il pacchetto `7zip`
+di Debian non ha il decompressore RAR (licenza non libera) e crea file vuoti, quindi lo strumento usa
+`unar` se c'è e scarta le estrazioni vuote; senza `unar` si ascoltano solo i 5 moduli non compressi.
+Dopo `sudo apt install unar`, `./run.sh fetch-sounds --reindex` estrae il resto senza contattare il sito.
+Alcuni link del sito usano la barra rovesciata (`mlrpg3\file.wav`): lo strumento li tratta come un browser.
 
 Una richiesta al secondo; i file già presenti non vengono riscaricati, quindi si può interrompere e
 riprendere; `--catalog` legge solo l'elenco. I file restano in `data/sounds/tmk/`, ignorata da git:
@@ -319,7 +325,9 @@ sceglie la traccia. I MIDI richiedono fluidsynth o timidity, che sul PC di svilu
 sezione "I miei suoni" carica file propri (WAV, o m4a, ogg, mp3 convertiti) in `data/sounds/custom/`.
 Le scelte vanno in `data/sounds/assegnazioni.json`, che leggono anche la CLI e le avventure. API:
 `/api/sounds/catalog`, `/api/sounds/file/<percorso>` (`?wav=1&seconds=&track=`), `/api/sounds/assignments`,
-`/api/sounds/assign`, `/api/sounds/volume`, `/api/sounds/play`, `/api/sounds/upload`. Le
+`/api/sounds/assign`, `/api/sounds/volume`, `/api/sounds/play`, `/api/sounds/upload`. Conversioni provate
+sull'host: 8 s di un SPC di Super Mario World in 0,24 s, la traccia 5 di un NSF in 0,19 s, 6 s di un
+modulo IT in 0,21 s. Le
 avventure possono usare anche altri nomi nell'azione "sound" e nel campo `sound` dei passi:
 `oneup`, `jump`, `stomp`, `pipe`, `star`, `clear`, `gameover`, `fireworks`, `key`, `letsago`,
 `herewego`, `okeydokey`, `goodbye`… L'elenco completo è in `/api/adventures/library` (chiave

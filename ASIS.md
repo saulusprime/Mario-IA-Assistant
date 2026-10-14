@@ -142,8 +142,11 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   fuori da git) con il catalogo. Emozioni, sessione e avventure suonano gli effetti veri o, nello
   stile "voce", le esclamazioni di Mario; tutte le 57 corrispondenze predefinite esistono nel
   catalogo. La pagina Suoni della dashboard permette di scegliere il file di ogni effetto, regolare
-  il volume, ascoltare l'archivio (NSF con scelta della traccia, provato con ffmpeg e libgme) e
-  caricare suoni propri. Da ascoltare per volume e scelte.
+  il volume, ascoltare l'archivio e caricare suoni propri. Archivio completo il 14/10: 2.783 voci,
+  170 MB (1.374 WAV, 904 MIDI, 114 moduli, 13 MP3, 10 NSF, 348 SPC), nessun errore dopo la correzione
+  dei link con la barra rovesciata. Conversioni provate: SPC, NSF con traccia, moduli IT/XM/MOD (5 su
+  112: gli altri sono RAR 2.0 e servono `unar`); i MIDI richiedono un sintetizzatore. Da ascoltare
+  per volume e scelte.
 - **Messaggio stile Mario (14/10)**: `./run.sh voice` compone esclamazioni originali (`{letsago}`,
   `{wahoo}`) e frasi di piper con l'effetto `mario` (rubberband: +6 semitoni, ×1,1) e salva il
   messaggio in WAV. Provato sull'host: frasi pronte in 0,2–0,35 s più 0,16–0,19 s di effetto, altezza

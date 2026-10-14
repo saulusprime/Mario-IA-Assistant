@@ -16,6 +16,7 @@ Uso:
   ./run.sh fetch-sounds --all                      # tutto l'archivio: tutte le sezioni e tutti i giochi
   ./run.sh fetch-sounds --sections mp3,nsf,spc     # solo alcune sezioni
   ./run.sh fetch-sounds --games smb,sm64           # solo alcuni giochi della sezione WAV
+  ./run.sh fetch-sounds --reindex                  # rifà estrazioni e catalogo senza contattare il sito
 
 Risultato: data/sounds/tmk/catalogo.json (sezione, gioco, categoria, descrizione, URL, file) e i file:
   <gioco>/<file>.wav            effetti e voci (sezione wav)
@@ -94,8 +95,17 @@ def size_bytes(value: str) -> int:
     return int(float(m.group(1)) * {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3}[m.group(2).upper()])
 
 
+def clean_path(path: str) -> str:
+    """Alcuni link del sito usano la barra rovesciata (`mlrpg3\\file.wav`): i browser la trattano come `/`."""
+    return html.unescape(path).replace("\\", "/")
+
+
 def absolute(path: str) -> str:
-    return BASE + urllib.parse.quote("/" + path.lstrip("/"), safe="/()_-.!~*'&")
+    return BASE + urllib.parse.quote("/" + clean_path(path).lstrip("/"), safe="/()_-.!~*'&")
+
+
+def basename(path: str) -> str:
+    return Path(urllib.parse.unquote(clean_path(path))).name
 
 
 def _category_at(heads: list[tuple[int, str]], pos: int) -> str:
@@ -120,7 +130,7 @@ def parse_page(game: str, page: str) -> list[dict]:
         path = m.group(1)
         items.append({"section": "wav", "game": game, "category": _category_at(heads, m.start()),
                       "description": text(m.group(2)), "url": absolute(path),
-                      "file": f"{game}/{Path(urllib.parse.unquote(path)).name}", "size": size_bytes(m.group(3))})
+                      "file": f"{game}/{basename(path)}", "size": size_bytes(m.group(3))})
     return items
 
 
@@ -128,7 +138,7 @@ def parse_mid_page(game: str, page: str) -> list[dict]:
     heads = _heads(page)
     return [{"section": "mid", "game": game, "category": _category_at(heads, m.start()) or GAMES.get(game, game),
              "description": text(m.group(2)), "url": absolute(m.group(1)),
-             "file": f"mid/{game}/{Path(urllib.parse.unquote(m.group(1))).name}", "size": size_bytes(m.group(3)),
+             "file": f"mid/{game}/{basename(m.group(1))}", "size": size_bytes(m.group(3)),
              "extra": f"MIDI di {text(m.group(4))}"} for m in _MID_ROW.finditer(page)]
 
 
@@ -136,7 +146,7 @@ def parse_mod_page(game: str, page: str) -> list[dict]:
     heads = _heads(page)
     return [{"section": "mod", "game": game, "category": _category_at(heads, m.start()) or GAMES.get(game, game),
              "description": text(m.group(2)), "url": absolute(m.group(1)),
-             "file": f"mod/{game}/{Path(urllib.parse.unquote(m.group(1))).name}", "size": 0,
+             "file": f"mod/{game}/{basename(m.group(1))}", "size": 0,
              "extra": f"{text(m.group(3))}, {text(m.group(4))}, di {text(m.group(5))} (musica di {text(m.group(6))})"}
             for m in _MOD_ROW.finditer(page)]
 
@@ -145,14 +155,14 @@ def parse_mp3_page(page: str) -> list[dict]:
     heads = _heads(page)
     return [{"section": "mp3", "game": "mp3", "category": _category_at(heads, m.start()),
              "description": text(m.group(2)), "url": absolute(m.group(1)),
-             "file": f"mp3/{Path(urllib.parse.unquote(m.group(1))).name}", "size": size_bytes(m.group(3)),
+             "file": f"mp3/{basename(m.group(1))}", "size": size_bytes(m.group(3)),
              "extra": text(m.group(4)).lstrip("- ")} for m in _MP3_ROW.finditer(page)]
 
 
 def parse_zip_page(section: str, page: str) -> list[dict]:
     items = []
     for m in _ZIP_ROW.finditer(page):
-        stem = Path(urllib.parse.unquote(m.group(1))).stem
+        stem = Path(basename(m.group(1))).stem
         items.append({"section": section, "game": stem, "category": text(m.group(3)), "description": text(m.group(3)),
                       "url": absolute(m.group(1)), "file": f"{section}/{stem}.zip", "size": 0,
                       "extra": text(m.group(4)).lstrip("- ")})
@@ -247,16 +257,68 @@ def extract(item: dict) -> list[dict]:
                               "description": Path(name).stem.replace("_", " "), "url": item["url"],
                               "file": str(target.relative_to(OUT.resolve())), "size": target.stat().st_size,
                               "archive": item["file"], "extra": item.get("extra", "")})
-    elif archive.suffix.lower() == ".mdr" and shutil.which("7z"):
-        folder = archive.with_suffix("")
-        if not folder.is_dir() or not any(folder.iterdir()):
-            folder.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["7z", "x", "-y", f"-o{folder}", str(archive)], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, timeout=60)
-        modules = [p for p in folder.iterdir() if p.suffix.lower() in (".it", ".xm", ".mod", ".s3m")] if folder.is_dir() else []
-        if modules:
-            item["play"] = str(modules[0].relative_to(OUT))
+    elif archive.suffix.lower() == ".mdr":
+        item.pop("play", None)
+        module = extract_module(archive)
+        if module is not None:
+            item["play"] = str(module.relative_to(OUT))
     return found
+
+
+MODULE_EXT = (".it", ".xm", ".mod", ".s3m")
+
+
+def module_kind(data: bytes) -> str:
+    """Estensione di un modulo tracker riconosciuto dal contenuto, '' se non lo è."""
+    if data.startswith(b"IMPM"):
+        return ".it"
+    if data.startswith(b"Extended Module:"):
+        return ".xm"
+    if data[44:48] == b"SCRM":
+        return ".s3m"
+    if data[1080:1084] in (b"M.K.", b"M!K!", b"FLT4", b"FLT8", b"4CHN", b"6CHN", b"8CHN"):
+        return ".mod"
+    return ""
+
+
+def _module_in(folder: Path):
+    if not folder.is_dir():
+        return None
+    found = [p for p in sorted(folder.iterdir()) if p.suffix.lower() in MODULE_EXT and p.stat().st_size > 0]
+    return found[0] if found else None
+
+
+def extract_module(archive: Path):
+    """.mdr = modulo compresso con RAR (spesso RAR 2.0, del 2001). Il 7zip di Debian non ha il decompressore RAR
+    (licenza non libera) e crea file vuoti: si prova prima `unar` (pacchetto libero `unar`), poi `7z`, e le
+    estrazioni vuote vengono scartate. Alcuni .mdr sono moduli non compressi: riconosciuti dal contenuto."""
+    folder = archive.with_suffix("")
+    module = _module_in(folder)
+    if module is not None:
+        return module
+    data = archive.read_bytes()
+    kind = module_kind(data)
+    if kind:
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / (archive.stem + kind)
+        target.write_bytes(data)
+        return target
+    for cmd in (["unar", "-q", "-f", "-D", "-o", str(folder), str(archive)],
+                ["7z", "x", "-y", f"-o{folder}", str(archive)]):
+        if not shutil.which(cmd[0]):
+            continue
+        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        except subprocess.TimeoutExpired:
+            pass
+        module = _module_in(folder)
+        if module is not None:
+            return module
+        for empty in folder.iterdir():  # estrazione fallita: niente file vuoti in giro
+            if empty.is_file() and empty.stat().st_size == 0:
+                empty.unlink()
+    return None
 
 
 def download(items: list[dict], delay: float, checkpoint) -> tuple[int, int, list[str]]:
@@ -290,10 +352,10 @@ def download(items: list[dict], delay: float, checkpoint) -> tuple[int, int, lis
     return new, skipped, errors
 
 
-def write_index(items: list[dict]) -> Path:
+def write_index(items: list[dict], replace: bool = False) -> Path:
     """catalogo.json: i file presenti su disco (anche di scaricamenti precedenti), con fonte e descrizione."""
     index_path = OUT / "catalogo.json"
-    old = json.loads(index_path.read_text(encoding="utf-8")) if index_path.is_file() else {"items": []}
+    old = json.loads(index_path.read_text(encoding="utf-8")) if index_path.is_file() and not replace else {"items": []}
     merged = {x["file"]: x for x in old.get("items", []) if (OUT / x["file"]).is_file()}
     merged.update({x["file"]: {k: v for k, v in x.items() if not k.startswith("_")}
                    for x in items if (OUT / x["file"]).is_file()})
@@ -317,7 +379,21 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="elenca i giochi della sezione WAV")
     ap.add_argument("--catalog", action="store_true", help="legge solo il catalogo, senza scaricare i file")
     ap.add_argument("--delay", type=float, default=1.0, help="secondi tra una richiesta e l'altra (default 1)")
+    ap.add_argument("--reindex", action="store_true",
+                    help="senza contattare il sito: rifà estrazioni (zip, moduli) e catalogo dai file già scaricati")
     args = ap.parse_args()
+    if args.reindex:
+        index_path = OUT / "catalogo.json"
+        old = json.loads(index_path.read_text(encoding="utf-8")) if index_path.is_file() else {"items": []}
+        items = [x for x in old.get("items", []) if not x.get("archive")]
+        for item in list(items):
+            if (OUT / item["file"]).is_file():
+                items += extract(item)
+        write_index(items, replace=True)
+        mdr = [x for x in items if x["file"].lower().endswith(".mdr")]
+        print(f"catalogo rifatto: {len(items)} voci; moduli .mdr estratti {sum(1 for x in mdr if x.get('play'))}"
+              f" su {len(mdr)}" + ("" if shutil.which("unar") else " (per gli altri: sudo apt install unar)"))
+        return 0
     if args.list:
         for slug in WAV_GAMES:
             print(f"{'*' if slug in DEFAULT_GAMES else ' '} {slug:<16} {GAMES[slug]}")

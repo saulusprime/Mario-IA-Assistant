@@ -497,6 +497,19 @@ class SoundPackTests(unittest.TestCase):
         self.assertEqual([(z["file"], z["extra"]) for z in zips], [("nsf/nsf_smb.zip", "19 total tracks")])
         self.assertEqual(fetch.game_pages('<a href="media/sm64/mid">SM64</a><a href="media/sm64/mid">Super Mario 64</a>',
                                           "mid"), [("sm64", "Super Mario 64")])
+        # link con la barra rovesciata (come li tratta un browser) e moduli tracker riconosciuti dal contenuto
+        item = fetch.parse_page("mlrpg3", '<a href="/sounds/wav/mlrpg3\\mlrpg3_x.wav" title="Download">X</a>'
+                                          '<td class="sizebytes">1KB</td>')[0]
+        self.assertEqual((item["url"], item["file"]), ("https://themushroomkingdom.net/sounds/wav/mlrpg3/mlrpg3_x.wav",
+                                                        "mlrpg3/mlrpg3_x.wav"))
+        self.assertEqual(fetch.module_kind(b"IMPM" + bytes(100)), ".it")
+        self.assertEqual(fetch.module_kind(b"Extended Module: x"), ".xm")
+        self.assertEqual(fetch.module_kind(bytes(1080) + b"M.K."), ".mod")
+        self.assertEqual(fetch.module_kind(b"Rar!\x1a\x07\x00"), "")
+        mdr = self.root / "mod" / "brano.mdr"
+        mdr.parent.mkdir(parents=True)
+        mdr.write_bytes(b"IMPM" + bytes(200))       # modulo non compresso con estensione .mdr
+        self.assertEqual(fetch.extract_module(mdr), self.root / "mod" / "brano" / "brano.it")
 
 
 if __name__ == "__main__":

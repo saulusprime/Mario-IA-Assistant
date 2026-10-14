@@ -47,7 +47,8 @@ dentro ogni gruppo le prime sono le più utili.
       effetti rispetto alla voce; provare in una sessione dell'assistente se le esclamazioni si
       sovrappongono alla frase successiva; ascoltare nel browser un NSF, un SPC e un modulo
       convertiti; caricare un suono dal telefono. Per i MIDI installare un sintetizzatore
-      (`sudo apt install fluidsynth fluid-soundfont-gm`).
+      (`sudo apt install fluidsynth fluid-soundfont-gm`); per i 107 moduli tracker compressi
+      `sudo apt install unar` e poi `./run.sh fetch-sounds --reindex`.
 - [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
       (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
       `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON

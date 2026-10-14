@@ -221,7 +221,7 @@ class SoundPack:
             return None
         path = (self.root / rel).resolve()
         root = self.root.resolve()
-        if root not in path.parents or not path.is_file():
+        if root not in path.parents or not path.is_file() or path.stat().st_size == 0:
             return None
         return path
 

@@ -669,6 +669,20 @@ Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiun
   "🔊 Here we go!" e nessuna graffa.
 - Test: da 152 a 155.
 
+### 14/10 notte — Archivio completo scaricato
+
+- Primo passaggio (sandbox, 2 ore e mezza): 1.921 file nuovi, 73 errori 403, tutti link del sito con
+  la barra rovesciata (`mlrpg3\file.wav`, che i browser trattano come `/`). Corretto lo strumento e
+  rifatto il passaggio sull'host: 73 file, nessun errore.
+- Totale: 2.783 voci, 170 MB: 1.374 WAV, 904 MIDI, 114 moduli, 13 MP3, 10 NSF (da 8 zip), 348 SPC
+  (da 14 zip); le tracce degli zip hanno la descrizione con il numero di brani.
+- Moduli `.mdr`: sono RAR 2.0 del 2001. Il `7zip` di Debian (dfsg) non ha il decompressore RAR e crea
+  file vuoti: lo strumento ora prova `unar`, poi `7z`, scarta le estrazioni vuote e riconosce i moduli
+  non compressi dal contenuto (5 su 112). Nuova opzione `--reindex` per rifare estrazioni e catalogo
+  senza contattare il sito, da lanciare dopo `sudo apt install unar`.
+- Conversioni provate sull'host con il codice della pagina Suoni: SPC 8 s in 0,24 s, NSF traccia 5
+  in 0,19 s, modulo IT 6 s in 0,21 s.
+
 ## 4. Stato del codice
 
 | File | Ruolo |
