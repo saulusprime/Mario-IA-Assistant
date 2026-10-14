@@ -11,8 +11,8 @@ scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); das
 Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
 versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
-con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato);
-149 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato); messaggi
+"stile Mario" (esclamazioni originali + piper più acuto); 152 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -632,6 +632,24 @@ locale tutto l'archivio originale ("per uso privato non c'è problema").
   API `/api/sounds/*`.
 - Test: da 143 a 149 (`test_sounds_web`, nuovi casi in `test_openvoice`).
 
+### 14/10 sera — Un messaggio "con la voce di Mario"
+
+Domanda dell'utente: "riesci a sintetizzare già un messaggio con la voce di Mario?". Risposta: la voce
+dei giochi non viene clonata, perché è quella di un doppiatore reale senza il suo consenso; inoltre
+le registrazioni sono esclamazioni brevi con musica. Fatto invece un messaggio "alla Mario":
+
+- **Misure** (pyin di librosa): esclamazioni di Mario tra 250 e 570 Hz (urlate, alcune disturbate
+  dalla musica); piper riccardo 147 Hz, paola 197 Hz. Scelta: riccardo +6 semitoni (×1,41), cioè
+  circa 207 Hz, misurati poi sul messaggio prodotto.
+- **Effetto `mario`** in `Speaker`: ffmpeg `rubberband` (pitch, tempo, formanti spostate o
+  conservate), con ripiego `asetrate`+`atempo`; per spd-say alza tono e velocità del motore.
+- **Effetti tra le frasi**: `Speaker.speak_sound` mette in coda un'esclamazione o un file
+  dell'archivio, che suona al suo turno; `voice` riconosce `{nome}` nel testo.
+- **Salvataggio**: `voice --save` registra ogni pezzo suonato e li unisce con ffmpeg; `--no-play`.
+- **Risultato**: `logs/messaggio-mario-cartone.wav` (8,5 s, suonato dal PC) e
+  `logs/messaggio-mario-naturale.wav`; impostazione "Effetto: stile Mario" nella pagina Assistente.
+- Test: da 149 a 152.
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -646,7 +664,7 @@ locale tutto l'archivio originale ("per uso privato non c'è problema").
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 149 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 152 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -680,7 +698,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (149); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (152); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

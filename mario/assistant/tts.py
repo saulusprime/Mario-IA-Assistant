@@ -38,6 +38,8 @@ from . import openvoice as ov
 from .emotions import EMOTIONS
 from .soundpack import DEFAULT_STYLE, STYLES, SoundPack
 
+VOICE_EFFECTS = ("", "mario")
+
 SOUNDS_DIR = Path(tempfile.gettempdir()) / "mario-assistant-sounds"
 SAMPLE_RATE = 22050
 READY_AHEAD = 2  # frasi preparate in anticipo al massimo
@@ -124,7 +126,9 @@ class Speaker:
                  pitch: int = 0, volume: int = 0, sounds: bool = True, engine: Optional[str] = None,
                  piper_model: str = "", openvoice_reference: str = "", openvoice_tau: float = 0.3,
                  openvoice_watermark: bool = False, openvoice_wait: float = 20.0,
-                 sound_style: str = DEFAULT_STYLE, soundpack: Optional[SoundPack] = None):
+                 sound_style: str = DEFAULT_STYLE, soundpack: Optional[SoundPack] = None,
+                 voice_effect: str = "", effect_semitones: float = 6.0, effect_tempo: float = 1.1,
+                 effect_formant: str = "shifted"):
         self.enabled = enabled
         self.language = language
         self.voice = voice
@@ -138,6 +142,14 @@ class Speaker:
         self.openvoice_watermark = bool(openvoice_watermark)
         self.openvoice_wait = float(openvoice_wait)  # secondi massimi di attesa dell'avvio, poi voce di riserva
         self.sound_style = sound_style if sound_style in STYLES else DEFAULT_STYLE
+        # effetto "mario": voce più acuta e un po' più veloce, da personaggio dei cartoni (ffmpeg rubberband)
+        self.voice_effect = voice_effect if voice_effect in VOICE_EFFECTS else ""
+        self.effect_semitones = float(effect_semitones)
+        self.effect_tempo = float(effect_tempo)
+        self.effect_formant = effect_formant if effect_formant in ("shifted", "preserved") else "shifted"
+        self.playback = True                         # False: prepara e registra senza suonare (voice --save)
+        self.recording: Optional[list[Path]] = None  # file dei pezzi suonati, per salvare un messaggio intero
+        self.record_dir: Optional[Path] = None
         self.pack = soundpack if soundpack is not None else SoundPack()
         self.piper_model = piper_model
         self.engine = engine if engine is not None else self._detect()
@@ -175,6 +187,11 @@ class Speaker:
                 setattr(self, key, value)
         if opts.get("sound_style") in STYLES:
             self.sound_style = opts["sound_style"]
+        if opts.get("voice_effect") is not None and opts["voice_effect"] in VOICE_EFFECTS:
+            self.voice_effect = opts["voice_effect"]
+        for key in ("effect_semitones", "effect_tempo"):
+            if opts.get(key) not in (None, ""):
+                setattr(self, key, float(opts[key]))
         if opts.get("openvoice_tau") not in (None, ""):
             self.openvoice_tau = max(0.0, min(1.0, float(opts["openvoice_tau"])))
         changed = False
@@ -251,7 +268,7 @@ class Speaker:
                 "rate": self.rate, "pitch": self.pitch, "sounds": self.sounds, "piper_model": self.piper_model,
                 "openvoice_reference": self.openvoice_reference, "openvoice_tau": self.openvoice_tau,
                 "openvoice": voice_ai, "last_timing": self.timings[-1] if self.timings else None,
-                "sound_style": self.sound_style, "soundpack": {"files": len(self.pack.items),
+                "voice_effect": self.voice_effect, "sound_style": self.sound_style, "soundpack": {"files": len(self.pack.items),
                                                               "folder": str(self.pack.folder)},
                 "avg_render_s": round(sum(renders) / len(renders), 2) if renders else None,
                 "last_error": self.last_error}
@@ -276,7 +293,25 @@ class Speaker:
             self._spoke_any = True
             with self._count_lock:
                 self._pending += 1
-            self._queue.put((self._generation, next(self._serial), text, emotion))
+            self._queue.put((self._generation, next(self._serial), text, emotion, None))
+
+    def speak_sound(self, name: str, style: str = "voce") -> None:
+        """Mette in coda un effetto tra le frasi (per esempio un'esclamazione originale di Mario, `letsago`):
+        suona al suo turno, dopo la frase precedente e prima della successiva."""
+        if not self.enabled or not name:
+            return
+        with self._count_lock:
+            self._pending += 1
+        self._queue.put((self._generation, next(self._serial), "", None, (name, style)))
+
+    def start_recording(self, folder: Path) -> None:
+        """Da qui in poi copia in `folder` ogni pezzo suonato (frasi ed effetti), per salvarli in un solo file."""
+        folder.mkdir(parents=True, exist_ok=True)
+        self.record_dir, self.recording = folder, []
+
+    def stop_recording(self) -> list[Path]:
+        files, self.recording = self.recording or [], None
+        return files
 
     def _done(self, count: int = 1) -> None:
         with self._count_lock:
@@ -335,6 +370,8 @@ class Speaker:
             # piper legge il testo dallo standard input e scrive un WAV; l'emozione si sente solo nel ritmo
             return [ov.find_piper() or "piper", "--model", model or self.piper_model, "--length_scale",
                     str(self._length_scale(emotion)), "--output_file", out or str(SOUNDS_DIR / "piper-out.wav")]
+        if self.voice_effect == "mario":  # niente file da trattare: più acuta e veloce con i parametri del motore
+            rate, pitch = min(100, rate + 15), min(100, pitch + 50)
         if engine == "spd-say":
             cmd = ["spd-say", "-w", "-l", self.language, "-r", str(rate), "-p", str(pitch), "-i", str(self.volume)]
             if self.voice:
@@ -349,14 +386,24 @@ class Speaker:
 
     def _run(self) -> None:
         while True:
-            generation, serial, text, emotion = self._queue.get()
+            generation, serial, text, emotion, sound = self._queue.get()
             if generation != self._generation:
                 self._done()
                 continue
             t0 = time.monotonic()
-            timing: dict = {"serial": serial, "chars": len(text)}
+            timing: dict = {"serial": serial, "chars": len(text), "text": text[:80]}
             try:
-                kind, payload = self._render(text, emotion, serial, timing)
+                if sound:
+                    name, style = sound
+                    path = (self.pack.path(name, style) if style != "sintetici" else None) or ensure_sound(name)
+                    kind, payload = ("file", str(path)) if path else ("error", "")
+                    timing.update(engine="effetto", sound=name, file=Path(payload).name if path else None)
+                else:
+                    kind, payload = self._render(text, emotion, serial, timing)
+                    if kind == "wav" and self.voice_effect:
+                        t1 = time.monotonic()
+                        self._apply_effect(str(payload))
+                        timing["effect_s"] = round(time.monotonic() - t1, 3)
             except Exception as exc:  # il TTS non deve mai fermare la sessione
                 self.last_error = str(exc)
                 kind, payload = "error", ""
@@ -401,6 +448,32 @@ class Speaker:
             return self._render_with(engine, model, text, emotion, serial, timing)
         return self._render_with(self.engine, self.piper_model, text, emotion, serial, timing)
 
+    def _apply_effect(self, path: str) -> bool:
+        """Effetto "mario" sul WAV della frase: altezza +N semitoni e velocità (rubberband di ffmpeg; senza,
+        asetrate+atempo, che sposta anche le formanti). Se ffmpeg manca la frase resta com'è."""
+        if self.voice_effect != "mario" or not shutil.which("ffmpeg"):
+            return False
+        pitch = 2 ** (self.effect_semitones / 12)
+        tempo = max(0.5, min(2.0, self.effect_tempo))
+        finish = "highpass=f=90,alimiter=limit=0.95"
+        out = path + ".fx.wav"
+        filters = [f"rubberband=pitch={pitch:.4f}:tempo={tempo:.3f}:formant={self.effect_formant},{finish}"]
+        try:
+            with wave.open(path, "rb") as w:
+                rate = w.getframerate()
+            filters.append(f"asetrate={int(rate * pitch)},aresample={rate},atempo={max(0.5, tempo / pitch):.4f},{finish}")
+        except (OSError, wave.Error, EOFError):
+            pass
+        for filt in filters:
+            proc = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", path, "-af", filt, out],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=60)
+            if proc.returncode == 0 and Path(out).is_file():
+                Path(out).replace(path)
+                return True
+        Path(out).unlink(missing_ok=True)
+        self.last_error = "effetto voce non applicato (ffmpeg)"
+        return False
+
     def _fallback(self) -> tuple[Optional[str], str]:
         """Voce di riserva della voce IA: piper con la stessa voce di base, altrimenti spd-say/espeak-ng."""
         model = self.piper_model or ov.default_piper_model()
@@ -444,12 +517,19 @@ class Speaker:
                 self._done()
                 continue
             self._busy = True
+            is_sound = kind == "file"
             try:
-                if self.on_start:
+                if self.on_start and not is_sound:
                     self.on_start(text, emotion)
-                if kind == "wav":
+                if kind in ("wav", "file") and self.recording is not None and self.record_dir is not None:
+                    copy = self.record_dir / f"{len(self.recording):03d}.wav"
+                    shutil.copyfile(payload, copy)
+                    self.recording.append(copy)
+                if not self.playback:
+                    pass
+                elif kind in ("wav", "file"):
                     if self.player:
-                        self._play_process(self.player + [payload])
+                        self._play_process(self.effect_command(Path(payload)) if is_sound else self.player + [payload])
                     else:
                         self.last_error = "nessun lettore audio (paplay, pw-play, aplay, ffplay)"
                 elif kind == "cmd":
@@ -461,7 +541,7 @@ class Speaker:
                     Path(payload).unlink(missing_ok=True)
                 self._proc = None
                 self._busy = False
-                if self.on_end:
+                if self.on_end and not is_sound:
                     try:
                         self.on_end(text, emotion)
                     except Exception:

@@ -31,7 +31,7 @@ DEFAULTS: dict[str, str] = {
     "assistant.listening": "1", "assistant.persona": "", "assistant.rules": "{}",
     "assistant.piper_model": "", "assistant.session_minutes": "0", "assistant.blocked_words": "", "assistant.memory": "1",
     "assistant.openvoice_reference": "", "assistant.openvoice_tau": "0.3", "assistant.openvoice_watermark": "0",
-    "assistant.sound_style": "giochi",
+    "assistant.sound_style": "giochi", "assistant.voice_effect": "",
 }
 BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
              "openvoice_watermark"}
@@ -94,7 +94,8 @@ class AssistantService:
         s = self.settings()
         self.speaker = Speaker(enabled=as_bool(s["tts"]) and not quiet, voice=s["voice"], rate=int(s["rate"] or 0),
                                pitch=int(s["pitch"] or 0), sounds=as_bool(s["sounds"]) and not quiet,
-                               piper_model=s["piper_model"], openvoice_reference=s["openvoice_reference"],
+                               piper_model=self._piper_model(s), openvoice_reference=s["openvoice_reference"],
+                               voice_effect=s["voice_effect"],
                                openvoice_tau=as_float(s["openvoice_tau"], 0.3),
                                openvoice_watermark=as_bool(s["openvoice_watermark"]), sound_style=s["sound_style"])
         self.behaviours = BehaviourEngine(WorkerActions(worker), emit=self._emit,
@@ -127,6 +128,14 @@ class AssistantService:
     def settings(self) -> dict[str, str]:
         return {key.split(".", 1)[1]: (self.db.get_setting(key, default) or "") for key, default in DEFAULTS.items()}
 
+    @staticmethod
+    def _piper_model(s: dict) -> str:
+        """Il modello piper scelto; con lo stile Mario e nessun modello, la voce maschile di base (riccardo)."""
+        if s.get("piper_model") or s.get("voice_effect") != "mario":
+            return s.get("piper_model") or ""
+        from .openvoice import mario_base_voice
+        return mario_base_voice()
+
     def public_settings(self) -> dict:
         s = self.settings()
         out: dict[str, Any] = {}
@@ -158,7 +167,8 @@ class AssistantService:
         s = self.settings()
         self.speaker.configure(enabled=as_bool(s["tts"]) and not self.quiet, voice=s["voice"], rate=s["rate"] or 0,
                                pitch=s["pitch"] or 0, sounds=as_bool(s["sounds"]) and not self.quiet,
-                               piper_model=s["piper_model"], openvoice_reference=s["openvoice_reference"],
+                               piper_model=self._piper_model(s), openvoice_reference=s["openvoice_reference"],
+                               voice_effect=s["voice_effect"],
                                openvoice_tau=as_float(s["openvoice_tau"], 0.3),
                                openvoice_watermark=as_bool(s["openvoice_watermark"]), sound_style=s["sound_style"])
         self.session.configure_safety(session_limit=minutes_to_seconds(s["session_minutes"]),

@@ -312,6 +312,25 @@ class SpeakerOpenVoiceTests(unittest.TestCase):
         self.assertNotIn("fallback", sp.status()["last_timing"])
         sp.close()
 
+    def test_sounds_between_sentences_recording_and_silent_mode(self):
+        sp = self.make()
+        sp.playback = False  # niente lettore: solo preparazione e registrazione
+        rec = self.dir / "registrazione"
+        sp.start_recording(rec)
+        started = []
+        sp.on_start = lambda text, emo: started.append(text)
+        sp.speak_sound("coin", "sintetici")
+        sp.speak("Ciao!", "gioia")
+        sp.speak_sound("powerup", "sintetici")
+        self.assertTrue(sp.wait(20))
+        pieces = sp.stop_recording()
+        self.assertEqual(len(pieces), 3)                 # effetto, frase, effetto, nell'ordine
+        self.assertEqual(started, ["Ciao!"])             # gli effetti non contano come frasi
+        self.assertEqual([t.get("sound") for t in sp.timings], ["coin", None, "powerup"])
+        self.assertTrue(Path(sp.sound_path("coin")).is_file())  # il file dell'effetto non viene cancellato
+        self.assertFalse(self.played.exists())
+        sp.close()
+
     def test_configure_switches_engine(self):
         sp = Speaker(enabled=False, engine="spd-say")
         sp.configure(openvoice_reference=str(self.dir / "manca.wav"))

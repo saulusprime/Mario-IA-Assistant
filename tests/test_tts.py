@@ -28,6 +28,32 @@ class SpeakerCommandTests(unittest.TestCase):
         cmd = sp._command("x", "allarme")
         self.assertEqual((cmd[cmd.index("-s") + 1], cmd[cmd.index("-p") + 1], cmd[cmd.index("-a") + 1]), ("295", "99", "200"))
 
+    def test_mario_effect_on_command_engines_and_wav(self):
+        import shutil
+        import tempfile
+        import wave
+        from pathlib import Path
+        sp = Speaker(enabled=True, engine="spd-say", rate=0, pitch=0, voice_effect="mario")
+        cmd = sp._command("Ciao", None)
+        self.assertEqual(cmd[4:8], ["-r", "15", "-p", "50"])  # spd-say: più veloce e più acuta
+        self.assertEqual(sp.status()["voice_effect"], "mario")
+        sp.configure(voice_effect="boh")                      # valore non valido: ignorato
+        self.assertEqual(sp.voice_effect, "mario")
+        if not shutil.which("ffmpeg"):
+            return
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "frase.wav"
+            with wave.open(str(path), "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+                w.writeframes(b"".join(int(8000 * __import__("math").sin(i / 10)).to_bytes(2, "little", signed=True)
+                                       for i in range(22050)))
+            self.assertTrue(sp._apply_effect(str(path)))
+            with wave.open(str(path), "rb") as w:
+                seconds = w.getnframes() / w.getframerate()
+            self.assertAlmostEqual(seconds, 1 / 1.1, delta=0.08)  # velocità ×1.1
+        sp.configure(voice_effect="")
+        self.assertFalse(sp._apply_effect("/non/esiste.wav"))
+
     def test_configure_clamps_and_status(self):
         sp = Speaker(enabled=False, engine=None)
         sp.engine = None  # sull'host la rilevazione troverebbe spd-say

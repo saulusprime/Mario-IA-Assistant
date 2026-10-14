@@ -21,7 +21,9 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -955,27 +957,75 @@ async def cmd_assistant(args) -> int:
     return 0
 
 
-def cmd_voice(args) -> int:
-    """Prova della voce dal PC: dice il testo frase per frase e stampa i tempi di preparazione di ognuna."""
+SOUND_TOKEN = re.compile(r"\{([A-Za-z0-9_./#-]+)\}")
+
+
+def voice_segments(text: str) -> list[tuple[str, str]]:
+    """'{letsago} Ciao! Sono Mario. {wahoo}' -> [("sound", "letsago"), ("text", "Ciao!"), ("text", "Sono Mario."),
+    ("sound", "wahoo")]: le parole tra graffe sono effetti (esclamazioni originali, file dell'archivio)."""
     from .assistant.emotions import SentenceBuffer
+    out: list[tuple[str, str]] = []
+    pos = 0
+    for m in list(SOUND_TOKEN.finditer(text)) + [None]:
+        chunk = text[pos:m.start() if m else len(text)]
+        buf = SentenceBuffer()
+        out += [("text", s) for s in buf.feed(chunk) + [x for x in [buf.flush()] if x]]
+        if m:
+            out.append(("sound", m.group(1)))
+            pos = m.end()
+    return out
+
+
+def concat_wavs(files: list[Path], target: Path) -> float:
+    """Unisce i pezzi di un messaggio in un solo WAV (44,1 kHz stereo) con ffmpeg; restituisce la durata."""
+    import wave as _wave
+    if not files:
+        raise ValueError("nessun pezzo da salvare (motore senza file, come spd-say?)")
+    inputs, chains = [], []
+    for i, f in enumerate(files):
+        inputs += ["-i", str(f)]
+        chains.append(f"[{i}:a]aresample=44100,aformat=sample_fmts=s16:channel_layouts=stereo[a{i}]")
+    graph = ";".join(chains) + ";" + "".join(f"[a{i}]" for i in range(len(files))) + f"concat=n={len(files)}:v=0:a=1[out]"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", graph, "-map", "[out]", str(target)],
+                          capture_output=True, timeout=120)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.decode(errors="replace").strip()[:300])
+    with _wave.open(str(target), "rb") as w:
+        return w.getnframes() / float(w.getframerate())
+
+
+def cmd_voice(args) -> int:
+    """Prova della voce dal PC: dice il testo frase per frase (con gli effetti tra graffe) e stampa i tempi."""
+    import tempfile
+    from .assistant import openvoice as ov
     from .assistant.tts import Speaker
-    speaker = Speaker(enabled=True, sounds=bool(args.play), piper_model=args.piper_model or "",
+    piper_model = args.piper_model or ""
+    if args.effect == "mario" and not piper_model and not args.openvoice_ref:
+        piper_model = ov.mario_base_voice()  # voce maschile come base dello stile Mario
+    speaker = Speaker(enabled=True, sounds=bool(args.play), piper_model=piper_model,
                       openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
                       openvoice_watermark=args.openvoice_watermark, openvoice_wait=args.wait,
-                      sound_style=args.sound_style)
+                      sound_style=args.sound_style, voice_effect="" if args.effect == "nessuno" else args.effect,
+                      effect_semitones=args.semitones, effect_tempo=args.tempo, effect_formant=args.formant)
+    speaker.playback = not args.no_play
     if args.openvoice_ref and speaker.engine != "openvoice":
         print(f"Voce IA non disponibile: {speaker.openvoice_reason()}")
-    print(f"Motore: {speaker.engine or 'nessuno'} · lettore: {speaker.player[0] if speaker.player else 'nessuno'}")
+    print(f"Motore: {speaker.engine or 'nessuno'}" + (f" ({Path(piper_model).stem})" if piper_model else "")
+          + (f" · effetto {args.effect} ({args.semitones:+g} semitoni, velocità ×{args.tempo:g}, formanti {args.formant})"
+             if args.effect != "nessuno" else "")
+          + f" · lettore: {speaker.player[0] if speaker.player else 'nessuno'}")
     for name in args.play or []:  # effetti prima della frase, uno dopo l'altro
         path = speaker.sound_path(name)
         print(f"Suono {name!r} ({args.sound_style}): {path or 'non trovato'}")
-        if path and speaker.player:
+        if path and speaker.player and not args.no_play:
             subprocess.run(speaker.player + [str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
     if not args.text:
         return 0
     if speaker.engine is None:
         print("Nessun motore vocale: installare speech-dispatcher/espeak-ng, piper o eseguire tools/setup_openvoice.sh")
         return 1
+    record_dir = Path(tempfile.mkdtemp(prefix="mario-voce-")) if args.save else None
     try:
         if speaker.status()["openvoice"]["state"] != "spento":  # voce IA, o piper nel processo persistente
             ai = speaker.engine == "openvoice"
@@ -987,25 +1037,40 @@ def cmd_voice(args) -> int:
             else:
                 st = speaker.status()["openvoice"]
                 print(f"Voce non pronta ({st['state']}): {st['last_error'] or 'tempo scaduto'}; parla la voce di riserva")
-        buf = SentenceBuffer()
-        sentences = buf.feed(" ".join(args.text)) + [s for s in [buf.flush()] if s]
+        if record_dir:
+            speaker.start_recording(record_dir)
+        speaker.timings.clear()
         heard: list[float] = []
         t0 = time.monotonic()
         speaker.on_start = lambda _text, _emo: heard.append(time.monotonic() - t0)
-        for sentence in sentences:
-            speaker.speak(sentence, args.emotion)
+        for kind, value in voice_segments(" ".join(args.text)):
+            if kind == "sound":
+                speaker.speak_sound(value, "voce")
+            else:
+                speaker.speak(value, args.emotion)
         speaker.wait(600)
-        for sentence, timing, at in zip(sentences, list(speaker.timings), heard + [None] * len(sentences)):
+        for timing in list(speaker.timings):
+            if timing.get("sound"):
+                print(f"- {{{timing['sound']}}}: {timing.get('file') or 'non trovato'}")
+                continue
             parts = [f"motore {timing.get('fallback') or timing.get('engine')}", f"preparata in {timing['render_s']:.2f} s"]
             if timing.get("engine") == "openvoice" and timing.get("convert_s") is not None:
                 parts.append(f"(piper {timing['base_s']:.2f} s + OpenVoice {timing['convert_s']:.2f} s, audio {timing['audio_s']:.1f} s)")
-            if at is not None:
-                parts.append(f"udibile dopo {at:.2f} s")
-            print(f"- {sentence[:60]}{'…' if len(sentence) > 60 else ''}: " + ", ".join(parts))
+            if timing.get("effect_s") is not None:
+                parts.append(f"effetto {timing['effect_s']:.2f} s")
+            print(f"- {timing.get('text', '')[:60]}: " + ", ".join(parts))
+        if heard:
+            print(f"Prima frase udibile dopo {heard[0]:.2f} s")
+        if record_dir:
+            pieces = speaker.stop_recording()
+            seconds = concat_wavs(pieces, Path(args.save))
+            print(f"Messaggio salvato in {args.save} ({len(pieces)} pezzi, {seconds:.1f} s)")
         if speaker.last_error:
             print(f"Ultimo errore della voce: {speaker.last_error}")
     finally:
         speaker.close()
+        if record_dir:
+            shutil.rmtree(record_dir, ignore_errors=True)
     return 0
 
 def cmd_decode(args) -> int:
@@ -1387,7 +1452,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_adventure)
 
     p = sub.add_parser("voice", help="prova della voce dal PC con i tempi (spd-say, piper o voce IA OpenVoice)")
-    p.add_argument("text", nargs="*", help="testo da dire (facoltativo con --play)")
+    p.add_argument("text", nargs="*", help="testo da dire, con gli effetti tra graffe: \"{letsago} Ciao! {wahoo}\"")
     p.add_argument("--play", action="append", metavar="SUONO",
                    help="suona prima un effetto: coin, powerup, alarm, letsago, ... o gioco/file.wav (ripetibile)")
     p.add_argument("--sound-style", default="giochi", choices=["giochi", "voce", "sintetici"],
@@ -1396,6 +1461,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--piper-model", help="voce piper (.onnx); con la voce IA è la voce di base")
     add_openvoice_args(p)
     p.add_argument("--wait", type=float, default=120.0, help="secondi massimi di attesa del caricamento della voce IA")
+    p.add_argument("--effect", default="nessuno", choices=["nessuno", "mario"],
+                   help="mario: voce più acuta e veloce da personaggio (base piper riccardo se non indicata)")
+    p.add_argument("--semitones", type=float, default=6.0, help="effetto mario: semitoni in più (default 6)")
+    p.add_argument("--tempo", type=float, default=1.1, help="effetto mario: velocità (default 1.1)")
+    p.add_argument("--formant", default="shifted", choices=["shifted", "preserved"],
+                   help="effetto mario: formanti spostate (cartone) o conservate (più naturale)")
+    p.add_argument("--save", metavar="FILE.wav", help="salva il messaggio intero (frasi ed effetti) in un WAV")
+    p.add_argument("--no-play", action="store_true", help="non suonare (utile con --save)")
     p.set_defaults(func=cmd_voice)
 
     p = sub.add_parser("web", help="avvia la dashboard web")

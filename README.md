@@ -30,6 +30,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh assistant            # Mario come ingresso/uscita di una sessione con un modello (voce dal PC)
 ./run.sh assistant --no-mario # idem senza Bluetooth: tastiera, modello e voce (chiave Claude in .env)
 ./run.sh voice "Ciao!" --openvoice-ref voce.wav   # prova della voce IA (OpenVoice) con i tempi
+./run.sh voice "{letsago} Ciao, sono Mario! {wahoo}" --effect mario --save messaggio.wav   # messaggio stile Mario
 ./run.sh fetch-sounds --all   # archivio di suoni, voci e musiche di Mario in locale (uso privato); pagina Suoni
 ./run.sh adventure --list     # avventure del designer; --play quiz [--no-mario] per giocarne una
 ./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
@@ -207,6 +208,23 @@ una voce neurale offline; l'emozione agisce solo sulla velocità. Se c'è l'ambi
 piper gira in un processo che tiene il modello caricato: una frase in 0,1–0,2 s invece dei 2,8 s del
 comando `piper`, che ricarica il modello ogni volta. Due thread separano la preparazione dalla
 riproduzione: la frase successiva si prepara mentre quella corrente suona.
+
+**Stile Mario.** Un messaggio "alla Mario" si compone così: le esclamazioni originali dei giochi suonate
+così come sono, scritte tra graffe nel testo (`{letsago}`, `{wahoo}`, `{mammamia}`, oppure un file
+dell'archivio), e le frasi in italiano dette da piper con l'effetto `mario`. L'effetto usa il filtro
+rubberband di ffmpeg: +6 semitoni e velocità ×1,1, formanti spostate come un personaggio dei cartoni
+(`--formant preserved` per un suono più naturale, `--semitones` e `--tempo` per regolare). Come base
+usa la voce maschile `it_IT-riccardo-x_low`, che parla a 147 Hz e con l'effetto sale a 207 Hz; le
+esclamazioni urlate di Mario misurano 250–570 Hz. `--save` unisce frasi ed esclamazioni in un solo
+WAV, `--no-play` non lo suona. Nella pagina Assistente lo stile si sceglie con "Effetto: stile Mario"
+(con spd-say alza tono e velocità del motore). La voce di Mario non viene clonata: è la voce di un
+doppiatore reale. Per un timbro più vicino si può registrare la propria imitazione di Mario e usarla
+come riferimento della voce IA.
+
+```sh
+./run.sh voice "{letsago} Ciao! Sono Mario! Oggi andiamo a salvare la principessa Peach. {wahoo}" \
+    --effect mario --emotion gioia --save logs/messaggio-mario.wav
+```
 
 **Voce IA (OpenVoice).** [OpenVoice V2](https://github.com/myshell-ai/OpenVoice) (MyShell e MIT,
 licenza MIT) copia il timbro di una voce da una registrazione di pochi secondi. Non parla italiano,
@@ -673,7 +691,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centoquarantanove test senza Bluetooth né rete esterna, raggruppati per file:
+Centocinquantadue test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -683,13 +701,13 @@ Centoquarantanove test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata |
 | `test_db` (6) | database della dashboard |
 | `test_assistant` (30), `test_assistant_ext` (12) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
-| `test_openvoice` (19) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni, lettura del catalogo del sito |
+| `test_openvoice` (20) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni, lettura del catalogo del sito |
 | `test_sounds_web` (3) | pagina Suoni: catalogo, file per l'anteprima e percorsi vietati, assegnazioni, stile, caricamento e cancellazione |
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
-| `test_service` (3), `test_tts` (4) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
+| `test_service` (3), `test_tts` (5) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
 | `test_adventures` (7), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
 | `test_web_pages` (6), `test_web_static` (5) | pagina Eventi, esportazioni, grafici, token; sintassi del JavaScript e coerenza id/azioni con i template |
-| `test_cli` (7), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, `decode`; importazione senza Bluetooth |
+| `test_cli` (8), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, `decode`; importazione senza Bluetooth |
 
 I test che importano Flask o bleak vengono saltati dove mancano (per esempio nel sandbox) e
 girano nel venv dell'host e in GitHub Actions (`.github/workflows/tests.yml`, Python 3.11 e 3.13).
@@ -716,7 +734,7 @@ mario/env.py            caricamento di .env (chiave API) senza dipendenze
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), fetch_mario_sounds.py (suoni dei giochi)
-tests/                  test offline (149)
+tests/                  test offline (152)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il

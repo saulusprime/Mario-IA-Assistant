@@ -54,6 +54,12 @@ def default_piper_model() -> str:
     return str(others[0]) if others else ""
 
 
+def mario_base_voice() -> str:
+    """Voce maschile di piper usata come base dello stile Mario (più acuta e veloce con l'effetto), o ''."""
+    male = VOICES_DIR / "it_IT-riccardo-x_low.onnx"
+    return str(male) if male.is_file() else ""
+
+
 def problem(reference: str, piper_model: str = "", python: Optional[Path] = None,
             converter: Optional[Path] = None) -> str:
     """'' se la voce IA può partire, altrimenti il motivo (in italiano, per lo stato e i log)."""

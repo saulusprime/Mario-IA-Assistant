@@ -130,6 +130,27 @@ class CliTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.cli._pick_adventure("inesistente", db)
 
+    def test_voice_segments_and_concat(self):
+        segs = self.cli.voice_segments("{letsago} Ciao! Sono Mario. {sm64/sm64_mario_waha.wav} Andiamo!{wahoo}")
+        self.assertEqual(segs, [("sound", "letsago"), ("text", "Ciao!"), ("text", "Sono Mario."),
+                                ("sound", "sm64/sm64_mario_waha.wav"), ("text", "Andiamo!"), ("sound", "wahoo")])
+        self.assertEqual(self.cli.voice_segments("senza effetti"), [("text", "senza effetti")])
+        import shutil
+        import wave
+        if not shutil.which("ffmpeg"):
+            return
+        with tempfile.TemporaryDirectory() as tmp:
+            parts = []
+            for i, rate in enumerate((16000, 22050)):
+                p = Path(tmp) / f"{i}.wav"
+                with wave.open(str(p), "wb") as w:
+                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate); w.writeframes(b"\x00\x01" * (rate // 2))
+                parts.append(p)
+            seconds = self.cli.concat_wavs(parts, Path(tmp) / "messaggio.wav")
+            self.assertAlmostEqual(seconds, 1.0, delta=0.05)  # mezzo secondo + mezzo secondo, frequenze diverse
+        with self.assertRaises(ValueError):
+            self.cli.concat_wavs([], Path("x.wav"))
+
     def test_decode_via_main(self):
         import contextlib
         buf = io.StringIO()

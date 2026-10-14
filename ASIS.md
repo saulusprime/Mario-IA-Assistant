@@ -144,7 +144,12 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   catalogo. La pagina Suoni della dashboard permette di scegliere il file di ogni effetto, regolare
   il volume, ascoltare l'archivio (NSF con scelta della traccia, provato con ffmpeg e libgme) e
   caricare suoni propri. Da ascoltare per volume e scelte.
-- **Test**: 149 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Messaggio stile Mario (14/10)**: `./run.sh voice` compone esclamazioni originali (`{letsago}`,
+  `{wahoo}`) e frasi di piper con l'effetto `mario` (rubberband: +6 semitoni, ×1,1) e salva il
+  messaggio in WAV. Provato sull'host: frasi pronte in 0,2–0,35 s più 0,16–0,19 s di effetto, altezza
+  misurata 207 Hz come previsto; messaggio di 8,5 s suonato dal PC. Lo stile c'è anche nelle
+  impostazioni dell'assistente. Non ancora valutato a orecchio dall'utente.
+- **Test**: 152 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).
