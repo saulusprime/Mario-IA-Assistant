@@ -181,7 +181,8 @@ class PiperTests(unittest.TestCase):
     def test_piper_command_and_detection(self):
         sp = Speaker(enabled=True, engine="piper", piper_model="/tmp/it_IT-x.onnx", rate=0)
         cmd = sp._command("Ciao", "gioia")  # gioia: +15 -> length_scale 1 - 15/200
-        self.assertEqual(cmd[:3], ["piper", "--model", "/tmp/it_IT-x.onnx"])
+        self.assertEqual(Path(cmd[0]).name, "piper")  # nel PATH o in .venv-openvoice/bin
+        self.assertEqual(cmd[1:3], ["--model", "/tmp/it_IT-x.onnx"])
         self.assertEqual(cmd[cmd.index("--length_scale") + 1], "0.93")
         sp.configure(rate=-100)
         self.assertEqual(sp._command("x", "sonno")[4], "1.5")  # -100 bloccato: 1 + 100/200
@@ -226,6 +227,39 @@ class AssistantExtApiTests(unittest.TestCase):
         self.assertFalse(self.assistant.session.memory_enabled)
         st = self.client.get("/api/assistant/status").get_json()["status"]
         self.assertEqual(st["session_limit"], 900.0)
+
+    def test_voice_reference_upload_and_settings(self):
+        import io as _io
+        import wave as _wave
+
+        def wav_bytes(seconds):
+            buf = _io.BytesIO()
+            with _wave.open(buf, "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+                w.writeframes(b"\x10\x00" * int(16000 * seconds))
+            return buf.getvalue()
+
+        r = self.client.post("/api/assistant/voice-reference", data={"file": (_io.BytesIO(wav_bytes(4)), "voce.wav")},
+                             content_type="multipart/form-data").get_json()
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["seconds"], 4.0)
+        saved = Path(r["path"])
+        self.assertTrue(saved.is_file())
+        self.assertEqual(saved.parent, Path(self.tmp.name) / "voices")
+        r = self.client.post("/api/assistant/voice-reference", data={"file": (_io.BytesIO(wav_bytes(1)), "corta.wav")},
+                             content_type="multipart/form-data")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("troppo corta", r.get_json()["error"])
+        self.assertEqual(self.client.post("/api/assistant/voice-reference").status_code, 400)
+        # impostazioni: tau e marchio salvati; il riferimento c'è ma OpenVoice no (o sì, sull'host): lo stato lo dice
+        s = self.client.post("/api/assistant/settings", json={"openvoice_reference": str(saved), "openvoice_tau": "0.5",
+                                                                 "openvoice_watermark": 1}).get_json()["settings"]
+        self.assertEqual((s["openvoice_reference"], s["openvoice_tau"], s["openvoice_watermark"]), (str(saved), "0.5", True))
+        sp = self.assistant.speaker.status()
+        self.assertEqual((sp["openvoice_reference"], sp["openvoice_tau"]), (str(saved), 0.5))
+        self.assertIn("openvoice", sp)
+        self.client.post("/api/assistant/settings", json={"openvoice_reference": ""})
+        self.assertEqual(self.assistant.speaker.status()["openvoice"]["state"], "spento")
 
     def test_simulate_lifted_rotation_and_diary_csv(self):
         self.client.post("/api/assistant/simulate", json={"what": "sollevato"})

@@ -283,8 +283,9 @@ class SessionTests(unittest.TestCase):
         self.assertEqual([i.name for i in session.pending], ["salto", "basetta"])
         self.assertEqual(session.turn, 1)
         # la voce finisce: la coda si svuota e l'ultima frase termina -> un solo prompt unito
-        while not speaker._queue.empty():
+        while not speaker._queue.empty():  # come il thread di riproduzione: frase tolta e conteggiata finita
             speaker._queue.get_nowait()
+            speaker._done()
         speaker.on_end("ultima frase", "calma")
         self.assertTrue(wait_idle(session))
         self.assertEqual(session.turn, 2)
@@ -296,6 +297,7 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(session.pending, [])
         # eventi vecchi vengono scartati
         session.pending = [__import__("mario.assistant.intents", fromlist=["Intent"]).Intent("prompt", "salto", "x", "gesto: salto", 1, time.time() - 60)]
+        speaker._done(speaker._queue.qsize())
         speaker._queue.queue.clear()
         speaker.on_end("fine", "calma")
         time.sleep(0.1)

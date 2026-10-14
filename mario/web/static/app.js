@@ -273,6 +273,9 @@
       $("#set-engine").textContent = speaker && speaker.engine ? `motore: ${speaker.engine}, suoni: ${speaker.player || "nessun lettore"}` : "nessun motore vocale trovato (installa speech-dispatcher o espeak-ng)";
       $("#set-beh").checked = !!s.behaviours; $("#set-vol").checked = !!s.volume_effects; $("#set-busy").checked = !!s.busy_indication; $("#set-ports").checked = !!s.port_writes;
       $("#set-payloads").value = s.port_payloads && s.port_payloads !== "{}" ? s.port_payloads : "";
+      $("#set-ovref").value = s.openvoice_reference || ""; $("#set-ovtau").value = s.openvoice_tau || 0.3; $("#set-ovwm").checked = !!s.openvoice_watermark;
+      const ovs = speaker && speaker.openvoice;
+      $("#set-ovstate").textContent = !ovs ? "" : ovs.problem ? `non disponibile: ${ovs.problem}` : ovs.state === "spento" ? "" : `${ovs.mode === "piper" ? "processo piper" : "voce IA"}: ${ovs.state}` + (ovs.load_s ? `, caricata in ${ovs.load_s} s` : "") + (ovs.avg_s ? `, ${ovs.avg_s} s per frase` : "") + (ovs.last_error ? ` (${ovs.last_error})` : "");
       $("#set-piper").value = s.piper_model || ""; $("#set-minutes").value = s.session_minutes || 0; $("#set-blocked").value = s.blocked_words || ""; $("#set-memory").checked = !!s.memory;
     }
     function renderMemory(items) {
@@ -327,8 +330,18 @@
     $("#set-save").addEventListener("click", async () => {
       let payloads = {};
       try { payloads = $("#set-payloads").value.trim() ? JSON.parse($("#set-payloads").value) : {}; } catch (e) { flash($("#set-msg"), "JSON dei payload non valido", true); return; }
-      const data = { backend: $("#set-backend").value, model: $("#set-model").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads, piper_model: $("#set-piper").value, session_minutes: $("#set-minutes").value, blocked_words: $("#set-blocked").value, memory: $("#set-memory").checked ? 1 : 0 };
+      const data = { backend: $("#set-backend").value, model: $("#set-model").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads, piper_model: $("#set-piper").value, openvoice_reference: $("#set-ovref").value, openvoice_tau: $("#set-ovtau").value, openvoice_watermark: $("#set-ovwm").checked ? 1 : 0, session_minutes: $("#set-minutes").value, blocked_words: $("#set-blocked").value, memory: $("#set-memory").checked ? 1 : 0 };
       try { const r = await api("/api/assistant/settings", "POST", data); $("#set-key").value = ""; $("#set-key-clear").checked = false; renderSettings(r.settings, null, null); const st = (await api("/api/assistant/status")).status; renderSettings(st.settings, st.speaker, st.llm); flash($("#set-msg"), "impostazioni salvate"); } catch (e) { flash($("#set-msg"), e.message, true); }
+    });
+    $("#set-ovfile").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0]; if (!file) return;
+      const form = new FormData(); form.append("file", file);
+      try {
+        const r = await fetch("/api/assistant/voice-reference", { method: "POST", body: form, credentials: "same-origin" });
+        const j = await r.json(); if (!j.ok) throw new Error(j.error || r.statusText);
+        $("#set-ovref").value = j.path; flash($("#set-msg"), `registrazione caricata (${j.seconds} s): premi "Salva impostazioni"`);
+      } catch (e) { flash($("#set-msg"), e.message, true); }
+      ev.target.value = "";
     });
     $("#rules-save").addEventListener("click", async () => {
       const rules = {};

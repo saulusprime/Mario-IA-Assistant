@@ -128,7 +128,16 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   simulati, non ancora con Mario.
 - **Strumenti dal vivo**: `tools/probe_port4.py`, `tools/catalog_tiles.py`, `tools/live_checks.py`
   (anche come `./run.sh live-checks` ecc.), `tools/99-mario-btusb.rules`.
-- **Test**: 126 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Voce IA con OpenVoice V2 (14/10)**: `tools/setup_openvoice.sh` installa in `.venv-openvoice`
+  torch per CPU, OpenVoice (convertitore V2 da Hugging Face) e piper con le voci italiane. piper legge
+  la frase e OpenVoice le dà il timbro della registrazione di riferimento, in un processo separato
+  che tiene i modelli caricati. Verificato sull'host con un riferimento sintetico: pronto in 8–10 s,
+  prima frase udibile in 0,4–1,1 s, conversione a circa 0,7 s per secondo di voce, nessuna pausa tra
+  le frasi grazie alla preparazione in anticipo; impronta della frase convertita simile al
+  riferimento per 0,94 (0,51 con la voce di partenza). Voce di riserva e ripartenza dopo un crash
+  provate con un processo finto. Lo stesso processo rende piper istantaneo (0,08–0,16 s a frase
+  contro 2,8 s del comando). Non ancora ascoltata con una voce vera né in una sessione con Mario.
+- **Test**: 140 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

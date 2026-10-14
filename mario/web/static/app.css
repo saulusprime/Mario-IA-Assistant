@@ -21,6 +21,8 @@ button { font:inherit; padding:.4rem .8rem; border-radius:7px; border:1px solid 
 button:hover { border-color:var(--blue); } button.primary { background:var(--blue); color:#fff; border-color:var(--blue); }
 button.danger { color:var(--red); border-color:var(--red); } button.danger.ghost { border-color:transparent; }
 button.ghost { background:transparent; } button.small { padding:.2rem .5rem; font-size:.85rem; } button:disabled { opacity:.5; cursor:wait; }
+label.button { display:inline-block; padding:.2rem .5rem; font-size:.85rem; border-radius:7px; border:1px solid var(--line); cursor:pointer; }
+label.button:hover { border-color:var(--blue); }
 button.tab { border-radius:7px 7px 0 0; } button.tab.active { background:var(--blue); color:#fff; border-color:var(--blue); }
 input, select, textarea { font:inherit; padding:.3rem .45rem; border:1px solid var(--line); border-radius:6px; background:#fff; }
 textarea { width:100%; }

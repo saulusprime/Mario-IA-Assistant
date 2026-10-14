@@ -27,6 +27,12 @@ dentro ogni gruppo le prime sono le più utili.
       fermo 45 s, poi ripreso in mano), `porta3` (CHAL/VERS/DEBUG), `gioco` (porte 3, 4, 7 durante
       un mini livello). Confermare le ipotesi del 13/10 su 0x3861/0x3862/0x3866/0x1802 e sulla
       macchina a stati 0x1801/0x1803/0x3812; controllare che il log si rilegga con `decode`.
+- [ ] **Voce IA (OpenVoice, 14/10)**: provata solo con una registrazione di riferimento sintetica
+      (voce piper "riccardo"). Registrare 20–30 s di una voce vera (la propria o di un familiare
+      d'accordo), caricarla dalla dashboard (anche m4a dal telefono) e ascoltare
+      `./run.sh voice "..." --openvoice-ref data/voices/<file>.wav` con `--openvoice-tau` 0, 0,3 e 0,6;
+      poi una sessione `assistant` con Mario e la voce IA: pause tra le frasi, primo avvio mentre
+      carica (voce di riserva), consumo di CPU e memoria con dashboard e Bluetooth attivi.
 - [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
       (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
       `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON
@@ -194,9 +200,10 @@ Servono Mario acceso, `./run.sh assistant` (o `./run.sh web` → pagina Assisten
       alla voce? disattivabili dalle impostazioni (già previsto) se fastidiosi.
 - [ ] **Voce configurata**: impostare voce (`Italian+Alex` o altra da `spd-say -L`), velocità e
       tono dalla pagina e verificare che cambino subito e che restino dopo il riavvio.
-- [ ] **Voce piper**: installare `piper` e un modello italiano (`it_IT-paola-medium.onnx` o
-      simile), indicarlo nelle impostazioni e confrontare la qualità con espeak-ng (il motore è
-      già supportato, mai sentito).
+- [ ] **Voce piper**: `tools/setup_openvoice.sh` (14/10) installa piper e le voci italiane in
+      `third_party/piper-voices/`; indicare `it_IT-paola-medium.onnx` nelle impostazioni e confrontare
+      la qualità con espeak-ng (provata da terminale con `./run.sh voice`, mai ascoltata durante
+      una sessione dell'assistente).
 - [ ] **Chiave API dalle impostazioni** (senza `.env`): rinominare temporaneamente `.env`,
       inserire la chiave nel campo della pagina, verificare "chiave salvata nel database", che
       il backend risolto sia `anthropic` e che il campo resti mascherato.
@@ -282,3 +289,8 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 - Far dialogare due personaggi tramite il PC (Mario e Luigi) emulando ciò che fanno via
   radio tra loro, una volta capito il formato della porta 4.
 - Esporre Mario via MQTT o WebSocket per domotica e notifiche.
+- Voce IA con le emozioni: OpenVoice cambia il timbro ma non il tono; una registrazione di riferimento
+  per emozione (allegra, triste, spaventata) scelta in base al tag della frase darebbe più
+  espressività (le impronte si calcolano una volta e restano in cache).
+- Voce IA più veloce: il marchio d'acqua è già spento; resta da misurare l'effetto dell'opzione `--threads` del processo della voce
+  (oggi torch usa i 4 thread logici dei 2 core) mentre Bluetooth e dashboard sono attivi.

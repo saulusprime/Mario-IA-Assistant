@@ -29,6 +29,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh web                  # dashboard web su http://127.0.0.1:8765
 ./run.sh assistant            # Mario come ingresso/uscita di una sessione con un modello (voce dal PC)
 ./run.sh assistant --no-mario # idem senza Bluetooth: tastiera, modello e voce (chiave Claude in .env)
+./run.sh voice "Ciao!" --openvoice-ref voce.wav   # prova della voce IA (OpenVoice) con i tempi
 ./run.sh adventure --list     # avventure del designer; --play quiz [--no-mario] per giocarne una
 ./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
 ./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect)
@@ -196,9 +197,51 @@ prima frase pronunciabile 0,7–1,6 s con `claude-haiku-5-5` (risposta completa 
 rispettano i tag emozione; haiku è una buona scelta per i turni dei sensori. L'evento `done`
 riporta `first_sentence` (la CLI lo stampa come "prima frase dopo N s").
 
-**Voce.** Oltre a `spd-say` ed `espeak-ng`, se nel PC ci sono il binario `piper` e un modello
-italiano `.onnx` (campo "Modello piper" nelle impostazioni, o `--piper-model`), le frasi vengono
-sintetizzate con piper (voce neurale, offline; l'emozione agisce solo sulla velocità).
+**Voce.** Motori in ordine di preferenza: voce IA (OpenVoice, sotto), piper, `spd-say`, `espeak-ng`.
+Con piper (campo "Modello piper" nelle impostazioni, o `--piper-model`) le frasi sono sintetizzate da
+una voce neurale offline; l'emozione agisce solo sulla velocità. Se c'è l'ambiente `.venv-openvoice`,
+piper gira in un processo che tiene il modello caricato: una frase in 0,1–0,2 s invece dei 2,8 s del
+comando `piper`, che ricarica il modello ogni volta. Due thread separano la preparazione dalla
+riproduzione: la frase successiva si prepara mentre quella corrente suona.
+
+**Voce IA (OpenVoice).** [OpenVoice V2](https://github.com/myshell-ai/OpenVoice) (MyShell e MIT,
+licenza MIT) copia il timbro di una voce da una registrazione di pochi secondi. Non parla italiano,
+quindi la frase la legge piper con la voce `it_IT-paola-medium` e OpenVoice ne sostituisce il timbro
+con quello della registrazione di riferimento. Tutto gira in locale, sulla CPU.
+
+```sh
+./tools/setup_openvoice.sh                                   # una volta: circa 1,5 GB, ignorato da git
+./run.sh voice "Ciao, sono Mario!" --openvoice-ref voce.wav  # prova, con i tempi di ogni frase
+./run.sh assistant --openvoice-ref voce.wav                  # assistente con la voce IA
+```
+
+Lo script crea `.venv-openvoice` (Python 3.11, torch per CPU, OpenVoice, piper), scarica il
+convertitore V2 da Hugging Face (`myshell-ai/OpenVoiceV2`, revisione fissata: lo zip su S3 citato
+dalla documentazione di OpenVoice non esiste più) e le voci italiane di piper in
+`third_party/piper-voices/`. Nella dashboard la sezione "Voce IA" delle impostazioni accetta il
+percorso del file oppure il pulsante "carica WAV". Il pulsante accetta anche le registrazioni del
+telefono (m4a, ogg, mp3), convertite con ffmpeg, e le salva in `data/voices/`. Servono 10–30 secondi
+di voce pulita: la propria, o quella di qualcuno che è d'accordo.
+
+Un processo separato (`mario/assistant/openvoice_worker.py`) carica i modelli in background in 8–10 s
+(circa 25 s la prima volta, quando calcola le impronte vocali, poi in `data/openvoice-cache/`); nel
+frattempo parla la voce di riserva. Se il processo si blocca o muore, la frase passa a piper o
+spd-say e il processo riparte, al massimo tre volte. Il marchio d'acqua inaudibile di OpenVoice è
+spento di default, perché la voce viene suonata e mai salvata; `--openvoice-watermark` lo attiva.
+`--openvoice-tau` regola la variabilità della conversione (0 = stabile, 0,3 = valore di OpenVoice).
+Tempi misurati il 14/10 su questo MacBook (i7-5557U, solo CPU):
+
+| Motore | Prima frase udibile | Preparazione di una frase da 2 s |
+|---|---|---|
+| piper come comando | 2,8 s | 2,8 s |
+| piper nel processo | 0,08 s | 0,16 s |
+| voce IA | 0,4–1,1 s | 1,3–1,5 s (piper 0,2 s + conversione) |
+| voce IA con marchio d'acqua | 1,1 s | circa 2 s |
+
+La conversione è più veloce della riproduzione (circa 0,7 s per secondo di voce), quindi dopo la
+prima frase non ci sono pause. Verifica oggettiva con una registrazione di riferimento sintetica
+(la voce maschile "riccardo" di piper): l'impronta vocale della frase convertita somiglia al
+riferimento per 0,94 e alla voce di partenza per 0,51. L'ascolto con una voce vera è nel TODO.
 
 **Limiti noti.** Mario non ha un canale audio né comandi documentati per display e suoni:
 la voce esce dal PC. L'indicazione "occupato" dell'hub (azioni 0x05/0x06) su Mario risponde
@@ -571,7 +614,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centoventisei test senza Bluetooth né rete esterna, raggruppati per file:
+Centoquaranta test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -580,7 +623,8 @@ Centoventisei test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_decode` (9) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri |
 | `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata |
 | `test_db` (6) | database della dashboard |
-| `test_assistant` (30), `test_assistant_ext` (11) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, API |
+| `test_assistant` (30), `test_assistant_ext` (12) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
+| `test_openvoice` (13) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente |
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
 | `test_service` (3), `test_tts` (4) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
 | `test_adventures` (7), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
@@ -603,17 +647,22 @@ mario/decode.py         decodifica offline: btsnoop, bugreport Android (zip, bts
 mario/cli.py            comandi scan/info/monitor/shell/decode/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
                         e gli strumenti di tools/ come sottocomandi
 mario/web/              dashboard: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
-mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, memory, session, service
+mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, memory, session, service,
+                        openvoice (client della voce IA) e openvoice_worker (processo piper + OpenVoice)
 mario/adventures/       designer di avventure: model, engine, library, service
 mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
-                        probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev)
-tests/                  test offline (126)
+                        probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
+                        setup_openvoice.sh (voce IA)
+tests/                  test offline (140)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
-third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), ignorati da git
-data/                   database SQLite della dashboard (ignorato da git)
+third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
+                        convertitore V2, voci piper italiane; ignorati da git
+.venv-openvoice/        ambiente della voce IA (torch, OpenVoice, piper), creato da tools/setup_openvoice.sh
+data/                   database SQLite della dashboard, voices/ (registrazioni di riferimento), openvoice-cache/
+                        (impronte vocali); ignorato da git
 logs/                   catture btmon, log di monitor/shell/assistente/avventure/prove (ignorato da git)
 .env                    ANTHROPIC_API_KEY=... (ignorato da git)
 ASIS.md, TODO.md        stato attuale (fatto e verificato) e lavoro aperto

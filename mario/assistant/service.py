@@ -30,13 +30,22 @@ DEFAULTS: dict[str, str] = {
     "assistant.port_writes": "0", "assistant.port_payloads": "{}",
     "assistant.listening": "1", "assistant.persona": "", "assistant.rules": "{}",
     "assistant.piper_model": "", "assistant.session_minutes": "0", "assistant.blocked_words": "", "assistant.memory": "1",
+    "assistant.openvoice_reference": "", "assistant.openvoice_tau": "0.3", "assistant.openvoice_watermark": "0",
 }
-BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory"}
+BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
+             "openvoice_watermark"}
 SECRET_KEYS = {"api_key"}
 
 
 def as_bool(value: Any) -> bool:
     return str(value).strip().lower() in ("1", "true", "on", "yes", "sì", "si")
+
+
+def as_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def split_words(text: str) -> list[str]:
@@ -84,7 +93,9 @@ class AssistantService:
         s = self.settings()
         self.speaker = Speaker(enabled=as_bool(s["tts"]) and not quiet, voice=s["voice"], rate=int(s["rate"] or 0),
                                pitch=int(s["pitch"] or 0), sounds=as_bool(s["sounds"]) and not quiet,
-                               piper_model=s["piper_model"])
+                               piper_model=s["piper_model"], openvoice_reference=s["openvoice_reference"],
+                               openvoice_tau=as_float(s["openvoice_tau"], 0.3),
+                               openvoice_watermark=as_bool(s["openvoice_watermark"]))
         self.behaviours = BehaviourEngine(WorkerActions(worker), emit=self._emit,
                                           enabled=as_bool(s["behaviours"]) and not quiet,
                                           volume_effects=as_bool(s["volume_effects"]),
@@ -146,7 +157,9 @@ class AssistantService:
         s = self.settings()
         self.speaker.configure(enabled=as_bool(s["tts"]) and not self.quiet, voice=s["voice"], rate=s["rate"] or 0,
                                pitch=s["pitch"] or 0, sounds=as_bool(s["sounds"]) and not self.quiet,
-                               piper_model=s["piper_model"])
+                               piper_model=s["piper_model"], openvoice_reference=s["openvoice_reference"],
+                               openvoice_tau=as_float(s["openvoice_tau"], 0.3),
+                               openvoice_watermark=as_bool(s["openvoice_watermark"]))
         self.session.configure_safety(session_limit=minutes_to_seconds(s["session_minutes"]),
                                       blocked_words=split_words(s["blocked_words"]), memory_enabled=as_bool(s["memory"]))
         self.behaviours.configure(enabled=as_bool(s["behaviours"]) and not self.quiet,

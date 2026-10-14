@@ -29,6 +29,48 @@ from .db import ACCESSORY_KINDS, KIND_LABELS, Database
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 DEFAULT_DB = PROJECT_DIR / "data" / "mario.sqlite3"
+VOICE_MAX_BYTES = 20_000_000
+VOICE_MIN_SECONDS = 3.0
+
+
+def wav_info(path: Path) -> Optional[float]:
+    """Durata in secondi se `path` è un WAV PCM leggibile, altrimenti None."""
+    import wave
+    try:
+        with wave.open(str(path), "rb") as w:
+            return w.getnframes() / float(w.getframerate() or 1)
+    except (wave.Error, EOFError, OSError):
+        return None
+
+
+def save_voice_reference(data: bytes, filename: str, folder: Path) -> tuple[Path, float]:
+    """Salva la registrazione come WAV (convertendo con ffmpeg i formati del telefono) e ne controlla la durata."""
+    import shutil
+    import subprocess
+    import tempfile
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"riferimento-{time.strftime('%Y%m%d-%H%M%S')}.wav"
+    suffix = Path(filename).suffix.lower()[:8] or ".bin"
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"upload{suffix}"
+        src.write_bytes(data)
+        seconds = wav_info(src)
+        if seconds is None:
+            ffmpeg = shutil.which("ffmpeg")
+            if not ffmpeg:
+                raise ValueError("serve un file WAV (per m4a, ogg o mp3 installare ffmpeg)")
+            converted = Path(tmp) / "convertito.wav"
+            proc = subprocess.run([ffmpeg, "-v", "error", "-y", "-i", str(src), "-ac", "1", "-ar", "22050", str(converted)],
+                                  capture_output=True, timeout=120)
+            seconds = wav_info(converted) if proc.returncode == 0 else None
+            if seconds is None:
+                raise ValueError("file audio non leggibile: " + proc.stderr.decode(errors="replace").strip()[:160])
+            src = converted
+        if seconds < VOICE_MIN_SECONDS:
+            raise ValueError(f"registrazione troppo corta ({seconds:.1f} s): servono almeno "
+                             f"{VOICE_MIN_SECONDS:g} s, meglio 10-30 s di voce pulita")
+        shutil.copyfile(src, target)
+    return target, seconds
 
 MENU = [
     ("index", "Panoramica", "/"),
@@ -676,6 +718,22 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @api
     def api_assistant_settings_update():
         return ok(settings=assistant.update_settings(body()))
+
+    voices_dir = Path(db_path or DEFAULT_DB).parent / "voices"
+
+    @app.post("/api/assistant/voice-reference")
+    @api
+    def api_assistant_voice_reference():
+        """Registrazione di riferimento della voce IA: WAV, oppure m4a/ogg/mp3 convertiti con ffmpeg.
+        Salvata in data/voices/; il percorso va poi salvato nelle impostazioni (campo della pagina)."""
+        upload = request.files.get("file")
+        if upload is None or not upload.filename:
+            raise ValueError("nessun file ricevuto")
+        data = upload.read(VOICE_MAX_BYTES + 1)
+        if len(data) > VOICE_MAX_BYTES:
+            raise ValueError(f"file troppo grande (massimo {VOICE_MAX_BYTES // 1_000_000} MB)")
+        path, seconds = save_voice_reference(data, upload.filename, voices_dir)
+        return ok(path=str(path), seconds=round(seconds, 1))
 
     def diary_range() -> dict:
         out = {}

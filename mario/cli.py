@@ -6,6 +6,7 @@ Interfaccia a riga di comando.
   monitor   attiva i sensori e stampa in tempo reale gli eventi decodificati
   shell     console interattiva bidirezionale (comandi + messaggi in arrivo)
   assistant Mario come ingresso/uscita di una sessione con un modello di linguaggio (voce dal PC)
+  voice     prova della voce dal PC (spd-say, piper o voce IA con OpenVoice) con i tempi di preparazione
   web       dashboard Flask
   decode    decodifica catture btsnoop, bugreport Android, PacketLogger iOS, log o byte esadecimali (senza Bluetooth)
   adventure avventure del designer: elenco, prova con eventi simulati, partita con il Mario fisico
@@ -863,7 +864,11 @@ async def cmd_assistant(args) -> int:
                 out.line(f"[{ts()}] · Mario: {ev['text']}")
 
     cfg = LLMConfig(backend=args.backend, model=args.model or "", base_url=args.base_url or "")
-    speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts, piper_model=args.piper_model or "")
+    speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts, piper_model=args.piper_model or "",
+                      openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
+                      openvoice_watermark=args.openvoice_watermark)
+    if args.openvoice_ref and speaker.engine != "openvoice":
+        say(f"Voce IA non disponibile, uso {speaker.engine or 'nessun motore'}: {speaker.openvoice_reason()}")
     engine = BehaviourEngine(LoopActions() if dev else NullActions(), emit=emit, enabled=not args.no_behaviours)
     # ricordi e diario nel database della dashboard (data/mario.sqlite3), condivisi con la pagina Assistente
     memory, on_message = None, None
@@ -894,6 +899,8 @@ async def cmd_assistant(args) -> int:
         dev.add_listener(on_message)
     say(f"Backend: {cfg.resolved_backend()}" + (f" ({cfg.model})" if cfg.model else "")
         + f" · voce: {speaker.engine or 'nessun motore trovato'}" + (" · senza Mario" if dev is None else ""))
+    if speaker.engine == "openvoice":
+        say("Voce IA in caricamento in background (10-25 s): fino ad allora parla la voce di riserva")
     if session_log.path:
         say(f"Log della sessione: {session_log.path}")
     print(ASSISTANT_HELP)
@@ -939,9 +946,56 @@ async def cmd_assistant(args) -> int:
     finally:
         say("Chiudo: fermo la voce e riporto il volume di Mario al valore iniziale...")
         await loop.run_in_executor(None, session.shutdown)  # aspetta il ripristino prima di scollegarsi
+        speaker.close()  # chiude anche il processo della voce IA
         if dev is not None:
             await dev.disconnect()
         session_log.close()
+    return 0
+
+
+def cmd_voice(args) -> int:
+    """Prova della voce dal PC: dice il testo frase per frase e stampa i tempi di preparazione di ognuna."""
+    from .assistant.emotions import SentenceBuffer
+    from .assistant.tts import Speaker
+    speaker = Speaker(enabled=True, sounds=False, piper_model=args.piper_model or "",
+                      openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
+                      openvoice_watermark=args.openvoice_watermark, openvoice_wait=args.wait)
+    if args.openvoice_ref and speaker.engine != "openvoice":
+        print(f"Voce IA non disponibile: {speaker.openvoice_reason()}")
+    print(f"Motore: {speaker.engine or 'nessuno'} · lettore: {speaker.player[0] if speaker.player else 'nessuno'}")
+    if speaker.engine is None:
+        print("Nessun motore vocale: installare speech-dispatcher/espeak-ng, piper o eseguire tools/setup_openvoice.sh")
+        return 1
+    try:
+        if speaker.status()["openvoice"]["state"] != "spento":  # voce IA, o piper nel processo persistente
+            ai = speaker.engine == "openvoice"
+            say("Carico piper e OpenVoice (la prima volta calcola anche le impronte vocali)..." if ai
+                else "Carico la voce piper...")
+            t0 = time.monotonic()
+            if speaker.warmup(args.wait):
+                print(f"{'Voce IA' if ai else 'Voce piper'} pronta in {time.monotonic() - t0:.1f} s")
+            else:
+                st = speaker.status()["openvoice"]
+                print(f"Voce non pronta ({st['state']}): {st['last_error'] or 'tempo scaduto'}; parla la voce di riserva")
+        buf = SentenceBuffer()
+        sentences = buf.feed(" ".join(args.text)) + [s for s in [buf.flush()] if s]
+        heard: list[float] = []
+        t0 = time.monotonic()
+        speaker.on_start = lambda _text, _emo: heard.append(time.monotonic() - t0)
+        for sentence in sentences:
+            speaker.speak(sentence, args.emotion)
+        speaker.wait(600)
+        for sentence, timing, at in zip(sentences, list(speaker.timings), heard + [None] * len(sentences)):
+            parts = [f"motore {timing.get('fallback') or timing.get('engine')}", f"preparata in {timing['render_s']:.2f} s"]
+            if timing.get("engine") == "openvoice" and timing.get("convert_s") is not None:
+                parts.append(f"(piper {timing['base_s']:.2f} s + OpenVoice {timing['convert_s']:.2f} s, audio {timing['audio_s']:.1f} s)")
+            if at is not None:
+                parts.append(f"udibile dopo {at:.2f} s")
+            print(f"- {sentence[:60]}{'…' if len(sentence) > 60 else ''}: " + ", ".join(parts))
+        if speaker.last_error:
+            print(f"Ultimo errore della voce: {speaker.last_error}")
+    finally:
+        speaker.close()
     return 0
 
 def cmd_decode(args) -> int:
@@ -1201,7 +1255,17 @@ def cmd_web(args) -> int:
 
 # ---------------------------------------------------------------------------
 
+def add_openvoice_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--openvoice-ref", metavar="WAV",
+                   help="voce IA: registrazione della voce da imitare (WAV, 10-30 s); serve tools/setup_openvoice.sh")
+    p.add_argument("--openvoice-tau", type=float, default=0.3,
+                   help="voce IA: variabilità della conversione 0..1 (0 = stabile e ripetibile; default 0.3 come OpenVoice)")
+    p.add_argument("--openvoice-watermark", action="store_true",
+                   help="voce IA: marchio d'acqua inaudibile di OpenVoice (circa +40%% di tempo di conversione)")
+
+
 def build_parser() -> argparse.ArgumentParser:
+    from .assistant.emotions import EMOTIONS
     parser = argparse.ArgumentParser(prog="mario", description="Comunicazione Bluetooth LE con LEGO Mario / Luigi / Peach.")
     parser.add_argument("-a", "--address", help="indirizzo Bluetooth del dispositivo (altrimenti primo Mario trovato)")
     parser.add_argument("-t", "--timeout", type=float, default=30.0, help="secondi di attesa per trovare Mario (default 30)")
@@ -1292,6 +1356,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-tts", action="store_true", help="senza voce ed effetti sonori")
     p.add_argument("--no-behaviours", action="store_true", help="nessun comportamento sul Mario fisico")
     p.add_argument("--piper-model", help="voce neurale piper: percorso del modello .onnx (serve il binario piper)")
+    add_openvoice_args(p)
     p.add_argument("--minutes", type=float, default=0.0, help="minuti di gioco per sessione (0 = nessun limite)")
     p.add_argument("--block", help="parole bloccate, separate da virgola")
     p.add_argument("--no-memory", action="store_true", help="niente ricordi tra le sessioni")
@@ -1307,6 +1372,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-db", action="store_true", help="non usare data/mario.sqlite3 (niente partite salvate)")
     p.add_argument("--webhooks", action="store_true", help="consente alle azioni webhook di fare POST verso URL esterni")
     p.set_defaults(func=cmd_adventure)
+
+    p = sub.add_parser("voice", help="prova della voce dal PC con i tempi (spd-say, piper o voce IA OpenVoice)")
+    p.add_argument("text", nargs="+", help="testo da dire")
+    p.add_argument("--emotion", choices=sorted(EMOTIONS), help="emozione (velocità e tono della voce)")
+    p.add_argument("--piper-model", help="voce piper (.onnx); con la voce IA è la voce di base")
+    add_openvoice_args(p)
+    p.add_argument("--wait", type=float, default=120.0, help="secondi massimi di attesa del caricamento della voce IA")
+    p.set_defaults(func=cmd_voice)
 
     p = sub.add_parser("web", help="avvia la dashboard web")
     p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 per esporla sulla rete locale (con token)")

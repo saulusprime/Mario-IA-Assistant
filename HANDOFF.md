@@ -1,16 +1,17 @@
 # HANDOFF — LEGO Mario via Bluetooth LE
 
-Diario dettagliato del lavoro svolto dall'11 al 13 ottobre 2026 (prima sessione l'11/10 dalle
-12:40 alle 19:00, prove dal vivo il 12/10, documentazione e sviluppo senza Mario il 13/10) e stato
+Diario dettagliato del lavoro svolto dall'11 al 14 ottobre 2026 (prima sessione l'11/10 dalle
+12:40 alle 19:00, prove dal vivo il 12/10, documentazione e sviluppo senza Mario il 13/10, voce IA
+con OpenVoice il 14/10) e stato
 del progetto per chi lo riprende. Il README spiega *come si usa*; questo file spiega *cosa è stato
 fatto, perché, cosa ha funzionato e cosa no*.
 
-**Stato al 13/10 sera, in breve.** Connessione e pairing stabili; sensori decodificati (gesti,
+**Stato al 14/10 sera, in breve.** Connessione e pairing stabili; sensori decodificati (gesti,
 scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); dashboard con pagine
 Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
-versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; 126 test
-offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
+con OpenVoice (piper + timbro di una registrazione, 14/10); 140 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -546,6 +547,42 @@ era acceso (scansione vuota), quindi si è fatto tutto ciò che non richiede il 
 - Fonti: formato btsnooz da `tools/scripts/btsnooz.py` di AOSP (mirror), formato PacketLogger da
   `wiretap/packetlogger.c` di Wireshark; Mario non acceso, nessuna prova dal vivo.
 
+### 14/10 sera — Voce IA con OpenVoice
+
+Richiesta dell'utente: "sarebbe interessante aggiungere anche un sintetizzatore vocale IA
+(OpenVoice)". Fatto e provato sull'host, senza Mario:
+
+- **Cosa è OpenVoice V2**: convertitore di timbro (MyShell e MIT, licenza MIT); le voci di base
+  native sono inglese, spagnolo, francese, cinese, giapponese e coreano, niente italiano. Scelta:
+  piper legge la frase con la voce italiana `it_IT-paola-medium`, OpenVoice ne cambia il timbro con
+  quello della registrazione di riferimento (impronta della voce di base calcolata una volta da tre
+  frasi di prova, in cache).
+- **Installazione** `tools/setup_openvoice.sh`: `.venv-openvoice` con Python 3.11 da `uv`, torch
+  2.14 per CPU, OpenVoice senza le sue dipendenze fissate (gradio, faster-whisper… non servono),
+  piper-tts 1.8, voci piper paola e riccardo, convertitore V2 da Hugging Face a revisione fissata.
+  Lo zip dei checkpoint su S3 indicato dalla documentazione di OpenVoice risponde 404. Spazio:
+  1,4 GB l'ambiente, 133 MB OpenVoice, 88 MB le voci.
+- **Due difetti aggirati**: lanciato come script, il processo vedeva `mario/assistant/openvoice.py`
+  al posto del pacchetto `openvoice` (risolto con `python -I` e pulizia di `sys.path`); il
+  costruttore `ToneColorConverter` di OpenVoice passa `enable_watermark` alla classe base, che lo
+  rifiuta (replicate le sue tre righe in `make_converter`).
+- **Architettura**: processo persistente `openvoice_worker.py` (una riga JSON per richiesta),
+  client `openvoice.py` con avvio in background, tempi massimi, ripartenza dopo un blocco o un
+  crash; `Speaker` con due thread (preparazione e riproduzione, due frasi in anticipo), contatore
+  delle frasi non finite per lo stato "sta parlando", voce di riserva (piper o spd-say) quando la
+  voce IA non è pronta. Lo stesso processo fa anche piper da solo, con il modello sempre caricato.
+- **Misure** (i7-5557U, solo CPU): caricamento 8–10 s (24 s la prima volta); prima frase udibile
+  0,4–1,1 s dopo una frase di riscaldamento all'avvio; conversione circa 0,7 s per secondo di voce
+  senza marchio d'acqua, circa 1 s con il marchio (spento di default); piper nel processo 0,08–0,16 s
+  a frase contro 2,8 s del comando `piper`. Impronta della frase convertita simile al riferimento
+  sintetico per 0,94, alla voce di partenza per 0,51.
+- **Interfacce**: `./run.sh voice` (prova con i tempi), `assistant --openvoice-ref/--openvoice-tau/
+  --openvoice-watermark`, impostazioni della dashboard (sezione "Voce IA", caricamento della
+  registrazione anche da m4a/ogg/mp3 con ffmpeg in `data/voices/`, stato del processo).
+- **Test**: da 126 a 140 (`test_openvoice` con un processo finto che parla lo stesso protocollo,
+  caricamento dalla dashboard); due test della sessione adattati al contatore delle frasi.
+- Da fare: ascolto con una voce vera e sessione con Mario (TODO, sezione 1).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -558,9 +595,9 @@ era acceso (scansione vuota), quindi si è fatto tutto ciò che non richiede il 
 | `mario/decode.py` | decodifica offline: btsnoop (monitor/H4/HCI, riassemblaggio L2CAP), bugreport Android (zip, sezioni btsnooz), PacketLogger di Apple, gzip, log di testo, btmon -r, hex; note sui pacchetti troncati; riepilogo |
 | `mario/cli.py` | comandi `scan`, `info [--json] [--quick] [--no-save]`, `monitor [--sub] [--combined] [--json] [--duration] [--no-battery] [--rssi] [--raw-accel] [--no-reconnect]`, `shell [--no-reconnect]`, `decode`, `assistant [--minutes] [--block] [--no-memory] [--no-db] [--piper-model]`, `adventure [--list] [--play] [--no-mario]`, `web [--server] [--token] [--threads]`, comandi rapidi, strumenti di tools/ come sottocomandi; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
-| `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py` (vedi README, sezione Assistente) |
+| `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 126 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 140 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -571,6 +608,7 @@ era acceso (scansione vuota), quindi si è fatto tutto ciò che non richiede il 
 | `tools/live_checks.py` | verifiche dal vivo guidate a voce della sezione 1 del TODO (pulsante, pantaloni, gesti, RGB, RSSI, allarmi, disconnect, off) |
 | `tools/catalog_tiles.py` | sessione guidata con le basette reali: annunci vocali, eventi porta 3 per basetta, aggiornamento del database |
 | `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
+| `tools/setup_openvoice.sh` | installa la voce IA: `.venv-openvoice` (torch CPU, OpenVoice, piper), convertitore V2 da Hugging Face, voci piper italiane (circa 1,5 GB) |
 | `tools/re_checks.py` | reverse engineering dal vivo guidato a voce (sezione 2 del TODO): annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG, porte 4 e 7 nel gioco; mai provato con Mario |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
 | `tools/99-mario-btusb.rules` | regola udev contro l'autosospensione dell'adattatore Broadcom (da installare con sudo, istruzioni nel file) |
@@ -592,13 +630,15 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (126); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (140); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/
 ./run.sh decode docs/sessioni/tiles-20261012-182334.txt --summary   # rilettura offline di un log
 ./run.sh web                                 # dashboard su http://127.0.0.1:8765 (Assistente, Eventi, Avventure)
 ./run.sh assistant --no-mario                # assistente senza Bluetooth: tastiera, modello (demo), voce
+./tools/setup_openvoice.sh                   # voce IA (una volta, circa 1,5 GB); poi:
+./run.sh voice "Ciao!" --openvoice-ref data/voices/<file>.wav   # prova della voce IA con i tempi
 ./run.sh assistant                           # con Claude: la chiave è in .env (o nelle impostazioni della pagina)
 ./run.sh adventure --play quiz --no-mario    # avventura con eventi da tastiera; senza --no-mario con Mario
 ./run.sh live-checks --steps gesti           # verifiche guidate a voce (sezione 1 del TODO)
