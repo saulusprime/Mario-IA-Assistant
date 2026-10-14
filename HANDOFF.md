@@ -11,7 +11,8 @@ scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); das
 Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
 versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
-con OpenVoice (piper + timbro di una registrazione, 14/10); 140 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+con OpenVoice (piper + timbro di una registrazione, 14/10); effetti e voci veri dei giochi (uso privato);
+143 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -583,6 +584,33 @@ Richiesta dell'utente: "sarebbe interessante aggiungere anche un sintetizzatore 
   caricamento dalla dashboard); due test della sessione adattati al contatore delle frasi.
 - Da fare: ascolto con una voce vera e sessione con Mario (TODO, sezione 1).
 
+### 14/10 sera — Suoni e voci dei giochi (The Mushroom Kingdom)
+
+Richiesta dell'utente: scaricare dall'archivio themushroomkingdom.net "tutto quello che ci può
+servire" (musiche, effetti, voci).
+
+- **Il sito**: archivio di appassionati dal 1997; la sezione Sound clips ha 31 giochi, 1.415 WAV,
+  82 MB; `robots.txt` vuoto. La pagina About dice che i personaggi sono © Nintendo e chiede di
+  chiedere il permesso per usare il materiale su un altro sito. Quindi: file solo in locale
+  (`data/sounds/tmk/`, ignorata da git), nel repository solo lo script.
+- **Scelta**: 16 giochi, 833 file, 49 MB: i platform per effetti, jingle e voci di Mario (35 voci in
+  Super Mario 64, 78 in Sunshine, "Let's-a go!" e "Okey-dokey!" in 3D Land), Mario Kart 64 (voci di
+  Mario, Luigi, Peach, Toad, Yoshi), i Mario & Luigi e Luigi's Mansion (utili anche per LEGO Luigi).
+  Esclusi Mario Party, Smash, Golf, i puzzle; `--games all` li aggiunge. Musiche: solo i jingle
+  brevi della sezione WAV (fine livello, game over, tempo che scade); le colonne sonore complete
+  (MP3, MIDI, NSF, SPC) non servono agli effetti e non sono state scaricate.
+- **Strumento** `tools/fetch_mario_sounds.py` (`./run.sh fetch-sounds`): legge le pagine dei giochi,
+  scarica con una richiesta al secondo, non riscarica ciò che c'è, scrive `catalogo.json`;
+  `--catalog` salva l'elenco del sito in `catalogo-remoto.json` senza scaricare.
+- **Uso**: `mario/assistant/soundpack.py` con tre stili (dei giochi, voce di Mario, sintetizzati) e
+  ricadute; `Speaker.play` lo usa per emozioni, ascolto e avventure; impostazione nella pagina
+  Assistente, `--sound-style` in `assistant` e `voice`, `voice --play NOME` per ascoltare; nomi
+  nuovi per le avventure (oneup, stomp, pipe, star, clear, letsago, …) e file precisi
+  (`gioco/file.wav`); elenco nella libreria delle avventure.
+- **Voci di Mario come riferimento della voce IA**: non usate. Sono esclamazioni brevi con musica ed
+  effetti, quindi un cattivo riferimento, e sono la voce di una persona reale senza il suo consenso.
+- Test: da 140 a 143.
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -597,7 +625,7 @@ Richiesta dell'utente: "sarebbe interessante aggiungere anche un sintetizzatore 
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 140 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 143 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -608,6 +636,7 @@ Richiesta dell'utente: "sarebbe interessante aggiungere anche un sintetizzatore 
 | `tools/live_checks.py` | verifiche dal vivo guidate a voce della sezione 1 del TODO (pulsante, pantaloni, gesti, RGB, RSSI, allarmi, disconnect, off) |
 | `tools/catalog_tiles.py` | sessione guidata con le basette reali: annunci vocali, eventi porta 3 per basetta, aggiornamento del database |
 | `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
+| `tools/fetch_mario_sounds.py` | scarica suoni e voci di Mario da themushroomkingdom.net in `data/sounds/tmk/` (uso privato) con il catalogo |
 | `tools/setup_openvoice.sh` | installa la voce IA: `.venv-openvoice` (torch CPU, OpenVoice, piper), convertitore V2 da Hugging Face, voci piper italiane (circa 1,5 GB) |
 | `tools/re_checks.py` | reverse engineering dal vivo guidato a voce (sezione 2 del TODO): annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG, porte 4 e 7 nel gioco; mai provato con Mario |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
@@ -630,13 +659,14 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (140); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (143); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/
 ./run.sh decode docs/sessioni/tiles-20261012-182334.txt --summary   # rilettura offline di un log
 ./run.sh web                                 # dashboard su http://127.0.0.1:8765 (Assistente, Eventi, Avventure)
 ./run.sh assistant --no-mario                # assistente senza Bluetooth: tastiera, modello (demo), voce
+./run.sh fetch-sounds                        # suoni e voci dei giochi per gli effetti (uso privato, 49 MB)
 ./tools/setup_openvoice.sh                   # voce IA (una volta, circa 1,5 GB); poi:
 ./run.sh voice "Ciao!" --openvoice-ref data/voices/<file>.wav   # prova della voce IA con i tempi
 ./run.sh assistant                           # con Claude: la chiave è in .env (o nelle impostazioni della pagina)

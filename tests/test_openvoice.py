@@ -326,3 +326,72 @@ class SpeakerOpenVoiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SoundPackTests(unittest.TestCase):
+    """Suoni veri dei giochi: catalogo, stili, ricaduta sugli effetti sintetizzati (archivio finto)."""
+
+    def setUp(self):
+        from mario.assistant import soundpack
+        self.sp = soundpack
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        files = {("smb", "Coin"): "smb/smb_coin.wav", ("sm64", "\"Yahoo!\""): "sm64/sm64_yahoo.wav",
+                 ("smb", "Power-up"): "smb/smb_powerup.wav", ("sm64", "Bowser's laugh"): "sm64/sm64_bowser_laugh.wav"}
+        items = []
+        for (game, desc), rel in files.items():
+            (self.dir / rel).parent.mkdir(parents=True, exist_ok=True)
+            write_wav(self.dir / rel)
+            items.append({"game": game, "category": "SFX", "description": desc, "file": rel, "url": "x", "size": 1})
+        items.append({"game": "smb", "category": "SFX", "description": "Stomp", "file": "smb/manca.wav", "url": "x", "size": 1})
+        (self.dir / "catalogo.json").write_text(json.dumps({"items": items}), encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_styles_and_fallbacks(self):
+        pack = self.sp.SoundPack(self.dir)
+        self.assertTrue(pack.available)
+        self.assertEqual(len(pack.items), 4)  # il file mancante non conta
+        self.assertEqual(pack.path("coin", "giochi").name, "smb_coin.wav")
+        self.assertEqual(pack.path("coin", "voce").name, "sm64_yahoo.wav")     # esclamazione di Mario
+        self.assertEqual(pack.path("powerup", "voce").name, "smb_powerup.wav")  # nessuna voce: effetto del gioco
+        self.assertIsNone(pack.path("coin", "sintetici"))
+        self.assertIsNone(pack.path("stomp", "giochi"))                         # file non scaricato
+        self.assertEqual(pack.path("sm64/sm64_bowser_laugh.wav").name, "sm64_bowser_laugh.wav")  # file preciso
+        self.assertIsNone(pack.path("../catalogo.json"))
+        self.assertIsNone(pack.path("sm64/../../x.wav"))
+        names = pack.names()
+        self.assertEqual((names["giochi"], names["voce"]), (["coin", "powerup"], ["coin", "wahoo"]))  # wahoo: anche "Yahoo!"
+        st = pack.status()
+        self.assertEqual(st["games"], {"smb": 2, "sm64": 2})
+        self.assertIn("stomp", st["missing"])
+        self.assertFalse(self.sp.SoundPack(self.dir / "vuota").available)
+
+    def test_speaker_uses_pack_then_synth(self):
+        sp = Speaker(enabled=False, engine=None, soundpack=self.sp.SoundPack(self.dir))
+        self.assertEqual(sp.sound_style, "giochi")
+        self.assertEqual(sp.sound_path("coin").name, "smb_coin.wav")
+        self.assertEqual(sp.sound_path("think").name, "think.wav")  # non scaricato: sintetizzato
+        sp.configure(sound_style="voce")
+        self.assertEqual(sp.sound_path("coin").name, "sm64_yahoo.wav")
+        sp.configure(sound_style="boh")  # valore non valido: ignorato
+        self.assertEqual(sp.status()["sound_style"], "voce")
+        sp.configure(sound_style="sintetici")
+        self.assertEqual(sp.sound_path("coin").name, "coin.wav")
+        self.assertEqual(sp.status()["soundpack"]["files"], 4)
+        self.assertIsNone(sp.sound_path("inesistente"))
+
+    def test_every_rule_points_to_a_downloaded_game(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("fetch", PROJECT / "tools" / "fetch_mario_sounds.py")
+        fetch = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fetch)
+        games = {g for table in (self.sp.EFFECTS, self.sp.VOICE) for rules in table.values() for g, _d in rules}
+        self.assertLessEqual(games, set(fetch.DEFAULT_GAMES))  # i giochi scaricati di default bastano
+        page = ('<h4 class="subhead">Mario</h4><table><tr><td><a href="/sounds/wav/sm64/sm64_yahoo.wav" '
+                'title="Download">&quot;Yahoo!&quot;</a></td><td class="sizebytes">30KB</td></tr></table>')
+        self.assertEqual(fetch.parse_page("sm64", page), [{
+            "game": "sm64", "category": "Mario", "description": '"Yahoo!"',
+            "url": "https://themushroomkingdom.net/sounds/wav/sm64/sm64_yahoo.wav", "file": "sm64/sm64_yahoo.wav",
+            "size": 30720}])

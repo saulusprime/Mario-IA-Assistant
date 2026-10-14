@@ -31,6 +31,7 @@ DEFAULTS: dict[str, str] = {
     "assistant.listening": "1", "assistant.persona": "", "assistant.rules": "{}",
     "assistant.piper_model": "", "assistant.session_minutes": "0", "assistant.blocked_words": "", "assistant.memory": "1",
     "assistant.openvoice_reference": "", "assistant.openvoice_tau": "0.3", "assistant.openvoice_watermark": "0",
+    "assistant.sound_style": "giochi",
 }
 BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
              "openvoice_watermark"}
@@ -95,7 +96,7 @@ class AssistantService:
                                pitch=int(s["pitch"] or 0), sounds=as_bool(s["sounds"]) and not quiet,
                                piper_model=s["piper_model"], openvoice_reference=s["openvoice_reference"],
                                openvoice_tau=as_float(s["openvoice_tau"], 0.3),
-                               openvoice_watermark=as_bool(s["openvoice_watermark"]))
+                               openvoice_watermark=as_bool(s["openvoice_watermark"]), sound_style=s["sound_style"])
         self.behaviours = BehaviourEngine(WorkerActions(worker), emit=self._emit,
                                           enabled=as_bool(s["behaviours"]) and not quiet,
                                           volume_effects=as_bool(s["volume_effects"]),
@@ -159,7 +160,7 @@ class AssistantService:
                                pitch=s["pitch"] or 0, sounds=as_bool(s["sounds"]) and not self.quiet,
                                piper_model=s["piper_model"], openvoice_reference=s["openvoice_reference"],
                                openvoice_tau=as_float(s["openvoice_tau"], 0.3),
-                               openvoice_watermark=as_bool(s["openvoice_watermark"]))
+                               openvoice_watermark=as_bool(s["openvoice_watermark"]), sound_style=s["sound_style"])
         self.session.configure_safety(session_limit=minutes_to_seconds(s["session_minutes"]),
                                       blocked_words=split_words(s["blocked_words"]), memory_enabled=as_bool(s["memory"]))
         self.behaviours.configure(enabled=as_bool(s["behaviours"]) and not self.quiet,

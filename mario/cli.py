@@ -11,7 +11,8 @@ Interfaccia a riga di comando.
   decode    decodifica catture btsnoop, bugreport Android, PacketLogger iOS, log o byte esadecimali (senza Bluetooth)
   adventure avventure del designer: elenco, prova con eventi simulati, partita con il Mario fisico
   volume / name / prop / raw / off   comandi rapidi one-shot
-  live-checks / catalog-tiles / probe-port4 / diag-connect   strumenti dal vivo di tools/
+  live-checks / catalog-tiles / probe-port4 / diag-connect / re-checks   strumenti dal vivo di tools/
+  fetch-sounds   scarica suoni e voci di Mario (themushroomkingdom.net) per gli effetti dell'assistente
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import json
 import logging
 import os
 import shlex
+import subprocess
 import sys
 import threading
 import time
@@ -866,7 +868,7 @@ async def cmd_assistant(args) -> int:
     cfg = LLMConfig(backend=args.backend, model=args.model or "", base_url=args.base_url or "")
     speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts, piper_model=args.piper_model or "",
                       openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
-                      openvoice_watermark=args.openvoice_watermark)
+                      openvoice_watermark=args.openvoice_watermark, sound_style=args.sound_style)
     if args.openvoice_ref and speaker.engine != "openvoice":
         say(f"Voce IA non disponibile, uso {speaker.engine or 'nessun motore'}: {speaker.openvoice_reason()}")
     engine = BehaviourEngine(LoopActions() if dev else NullActions(), emit=emit, enabled=not args.no_behaviours)
@@ -957,12 +959,20 @@ def cmd_voice(args) -> int:
     """Prova della voce dal PC: dice il testo frase per frase e stampa i tempi di preparazione di ognuna."""
     from .assistant.emotions import SentenceBuffer
     from .assistant.tts import Speaker
-    speaker = Speaker(enabled=True, sounds=False, piper_model=args.piper_model or "",
+    speaker = Speaker(enabled=True, sounds=bool(args.play), piper_model=args.piper_model or "",
                       openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
-                      openvoice_watermark=args.openvoice_watermark, openvoice_wait=args.wait)
+                      openvoice_watermark=args.openvoice_watermark, openvoice_wait=args.wait,
+                      sound_style=args.sound_style)
     if args.openvoice_ref and speaker.engine != "openvoice":
         print(f"Voce IA non disponibile: {speaker.openvoice_reason()}")
     print(f"Motore: {speaker.engine or 'nessuno'} · lettore: {speaker.player[0] if speaker.player else 'nessuno'}")
+    for name in args.play or []:  # effetti prima della frase, uno dopo l'altro
+        path = speaker.sound_path(name)
+        print(f"Suono {name!r} ({args.sound_style}): {path or 'non trovato'}")
+        if path and speaker.player:
+            subprocess.run(speaker.player + [str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+    if not args.text:
+        return 0
     if speaker.engine is None:
         print("Nessun motore vocale: installare speech-dispatcher/espeak-ng, piper o eseguire tools/setup_openvoice.sh")
         return 1
@@ -1023,6 +1033,7 @@ TOOLS = {"live-checks": ("live_checks.py", "verifiche dal vivo guidate a voce (p
          "catalog-tiles": ("catalog_tiles.py", "sessione guidata con le basette reali (codici, eventi, database)"),
          "probe-port4": ("probe_port4.py", "scritture a scatola nera su porta 4 e 7, osservazione di standby"),
          "diag-connect": ("diag_connect.py", "diagnostica di connessione: come BlueZ vede Mario"),
+         "fetch-sounds": ("fetch_mario_sounds.py", "scarica suoni e voci di Mario da themushroomkingdom.net in data/sounds/tmk (uso privato)"),
          "re-checks": ("re_checks.py", "reverse engineering dal vivo: annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG, porte 4 e 7 nel gioco")}
 
 
@@ -1357,6 +1368,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-behaviours", action="store_true", help="nessun comportamento sul Mario fisico")
     p.add_argument("--piper-model", help="voce neurale piper: percorso del modello .onnx (serve il binario piper)")
     add_openvoice_args(p)
+    p.add_argument("--sound-style", default="giochi", choices=["giochi", "voce", "sintetici"],
+                   help="effetti sonori: dei giochi (./run.sh fetch-sounds), esclamazioni di Mario o sintetizzati")
     p.add_argument("--minutes", type=float, default=0.0, help="minuti di gioco per sessione (0 = nessun limite)")
     p.add_argument("--block", help="parole bloccate, separate da virgola")
     p.add_argument("--no-memory", action="store_true", help="niente ricordi tra le sessioni")
@@ -1374,7 +1387,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_adventure)
 
     p = sub.add_parser("voice", help="prova della voce dal PC con i tempi (spd-say, piper o voce IA OpenVoice)")
-    p.add_argument("text", nargs="+", help="testo da dire")
+    p.add_argument("text", nargs="*", help="testo da dire (facoltativo con --play)")
+    p.add_argument("--play", action="append", metavar="SUONO",
+                   help="suona prima un effetto: coin, powerup, alarm, letsago, ... o gioco/file.wav (ripetibile)")
+    p.add_argument("--sound-style", default="giochi", choices=["giochi", "voce", "sintetici"],
+                   help="effetti dei giochi, esclamazioni di Mario o sintetizzati (default giochi)")
     p.add_argument("--emotion", choices=sorted(EMOTIONS), help="emozione (velocità e tono della voce)")
     p.add_argument("--piper-model", help="voce piper (.onnx); con la voce IA è la voce di base")
     add_openvoice_args(p)

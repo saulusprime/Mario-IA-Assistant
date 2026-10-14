@@ -79,7 +79,7 @@
     </div>
     <div>
       <h2>Voce dal PC</h2>
-      <div class="actions"><label><input type="checkbox" id="set-tts"> voce attiva</label> <label><input type="checkbox" id="set-sounds"> effetti sonori</label> <span class="muted" id="set-engine"></span></div>
+      <div class="actions"><label><input type="checkbox" id="set-tts"> voce attiva</label> <label><input type="checkbox" id="set-sounds"> effetti sonori</label> <label title="Suoni veri dei giochi: ./run.sh fetch-sounds li scarica in data/sounds/tmk (uso privato)"><select id="set-soundstyle"><option value="giochi">dei giochi</option><option value="voce">voce di Mario</option><option value="sintetici">sintetizzati</option></select></label> <span class="muted small" id="set-pack"></span> <span class="muted" id="set-engine"></span></div>
       <div class="actions"><label>Voce <input type="text" id="set-voice" placeholder="es. Italian+Alex (vuoto = predefinita)" style="width:16em"></label></div>
       <div class="actions"><label>Velocità <input type="range" id="set-rate" min="-100" max="100"> <span id="set-rate-v"></span></label> <label>Tono <input type="range" id="set-pitch" min="-100" max="100"> <span id="set-pitch-v"></span></label></div>
       <div class="actions"><label title="Voce neurale offline: tools/setup_openvoice.sh installa piper e le voci italiane in third_party/piper-voices; se il file esiste il motore passa a piper">Modello piper <input type="text" id="set-piper" placeholder="/percorso/it_IT-paola-medium.onnx (vuoto = spd-say/espeak)" style="width:22em"></label></div>

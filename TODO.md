@@ -33,6 +33,11 @@ dentro ogni gruppo le prime sono le più utili.
       `./run.sh voice "..." --openvoice-ref data/voices/<file>.wav` con `--openvoice-tau` 0, 0,3 e 0,6;
       poi una sessione `assistant` con Mario e la voce IA: pause tra le frasi, primo avvio mentre
       carica (voce di riserva), consumo di CPU e memoria con dashboard e Bluetooth attivi.
+- [ ] **Suoni dei giochi (14/10)**: ascoltare i tre stili (`./run.sh voice --play coin --play alarm
+      --sound-style voce`) e in una sessione dell'assistente: volume degli effetti rispetto alla
+      voce (i WAV dei giochi possono essere più forti dei sintetizzati; se serve, un volume degli
+      effetti per `paplay --volume`), esclamazioni che si sovrappongono alla frase successiva,
+      scelte delle tabelle in `soundpack.py` da cambiare.
 - [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
       (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
       `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON

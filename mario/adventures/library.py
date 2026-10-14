@@ -48,9 +48,18 @@ def game_events() -> list[dict]:
     return [{"kind": "game_event", "code": c, "hex": f"0x{c:04X}", "name": n} for c, n in sorted(codes.GAME_EVENTS.items())]
 
 
+def sounds() -> dict:
+    """Nomi degli effetti per l'azione "sound" e il campo "sound" dei passi: sintetizzati (sempre) e, se
+    l'archivio è stato scaricato con ./run.sh fetch-sounds, quelli dei giochi e le esclamazioni di Mario."""
+    from ..assistant.soundpack import SoundPack
+    from ..assistant.tts import SOUND_RECIPES
+    pack = SoundPack()
+    return {"sintetici": sorted(SOUND_RECIPES), **pack.names(), "file": len(pack.items)}
+
+
 def library(owned_codes: set[int] | None = None) -> dict:
     return {"tiles": tiles(owned_codes), "colors": colors(), "pants": pants(), "gestures": gestures(),
-            "game_events": game_events(), "families": FAMILY_LABELS}
+            "game_events": game_events(), "families": FAMILY_LABELS, "sounds": sounds()}
 
 
 def describe_trigger(t: Trigger) -> str:

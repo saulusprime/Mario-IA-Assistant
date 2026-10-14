@@ -14,8 +14,9 @@ Senza motore la classe resta muta ma funzionante (i test girano ovunque).
 Le frasi passano da due thread: uno le prepara (file WAV per piper e OpenVoice) e uno le suona, così la
 frase successiva si prepara mentre quella corrente è in riproduzione (al massimo due in anticipo).
 
-Gli effetti sonori (moneta, power-up, allarme, ...) sono onde generate al volo con la libreria
-standard e suonati con `paplay` / `pw-play` / `aplay` / `ffplay`, il primo disponibile.
+Gli effetti sonori (moneta, power-up, allarme, ...) sono i suoni veri dei giochi se l'archivio è stato
+scaricato (`soundpack.py`, `tools/fetch_mario_sounds.py`), altrimenti onde generate al volo con la
+libreria standard; li suona `paplay` / `pw-play` / `aplay` / `ffplay`, il primo disponibile.
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ from typing import Callable, Optional
 
 from . import openvoice as ov
 from .emotions import EMOTIONS
+from .soundpack import DEFAULT_STYLE, STYLES, SoundPack
 
 SOUNDS_DIR = Path(tempfile.gettempdir()) / "mario-assistant-sounds"
 SAMPLE_RATE = 22050
@@ -121,7 +123,8 @@ class Speaker:
     def __init__(self, enabled: bool = True, language: str = "it", voice: str = "", rate: int = 0,
                  pitch: int = 0, volume: int = 0, sounds: bool = True, engine: Optional[str] = None,
                  piper_model: str = "", openvoice_reference: str = "", openvoice_tau: float = 0.3,
-                 openvoice_watermark: bool = False, openvoice_wait: float = 20.0):
+                 openvoice_watermark: bool = False, openvoice_wait: float = 20.0,
+                 sound_style: str = DEFAULT_STYLE, soundpack: Optional[SoundPack] = None):
         self.enabled = enabled
         self.language = language
         self.voice = voice
@@ -134,6 +137,8 @@ class Speaker:
         self.openvoice_tau = max(0.0, min(1.0, float(openvoice_tau)))
         self.openvoice_watermark = bool(openvoice_watermark)
         self.openvoice_wait = float(openvoice_wait)  # secondi massimi di attesa dell'avvio, poi voce di riserva
+        self.sound_style = sound_style if sound_style in STYLES else DEFAULT_STYLE
+        self.pack = soundpack if soundpack is not None else SoundPack()
         self.piper_model = piper_model
         self.engine = engine if engine is not None else self._detect()
         self.player = detect_player()
@@ -168,6 +173,8 @@ class Speaker:
                 if key in ("rate", "pitch", "volume"):
                     value = max(-100, min(100, int(value)))
                 setattr(self, key, value)
+        if opts.get("sound_style") in STYLES:
+            self.sound_style = opts["sound_style"]
         if opts.get("openvoice_tau") not in (None, ""):
             self.openvoice_tau = max(0.0, min(1.0, float(opts["openvoice_tau"])))
         changed = False
@@ -244,6 +251,8 @@ class Speaker:
                 "rate": self.rate, "pitch": self.pitch, "sounds": self.sounds, "piper_model": self.piper_model,
                 "openvoice_reference": self.openvoice_reference, "openvoice_tau": self.openvoice_tau,
                 "openvoice": voice_ai, "last_timing": self.timings[-1] if self.timings else None,
+                "sound_style": self.sound_style, "soundpack": {"files": len(self.pack.items),
+                                                              "folder": str(self.pack.folder)},
                 "avg_render_s": round(sum(renders) / len(renders), 2) if renders else None,
                 "last_error": self.last_error}
 
@@ -467,10 +476,14 @@ class Speaker:
 
     # ----- effetti sonori ---------------------------------------------------------------
 
+    def sound_path(self, name: str) -> Optional[Path]:
+        """Il file di un effetto: suono vero dei giochi (secondo lo stile) o, in mancanza, sintetizzato."""
+        return self.pack.path(name, self.sound_style) or ensure_sound(name)
+
     def play(self, name: str) -> bool:
         if not (self.enabled and self.sounds and self.player):
             return False
-        path = ensure_sound(name)
+        path = self.sound_path(name)
         if path is None:
             return False
         try:
