@@ -33,11 +33,12 @@ dentro ogni gruppo le prime sono le più utili.
       `./run.sh voice "..." --openvoice-ref data/voices/<file>.wav` con `--openvoice-tau` 0, 0,3 e 0,6;
       poi una sessione `assistant` con Mario e la voce IA: pause tra le frasi, primo avvio mentre
       carica (voce di riserva), consumo di CPU e memoria con dashboard e Bluetooth attivi.
-- [ ] **Suoni dei giochi (14/10)**: ascoltare i tre stili (`./run.sh voice --play coin --play alarm
-      --sound-style voce`) e in una sessione dell'assistente: volume degli effetti rispetto alla
-      voce (i WAV dei giochi possono essere più forti dei sintetizzati; se serve, un volume degli
-      effetti per `paplay --volume`), esclamazioni che si sovrappongono alla frase successiva,
-      scelte delle tabelle in `soundpack.py` da cambiare.
+- [ ] **Suoni dei giochi e pagina Suoni (14/10)**: dalla pagina `/sounds` ascoltare le scelte
+      predefinite nei due stili e cambiare quelle che non piacciono; regolare il volume degli
+      effetti rispetto alla voce; provare in una sessione dell'assistente se le esclamazioni si
+      sovrappongono alla frase successiva; ascoltare nel browser un NSF, un SPC e un modulo
+      convertiti; caricare un suono dal telefono. Per i MIDI installare un sintetizzatore
+      (`sudo apt install fluidsynth fluid-soundfont-gm`).
 - [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
       (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
       `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON
@@ -294,6 +295,8 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 - Far dialogare due personaggi tramite il PC (Mario e Luigi) emulando ciò che fanno via
   radio tra loro, una volta capito il formato della porta 4.
 - Esporre Mario via MQTT o WebSocket per domotica e notifiche.
+- Musica di sottofondo nelle avventure: un'azione "music" che avvia e ferma in ciclo un brano
+  dell'archivio (NSF, SPC, MP3 convertiti) a volume basso, sotto voce ed effetti.
 - Voce IA con le emozioni: OpenVoice cambia il timbro ma non il tono; una registrazione di riferimento
   per emozione (allegra, triste, spaventata) scelta in base al tag della frase darebbe più
   espressività (le impronte si calcolano una volta e restano in cache).

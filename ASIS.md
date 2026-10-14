@@ -137,12 +137,14 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   riferimento per 0,94 (0,51 con la voce di partenza). Voce di riserva e ripartenza dopo un crash
   provate con un processo finto. Lo stesso processo rende piper istantaneo (0,08–0,16 s a frase
   contro 2,8 s del comando). Non ancora ascoltata con una voce vera né in una sessione con Mario.
-- **Suoni dei giochi (14/10)**: `./run.sh fetch-sounds` ha scaricato da The Mushroom Kingdom 833
-  file WAV di 16 giochi (49 MB, in `data/sounds/tmk/`, uso privato, fuori da git) con il catalogo
-  (gioco, categoria, descrizione). Emozioni, sessione e avventure suonano gli effetti veri o, nello
-  stile "voce", le esclamazioni di Mario; tutte le 57 corrispondenze delle tabelle esistono nel
-  catalogo. Da ascoltare per volume e scelte.
-- **Test**: 143 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Suoni dei giochi (14/10)**: `./run.sh fetch-sounds --all` copia in locale l'archivio "Sounds &
+  Music" di The Mushroom Kingdom (WAV, MP3, MIDI, moduli, NSF, SPC; `data/sounds/tmk/`, uso privato,
+  fuori da git) con il catalogo. Emozioni, sessione e avventure suonano gli effetti veri o, nello
+  stile "voce", le esclamazioni di Mario; tutte le 57 corrispondenze predefinite esistono nel
+  catalogo. La pagina Suoni della dashboard permette di scegliere il file di ogni effetto, regolare
+  il volume, ascoltare l'archivio (NSF con scelta della traccia, provato con ffmpeg e libgme) e
+  caricare suoni propri. Da ascoltare per volume e scelte.
+- **Test**: 149 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

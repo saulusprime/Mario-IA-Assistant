@@ -449,6 +449,122 @@
     refresh(); setInterval(refresh, 1000); startStream();
   }
 
+  if (page === "sounds") {
+    const msg = $("#snd-msg"), audio = $("#snd-audio");
+    const at = (v) => esc(v).replace(/"/g, "&quot;");  // valori dentro attributi HTML
+    let ROWS = [], VOLUME = 100;
+    const editStyle = () => $("#snd-edit").value;
+    const fileUrl = (rel, extra) => "/api/sounds/file/" + rel.split("#")[0].split("/").map(encodeURIComponent).join("/") + (extra ? "?" + new URLSearchParams(extra) : "");
+    function listen(rel, browser) {
+      const track = rel.includes("#") ? rel.split("#")[1] : "";
+      const extra = browser ? null : Object.assign({ seconds: 30 }, track ? { track } : {});
+      audio.src = fileUrl(rel, extra); audio.play().catch((e) => flash(msg, "anteprima non riuscita: " + e.message, true));
+    }
+    async function playOnPc(data) { try { await api("/api/sounds/play", "POST", data); flash(msg, "suonato sul PC"); } catch (e) { flash(msg, e.message, true); } }
+    function chip(f, removable) {
+      return `<span class="chip" title="${at(f.rel)}"><button class="small ghost" data-listen="${at(f.rel)}" data-browser="${f.browser ? 1 : ""}">▶</button>${esc(f.description)}` +
+        (f.game && f.game !== "custom" ? ` <span class="muted small">${esc(f.game)}</span>` : "") +
+        (removable ? ` <button class="small ghost danger" data-unassign="${at(f.rel)}" title="togli">×</button>` : "") + "</span>";
+    }
+    function names() { return ROWS.map((r) => r.name); }
+    function fillNameSelects() {
+      const current = $("#snd-target").value, up = $("#snd-up-name").value;
+      $("#snd-target").innerHTML = names().map((n) => `<option value="${at(n)}">${esc(n)}</option>`).join("");
+      $("#snd-up-name").innerHTML = '<option value="">nessuno</option>' + names().map((n) => `<option value="${at(n)}">${esc(n)}</option>`).join("");
+      if (current && names().includes(current)) $("#snd-target").value = current;
+      if (up && names().includes(up)) $("#snd-up-name").value = up;
+    }
+    function renderTable() {
+      const st = editStyle(), tbody = $("#snd-table tbody"); tbody.innerHTML = "";
+      ROWS.forEach((r) => {
+        const entry = r[st], own = entry.override;
+        const files = own ? own.map((f) => chip(f, true)).join(" ") : (entry.default.length ? '<span class="muted">predefinito:</span> ' + entry.default.map((f) => chip(f, false)).join(" ") : '<span class="muted">sintetizzato</span>');
+        const tr = document.createElement("tr"); tr.dataset.name = r.name;
+        tr.innerHTML = `<td><code>${esc(r.name)}</code></td><td class="small">${esc(r.uses)}</td><td>${files}</td>` +
+          `<td class="nowrap"><button class="small" data-pc="${at(r.name)}">PC</button> <button class="small" data-pick="${at(r.name)}">Scegli</button>` +
+          (own ? ` <button class="small ghost" data-reset="${at(r.name)}">Ripristina</button>` : "") + "</td>";
+        tbody.appendChild(tr);
+      });
+    }
+    async function loadAssignments() {
+      try {
+        const r = await api("/api/sounds/assignments"); ROWS = r.rows; VOLUME = r.volume;
+        $("#snd-style").value = r.style; $("#snd-volume").value = VOLUME; $("#snd-volume-v").textContent = VOLUME;
+        $("#snd-stats").textContent = `${r.status.files} file in archivio` + (r.status.missing.length ? `, ${r.status.missing.length} nomi senza file scaricati` : "");
+        renderTable(); fillNameSelects();
+      } catch (e) { flash(msg, e.message, true); }
+    }
+    async function assign(name, files, append) {
+      try { const r = await api("/api/sounds/assign", "POST", { style: editStyle(), name, files, append: append ? 1 : 0 }); ROWS = r.rows; renderTable(); fillNameSelects(); flash(msg, `${name}: ${r.files.length ? r.files.length + " file" : "predefinito"}`); }
+      catch (e) { flash(msg, e.message, true); }
+    }
+    let gamesFilled = "";
+    async function loadCatalog() {
+      const q = new URLSearchParams({ section: $("#snd-sec").value, game: $("#snd-game").value, q: $("#snd-q").value, limit: 400 });
+      try {
+        const r = await api("/api/sounds/catalog?" + q);
+        if (gamesFilled !== $("#snd-sec").value) {
+          const sel = $("#snd-game"), keep = sel.value; gamesFilled = $("#snd-sec").value;
+          const games = [...new Set(r.games.map((g) => g.game))];
+          sel.innerHTML = '<option value="">tutti</option>' + games.map((g) => `<option value="${at(g)}">${esc(g)}</option>`).join("");
+          if (games.includes(keep)) sel.value = keep;
+        }
+        const tbody = $("#snd-list tbody"); tbody.innerHTML = "";
+        r.items.forEach((it) => {
+          const multi = ["nsf", "nsfe"].includes((it.rel.split(".").pop() || "").toLowerCase());
+          const tr = document.createElement("tr"); tr.dataset.rel = it.rel;
+          tr.innerHTML = `<td class="nowrap"><button class="small ghost" data-listen="${at(it.rel)}" data-browser="${it.browser ? 1 : ""}" ${it.playable || it.browser ? "" : "disabled title=\"non riproducibile su questo PC\""}>▶</button>` +
+            (multi ? ` <input type="number" class="snd-track" min="0" max="99" value="0" title="traccia" style="width:3.5em">` : "") + "</td>" +
+            `<td>${esc(it.description)}</td><td class="small">${esc(it.game || "")}${it.category ? " · " + esc(it.category) : ""}</td>` +
+            `<td class="small muted">${esc(it.section)}${it.extra ? " · " + esc(it.extra) : ""}${it.size ? " · " + Math.max(1, Math.round(it.size / 1024)) + " KB" : ""}</td>` +
+            `<td class="nowrap"><button class="small" data-pcfile="${at(it.rel)}" ${it.playable ? "" : "disabled"}>PC</button> <button class="small primary" data-add="${at(it.rel)}" title="aggiungi al nome scelto in Assegna a">+</button>` +
+            (it.section === "custom" ? ` <button class="small ghost danger" data-delete="${at(it.rel)}" title="cancella">×</button>` : "") + "</td>";
+          tbody.appendChild(tr);
+        });
+        $("#snd-matches").textContent = `${r.matches} trovati su ${r.total}` + (r.matches > r.items.length ? `, mostrati ${r.items.length}` : "") +
+          " · " + Object.entries(r.sections).map(([k, v]) => `${k} ${v}`).join(", ");
+      } catch (e) { flash(msg, e.message, true); }
+    }
+    const withTrack = (btn, rel) => { const t = btn.closest("tr") && $(".snd-track", btn.closest("tr")); return t && Number(t.value) > 0 ? `${rel}#${Number(t.value)}` : rel; };
+    document.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button"); if (!b || !b.closest("main")) return;
+      if (b.dataset.listen !== undefined) listen(withTrack(b, b.dataset.listen), !!b.dataset.browser && !withTrack(b, b.dataset.listen).includes("#"));
+      else if (b.dataset.pc) playOnPc({ name: b.dataset.pc, style: editStyle() });
+      else if (b.dataset.pcfile) { const rel = withTrack(b, b.dataset.pcfile); playOnPc({ file: rel, seconds: /\.(nsfe?|spc|it|xm|mod|s3m|mid|midi|mp3)$/i.test(rel.split("#")[0]) ? 30 : "" }); }
+      else if (b.dataset.pick) { $("#snd-target").value = b.dataset.pick; $("#snd-archive").scrollIntoView({ behavior: "smooth" }); flash(msg, `scegli i file per "${b.dataset.pick}" con +`); }
+      else if (b.dataset.reset) assign(b.dataset.reset, [], false);
+      else if (b.dataset.unassign) { const name = b.closest("tr").dataset.name, row = ROWS.find((r) => r.name === name); assign(name, (row[editStyle()].override || []).map((f) => f.rel).filter((rel) => rel !== b.dataset.unassign), false); }
+      else if (b.dataset.add) { const name = $("#snd-target").value; if (!name) { flash(msg, "scegli prima il nome in Assegna a", true); return; } assign(name, [withTrack(b, b.dataset.add)], true); }
+      else if (b.dataset.delete) { if (!confirm("Cancellare questo suono?")) return; try { await api("/api/sounds/file/" + b.dataset.delete.split("/").map(encodeURIComponent).join("/"), "DELETE"); loadCatalog(); loadAssignments(); } catch (e) { flash(msg, e.message, true); } }
+    });
+    $("#snd-edit").addEventListener("change", renderTable);
+    $("#snd-style").addEventListener("change", async () => { try { await api("/api/assistant/settings", "POST", { sound_style: $("#snd-style").value }); flash(msg, "stile salvato"); } catch (e) { flash(msg, e.message, true); } });
+    $("#snd-volume").addEventListener("input", () => { $("#snd-volume-v").textContent = $("#snd-volume").value; });
+    $("#snd-volume").addEventListener("change", async () => { try { const r = await api("/api/sounds/volume", "POST", { volume: Number($("#snd-volume").value) }); flash(msg, `volume degli effetti ${r.volume}%`); } catch (e) { flash(msg, e.message, true); } });
+    $("#snd-add").addEventListener("click", () => {
+      const name = $("#snd-newname").value.trim().toLowerCase();
+      if (!/^[a-z0-9_]{1,32}$/.test(name)) { flash(msg, "nome non valido: lettere minuscole, cifre e _", true); return; }
+      if (!names().includes(name)) { ROWS.push({ name, uses: "nuovo: aggiungi i file dall'archivio", giochi: { default: [], override: null }, voce: { default: [], override: null } }); renderTable(); fillNameSelects(); }
+      $("#snd-target").value = name; $("#snd-newname").value = ""; $("#snd-archive").scrollIntoView({ behavior: "smooth" });
+    });
+    $("#snd-search").addEventListener("click", loadCatalog);
+    $("#snd-q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadCatalog(); });
+    $("#snd-sec").addEventListener("change", () => { $("#snd-game").value = ""; loadCatalog(); });
+    $("#snd-game").addEventListener("change", loadCatalog);
+    $("#snd-upload").addEventListener("click", async () => {
+      const file = $("#snd-file").files[0]; if (!file) { flash($("#snd-up-msg"), "scegli un file", true); return; }
+      const form = new FormData(); form.append("file", file); form.append("description", $("#snd-desc").value);
+      form.append("name", $("#snd-up-name").value); form.append("style", editStyle());
+      try {
+        const r = await fetch("/api/sounds/upload", { method: "POST", body: form, credentials: "same-origin" }); const j = await r.json();
+        if (!j.ok) throw new Error(j.error || r.statusText);
+        flash($("#snd-up-msg"), `caricato: ${j.item.description}`); $("#snd-file").value = ""; $("#snd-desc").value = "";
+        $("#snd-sec").value = "custom"; gamesFilled = null; loadCatalog(); loadAssignments();
+      } catch (e) { flash($("#snd-up-msg"), e.message, true); }
+    });
+    loadAssignments(); loadCatalog();
+  }
+
   if (page === "report") {
     $("#report-refresh").addEventListener("click", async () => { try { $("#report-text").textContent = (await api("/api/report")).text; } catch (e) { alert(e.message); } });
   }

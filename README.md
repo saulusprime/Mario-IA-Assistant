@@ -30,7 +30,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh assistant            # Mario come ingresso/uscita di una sessione con un modello (voce dal PC)
 ./run.sh assistant --no-mario # idem senza Bluetooth: tastiera, modello e voce (chiave Claude in .env)
 ./run.sh voice "Ciao!" --openvoice-ref voce.wav   # prova della voce IA (OpenVoice) con i tempi
-./run.sh fetch-sounds         # suoni e voci veri dei giochi di Mario per gli effetti (uso privato, 49 MB)
+./run.sh fetch-sounds --all   # archivio di suoni, voci e musiche di Mario in locale (uso privato); pagina Suoni
 ./run.sh adventure --list     # avventure del designer; --play quiz [--no-mario] per giocarne una
 ./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
 ./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect)
@@ -92,7 +92,9 @@ set, note; "visti" si aggiorna da solo quando il sensore li riconosce), **Assist
 PC, emozioni, regole sensori → intenti, sezione dedicata più sotto), **Eventi** (archivio con
 filtri per dispositivo, porta, tipo, testo e intervallo; esportazione CSV e JSON; grafici senza
 librerie esterne: batteria nel tempo, istogramma dei gesti, basette lette, eventi per tipo),
-**Avventure** (designer e schermo di gioco, sezione dedicata più sotto), **Funzioni** (report
+**Avventure** (designer e schermo di gioco, sezione dedicata più sotto), **Suoni** (archivio locale
+di effetti, voci e musiche di Mario, scelta del suono di ogni effetto, suoni propri; sezione
+"Effetti sonori dei giochi"), **Funzioni** (report
 completo) e **Documentazione** (README, ASIS, TODO, HANDOFF). Dalla scheda di un dispositivo si
 cambiano nome e volume con Mario connesso.
 
@@ -245,13 +247,24 @@ prima frase non ci sono pause. Verifica oggettiva con una registrazione di rifer
 (la voce maschile "riccardo" di piper): l'impronta vocale della frase convertita somiglia al
 riferimento per 0,94 e alla voce di partenza per 0,51. L'ascolto con una voce vera è nel TODO.
 
-**Effetti sonori dei giochi.** `./run.sh fetch-sounds` scarica dall'archivio di appassionati
-[The Mushroom Kingdom](https://themushroomkingdom.net/wav.shtml) gli effetti, i jingle e le voci di
-16 giochi: i platform da Super Mario Bros. a 3D Land, Mario Kart 64 e i giochi Mario & Luigi.
-Sono 833 file WAV, 49 MB, una richiesta ogni secondo; `--games all` prende tutti i 31 giochi
-(82 MB) e `--catalog` legge solo l'elenco. I suoni sono © Nintendo e il sito chiede il permesso per
-ripubblicarli: finiscono in `data/sounds/tmk/` (ignorata da git) e servono solo per l'uso in casa.
-Il repository contiene solo lo script.
+**Effetti sonori dei giochi.** `./run.sh fetch-sounds` copia in locale la sezione "Sounds & Music"
+dell'archivio di appassionati [The Mushroom Kingdom](https://themushroomkingdom.net/sounds.shtml).
+Senza opzioni scarica gli effetti, i jingle e le voci di 16 giochi (833 WAV, 49 MB): i platform da
+Super Mario Bros. a 3D Land, Mario Kart 64 e i giochi Mario & Luigi. Con `--all` scarica l'archivio
+intero:
+
+| Sezione | Contenuto | Voci di catalogo |
+|---|---|---|
+| wav | effetti, voci e jingle di 31 giochi | 1.415 |
+| mp3 | sigle dei cartoni e medley | 13 |
+| mid | arrangiamenti MIDI di 47 giochi | 906 |
+| mod | moduli tracker (IT, XM, MOD) di 14 giochi, estratti dai `.mdr` con 7z | 114 |
+| nsf | colonne sonore NES originali (8 zip, estratti) | 8 zip |
+| spc | colonne sonore Super NES originali (14 zip, estratti) | 14 zip |
+
+Una richiesta al secondo; i file già presenti non vengono riscaricati, quindi si può interrompere e
+riprendere; `--catalog` legge solo l'elenco. I file restano in `data/sounds/tmk/`, ignorata da git:
+copia locale per uso privato, il repository pubblico contiene solo lo script.
 
 `mario/assistant/soundpack.py` sceglie il file per ogni effetto, con tre stili (impostazione
 "Effetti sonori" della pagina Assistente, `--sound-style` di `assistant` e `voice`):
@@ -262,7 +275,20 @@ Il repository contiene solo lo script.
 | voce di Mario | "Yahoo!", "Wa-ha!", "Yippee!" | "Whoa!" | "Mamma-mia", "Watch it!" | "D'oh!" | "I'm-a tired" |
 | sintetizzati | onde generate al volo, come prima | | | | |
 
-Dove manca una voce si usa l'effetto del gioco, e dove manca il file quello sintetizzato. Le
+Dove manca una voce si usa l'effetto del gioco, e dove manca il file quello sintetizzato.
+
+**Pagina Suoni della dashboard** (`/sounds`). In alto ci sono lo stile in uso e il volume degli effetti
+(0–150%, applicato da `paplay`, `pw-play` o `ffplay`). Sotto c'è la tabella dei nomi, ognuno con il suo
+uso (emozione gioia, inizio avventura, …) e i file scelti per lo stile "giochi" o "voce". Ogni file si
+ascolta nel browser, si toglie, si ripristina la scelta predefinita, oppure si prova il nome sugli
+altoparlanti del PC; si possono creare nomi nuovi per le avventure. L'archivio si filtra per sezione,
+gioco e testo; ogni voce si ascolta e con "+" si aggiunge al nome scelto. NSF, SPC e moduli vengono
+convertiti in WAV con ffmpeg (libgme, libopenmpt) e messi in `data/sounds/cache/`; per gli NSF si
+sceglie la traccia. I MIDI richiedono fluidsynth o timidity, che sul PC di sviluppo non ci sono. La
+sezione "I miei suoni" carica file propri (WAV, o m4a, ogg, mp3 convertiti) in `data/sounds/custom/`.
+Le scelte vanno in `data/sounds/assegnazioni.json`, che leggono anche la CLI e le avventure. API:
+`/api/sounds/catalog`, `/api/sounds/file/<percorso>` (`?wav=1&seconds=&track=`), `/api/sounds/assignments`,
+`/api/sounds/assign`, `/api/sounds/volume`, `/api/sounds/play`, `/api/sounds/upload`. Le
 avventure possono usare anche altri nomi nell'azione "sound" e nel campo `sound` dei passi:
 `oneup`, `jump`, `stomp`, `pipe`, `star`, `clear`, `gameover`, `fireworks`, `key`, `letsago`,
 `herewego`, `okeydokey`, `goodbye`… L'elenco completo è in `/api/adventures/library` (chiave
@@ -647,7 +673,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centoquarantatré test senza Bluetooth né rete esterna, raggruppati per file:
+Centoquarantanove test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -657,7 +683,8 @@ Centoquarantatré test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata |
 | `test_db` (6) | database della dashboard |
 | `test_assistant` (30), `test_assistant_ext` (12) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
-| `test_openvoice` (16) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, ricadute, lettura del catalogo del sito |
+| `test_openvoice` (19) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni, lettura del catalogo del sito |
+| `test_sounds_web` (3) | pagina Suoni: catalogo, file per l'anteprima e percorsi vietati, assegnazioni, stile, caricamento e cancellazione |
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
 | `test_service` (3), `test_tts` (4) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
 | `test_adventures` (7), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
@@ -689,14 +716,15 @@ mario/env.py            caricamento di .env (chiave API) senza dipendenze
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), fetch_mario_sounds.py (suoni dei giochi)
-tests/                  test offline (143)
+tests/                  test offline (149)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
                         convertitore V2, voci piper italiane; ignorati da git
 .venv-openvoice/        ambiente della voce IA (torch, OpenVoice, piper), creato da tools/setup_openvoice.sh
 data/                   database SQLite della dashboard, voices/ (registrazioni di riferimento), openvoice-cache/
-                        (impronte vocali), sounds/tmk/ (suoni dei giochi, uso privato); ignorato da git
+                        (impronte vocali), sounds/ (tmk/ archivio dei suoni, custom/ suoni propri, cache/
+                        conversioni, assegnazioni.json); ignorato da git
 logs/                   catture btmon, log di monitor/shell/assistente/avventure/prove (ignorato da git)
 .env                    ANTHROPIC_API_KEY=... (ignorato da git)
 ASIS.md, TODO.md        stato attuale (fatto e verificato) e lavoro aperto

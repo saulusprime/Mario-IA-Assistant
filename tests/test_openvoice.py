@@ -329,47 +329,116 @@ if __name__ == "__main__":
 
 
 class SoundPackTests(unittest.TestCase):
-    """Suoni veri dei giochi: catalogo, stili, ricaduta sugli effetti sintetizzati (archivio finto)."""
+    """Suoni veri dei giochi: catalogo, stili, scelte dell'utente, file propri, ricadute (archivio finto)."""
 
     def setUp(self):
         from mario.assistant import soundpack
         self.sp = soundpack
         self.tmp = tempfile.TemporaryDirectory()
-        self.dir = Path(self.tmp.name)
+        self.root = Path(self.tmp.name)
+        self.dir = self.root / "tmk"
         files = {("smb", "Coin"): "smb/smb_coin.wav", ("sm64", "\"Yahoo!\""): "sm64/sm64_yahoo.wav",
                  ("smb", "Power-up"): "smb/smb_powerup.wav", ("sm64", "Bowser's laugh"): "sm64/sm64_bowser_laugh.wav"}
         items = []
         for (game, desc), rel in files.items():
             (self.dir / rel).parent.mkdir(parents=True, exist_ok=True)
             write_wav(self.dir / rel)
-            items.append({"game": game, "category": "SFX", "description": desc, "file": rel, "url": "x", "size": 1})
+            items.append({"section": "wav", "game": game, "category": "SFX", "description": desc, "file": rel,
+                          "url": "x", "size": 1})
         items.append({"game": "smb", "category": "SFX", "description": "Stomp", "file": "smb/manca.wav", "url": "x", "size": 1})
+        (self.dir / "mid" / "smb").mkdir(parents=True)
+        (self.dir / "mid" / "smb" / "smb_over.mid").write_bytes(b"MThd")
+        items.append({"section": "mid", "game": "smb", "category": "Super Mario Bros.", "description": "Overworld",
+                      "file": "mid/smb/smb_over.mid", "url": "x", "size": 4})
         (self.dir / "catalogo.json").write_text(json.dumps({"items": items}), encoding="utf-8")
 
     def tearDown(self):
         self.tmp.cleanup()
 
+    def pack(self):
+        return self.sp.SoundPack(self.root)
+
     def test_styles_and_fallbacks(self):
-        pack = self.sp.SoundPack(self.dir)
+        pack = self.pack()
         self.assertTrue(pack.available)
-        self.assertEqual(len(pack.items), 4)  # il file mancante non conta
+        self.assertEqual(len(pack.items), 5)  # il file mancante non conta
         self.assertEqual(pack.path("coin", "giochi").name, "smb_coin.wav")
         self.assertEqual(pack.path("coin", "voce").name, "sm64_yahoo.wav")     # esclamazione di Mario
         self.assertEqual(pack.path("powerup", "voce").name, "smb_powerup.wav")  # nessuna voce: effetto del gioco
         self.assertIsNone(pack.path("coin", "sintetici"))
         self.assertIsNone(pack.path("stomp", "giochi"))                         # file non scaricato
         self.assertEqual(pack.path("sm64/sm64_bowser_laugh.wav").name, "sm64_bowser_laugh.wav")  # file preciso
-        self.assertIsNone(pack.path("../catalogo.json"))
-        self.assertIsNone(pack.path("sm64/../../x.wav"))
+        self.assertEqual(pack.path("tmk/sm64/sm64_bowser_laugh.wav").name, "sm64_bowser_laugh.wav")
+        for bad in ("../catalogo.json", "sm64/../../x.wav", "/etc/passwd", "tmk/../../x"):
+            self.assertIsNone(pack.path(bad), bad)
+            self.assertIsNone(pack.resolve(bad), bad)
         names = pack.names()
         self.assertEqual((names["giochi"], names["voce"]), (["coin", "powerup"], ["coin", "wahoo"]))  # wahoo: anche "Yahoo!"
         st = pack.status()
-        self.assertEqual(st["games"], {"smb": 2, "sm64": 2})
+        self.assertEqual(st["games"], {"smb": 3, "sm64": 2})
         self.assertIn("stomp", st["missing"])
-        self.assertFalse(self.sp.SoundPack(self.dir / "vuota").available)
+        self.assertFalse(self.sp.SoundPack(self.root / "vuota").available)
+
+    def test_user_assignments_volume_and_table(self):
+        pack = self.pack()
+        self.assertEqual(pack.assign("giochi", "coin", ["sm64/sm64_bowser_laugh.wav"]), ["tmk/sm64/sm64_bowser_laugh.wav"])
+        self.assertEqual(pack.path("coin", "giochi").name, "sm64_bowser_laugh.wav")  # la scelta vince sulla tabella
+        self.assertEqual(pack.path("coin", "voce").name, "sm64_yahoo.wav")           # lo stile voce ha la sua tabella
+        pack.assign("voce", "risata", ["tmk/sm64/sm64_bowser_laugh.wav"])           # nome nuovo per le avventure
+        self.assertIn("risata", pack.all_names())
+        self.assertEqual(pack.path("risata", "giochi"), None)                        # solo nello stile voce
+        self.assertEqual(pack.path("risata", "voce").name, "sm64_bowser_laugh.wav")
+        with self.assertRaises(ValueError):
+            pack.assign("giochi", "Coin!", [])
+        with self.assertRaises(ValueError):
+            pack.assign("giochi", "coin", ["tmk/manca.wav"])
+        with self.assertRaises(ValueError):
+            pack.assign("sintetici", "coin", [])
+        self.assertEqual(pack.set_volume(400), 150)
+        again = self.pack()                                                          # riletto dal file
+        self.assertEqual((again.volume, again.assignments["voce"]["risata"]), (150, ["tmk/sm64/sm64_bowser_laugh.wav"]))
+        row = next(r for r in again.table() if r["name"] == "coin")
+        self.assertEqual([f["rel"] for f in row["giochi"]["default"]], ["tmk/smb/smb_coin.wav"])
+        self.assertEqual([f["rel"] for f in row["giochi"]["override"]], ["tmk/sm64/sm64_bowser_laugh.wav"])
+        self.assertIsNone(row["voce"]["override"])
+        pack.assign("giochi", "coin", [])                                             # ripristina
+        self.assertEqual(self.pack().path("coin", "giochi").name, "smb_coin.wav")
+
+    def test_custom_upload_delete_and_catalog(self):
+        pack = self.pack()
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b"\x01\x00" * 2205)
+        item = pack.add_custom(buf.getvalue(), "Risata di Leo!.wav", "risata")
+        self.assertTrue(item["rel"].startswith("custom/Risata-di-Leo-"))
+        self.assertEqual((item["section"], item["description"]), ("custom", "risata"))
+        pack.assign("giochi", "coin", [item["rel"]])
+        cat = pack.catalog(section="custom")
+        self.assertEqual((cat["matches"], cat["sections"]["custom"]), (1, 1))
+        self.assertTrue(cat["items"][0]["browser"])
+        self.assertEqual(pack.catalog(query="overworld")["items"][0]["section"], "mid")
+        self.assertEqual(pack.catalog(section="wav", game="smb")["matches"], 2)
+        with self.assertRaises(ValueError):
+            pack.delete_custom("tmk/smb/smb_coin.wav")
+        self.assertTrue(pack.delete_custom(item["rel"]))
+        self.assertNotIn("coin", pack.assignments["giochi"])  # tolto anche dalle scelte
+        self.assertEqual(pack.catalog(section="custom")["matches"], 0)
+
+    def test_playable_conversions(self):
+        pack = self.pack()
+        self.assertEqual(pack.playable("tmk/smb/smb_coin.wav").name, "smb_coin.wav")
+        import shutil as _sh
+        if _sh.which("ffmpeg"):
+            cut = pack.playable("tmk/smb/smb_coin.wav", seconds=0.05)  # taglio: passa da ffmpeg e finisce in cache
+            self.assertEqual(cut.parent, self.root / "cache")
+            self.assertIs(pack.playable("tmk/smb/smb_coin.wav", seconds=0.05).samefile(cut), True)
+        self.assertIsNone(pack.playable("tmk/manca.wav"))
+        midi = pack.can_play("tmk/mid/smb/smb_over.mid", (True, None))
+        self.assertFalse(midi)  # senza fluidsynth/timidity il MIDI non si suona
+        self.assertTrue(pack.can_play("tmk/mid/smb/smb_over.mid", (False, "timidity")))
 
     def test_speaker_uses_pack_then_synth(self):
-        sp = Speaker(enabled=False, engine=None, soundpack=self.sp.SoundPack(self.dir))
+        sp = Speaker(enabled=False, engine=None, soundpack=self.pack())
         self.assertEqual(sp.sound_style, "giochi")
         self.assertEqual(sp.sound_path("coin").name, "smb_coin.wav")
         self.assertEqual(sp.sound_path("think").name, "think.wav")  # non scaricato: sintetizzato
@@ -379,8 +448,13 @@ class SoundPackTests(unittest.TestCase):
         self.assertEqual(sp.status()["sound_style"], "voce")
         sp.configure(sound_style="sintetici")
         self.assertEqual(sp.sound_path("coin").name, "coin.wav")
-        self.assertEqual(sp.status()["soundpack"]["files"], 4)
+        self.assertEqual(sp.status()["soundpack"]["files"], 5)
         self.assertIsNone(sp.sound_path("inesistente"))
+        sp.player = ["paplay"]
+        sp.pack.set_volume(50)
+        self.assertEqual(sp.effect_command(Path("/x.wav")), ["paplay", "--volume=32768", "/x.wav"])
+        sp.player = ["pw-play"]
+        self.assertEqual(sp.effect_command(Path("/x.wav"))[1], "--volume=0.50")
 
     def test_every_rule_points_to_a_downloaded_game(self):
         import importlib.util
@@ -392,6 +466,19 @@ class SoundPackTests(unittest.TestCase):
         page = ('<h4 class="subhead">Mario</h4><table><tr><td><a href="/sounds/wav/sm64/sm64_yahoo.wav" '
                 'title="Download">&quot;Yahoo!&quot;</a></td><td class="sizebytes">30KB</td></tr></table>')
         self.assertEqual(fetch.parse_page("sm64", page), [{
-            "game": "sm64", "category": "Mario", "description": '"Yahoo!"',
+            "section": "wav", "game": "sm64", "category": "Mario", "description": '"Yahoo!"',
             "url": "https://themushroomkingdom.net/sounds/wav/sm64/sm64_yahoo.wav", "file": "sm64/sm64_yahoo.wav",
             "size": 30720}])
+        mid = fetch.parse_mid_page("smb", '<h2>Super Mario Bros. (NES)</h2><tr><td><a href="sounds/mid/smb_over.mid">'
+                                          'Overworld</a></td><td class="num">11KB</td><td>PJ Barnes</td></tr>')
+        self.assertEqual((mid[0]["file"], mid[0]["category"], mid[0]["extra"]),
+                         ("mid/smb/smb_over.mid", "Super Mario Bros. (NES)", "MIDI di PJ Barnes"))
+        zips = fetch.parse_zip_page("nsf", '<a href="stuff/in_nsf.zip">plugin</a> <a href="sounds/nsf/nsf_smb.zip">'
+                                           'Super Mario Bros.</a> - 19 total tracks')
+        self.assertEqual([(z["file"], z["extra"]) for z in zips], [("nsf/nsf_smb.zip", "19 total tracks")])
+        self.assertEqual(fetch.game_pages('<a href="media/sm64/mid">SM64</a><a href="media/sm64/mid">Super Mario 64</a>',
+                                          "mid"), [("sm64", "Super Mario 64")])
+
+
+if __name__ == "__main__":
+    unittest.main()

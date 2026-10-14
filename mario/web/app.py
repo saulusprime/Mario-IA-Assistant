@@ -12,13 +12,14 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from bleak.exc import BleakError
-from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, url_for
 
 from .. import codes, lwp3
 from ..assistant import AssistantBusy
 from ..assistant.emotions import EMOTIONS, SAMPLES
 from ..assistant.llm import ANTHROPIC_MODELS
 from ..assistant.service import AssistantService
+from ..assistant.soundpack import BROWSER, EDIT_STYLES
 from ..adventures.model import ACTION_KINDS, TRIGGER_KINDS
 from ..adventures.service import AdventureService
 from ..device import LWPError
@@ -82,6 +83,7 @@ MENU = [
     ("accessories", "Accessori", "/accessories"),
     ("assistant", "Assistente", "/assistant"),
     ("adventures", "Avventure", "/adventures"),
+    ("sounds", "Suoni", "/sounds"),
     ("report", "Funzioni", "/report"),
     ("docs", "Documentazione", "/docs"),
 ]
@@ -901,5 +903,98 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
         if row is None:
             return jsonify({"ok": False, "error": "partita non trovata"}), 404
         return ok(run=row)
+
+    # ----- suoni: archivio locale, scelte per effetto, suoni propri --------------------------
+
+    def pack():
+        return assistant.speaker.pack
+
+    @app.get("/sounds")
+    def page_sounds():
+        return render_template("sounds.html", page="sounds", status=pack().status(), styles=EDIT_STYLES)
+
+    @app.get("/api/sounds/catalog")
+    @api
+    def api_sounds_catalog():
+        a = request.args
+        pack().reload()  # lo scaricamento può essere in corso: il catalogo cresce
+        return ok(**pack().catalog(a.get("section", ""), a.get("game", ""), a.get("q", ""), int(a.get("limit", 300))))
+
+    @app.get("/api/sounds/assignments")
+    @api
+    def api_sounds_assignments():
+        p = pack()
+        return ok(rows=p.table(), volume=p.volume, style=assistant.speaker.sound_style, status=p.status(),
+                  styles=list(EDIT_STYLES))
+
+    @app.post("/api/sounds/assign")
+    @api
+    def api_sounds_assign():
+        d = body()
+        files = d.get("files") or []
+        files = [files] if isinstance(files, str) else [str(f) for f in files]
+        style, name = str(d.get("style") or "giochi"), str(d.get("name") or "")
+        if d.get("append"):
+            files = list(pack().assignments.get(style, {}).get(name, [])) + files
+        return ok(files=pack().assign(style, name, files), rows=pack().table())
+
+    @app.post("/api/sounds/volume")
+    @api
+    def api_sounds_volume():
+        return ok(volume=pack().set_volume(int(body().get("volume", 100))))
+
+    @app.post("/api/sounds/play")
+    @api
+    def api_sounds_play():
+        """Prova sul PC: un file dell'archivio ("file", con "seconds") o un effetto per nome ("name", "style")."""
+        d = body()
+        sp = assistant.speaker
+        if not sp.player:
+            return jsonify({"ok": False, "error": "nessun lettore audio sul PC (paplay, pw-play, aplay, ffplay)"}), 409
+        if d.get("file"):
+            path = sp.play_file(str(d["file"]), float(d["seconds"]) if d.get("seconds") else None)
+        else:
+            path = sp.preview(str(d.get("name") or ""), str(d.get("style") or "") or None)
+        if path is None:
+            return jsonify({"ok": False, "error": "suono non trovato o non riproducibile su questo PC"}), 404
+        return ok(path=str(path))
+
+    @app.get("/api/sounds/file/<path:rel>")
+    def api_sounds_file(rel: str):
+        """Il file per l'anteprima nel browser; i formati che il browser non legge (NSF, SPC, moduli, MIDI) e le
+        richieste con ?wav=1 passano dalla conversione in WAV (?seconds=, ?track= per gli NSF)."""
+        p = pack()
+        path = p.resolve(rel)
+        if path is None:
+            return jsonify({"ok": False, "error": "file non trovato"}), 404
+        item = p.by_rel.get(rel, {})
+        if request.args.get("wav") or Path(item.get("play_rel") or rel).suffix.lower() not in BROWSER:
+            track = request.args.get("track", "")
+            seconds = float(request.args.get("seconds") or 0) or None
+            path = p.playable(rel + (f"#{track}" if track.isdigit() else ""), seconds)
+            if path is None:
+                return jsonify({"ok": False, "error": "non riproducibile su questo PC: serve ffmpeg (per i MIDI "
+                                                      "fluidsynth o timidity)"}), 415
+        return send_file(path, conditional=True)
+
+    @app.delete("/api/sounds/file/<path:rel>")
+    @api
+    def api_sounds_delete(rel: str):
+        return ok(deleted=pack().delete_custom(rel))
+
+    @app.post("/api/sounds/upload")
+    @api
+    def api_sounds_upload():
+        upload = request.files.get("file")
+        if upload is None or not upload.filename:
+            raise ValueError("nessun file ricevuto")
+        data = upload.read(VOICE_MAX_BYTES + 1)
+        if len(data) > VOICE_MAX_BYTES:
+            raise ValueError(f"file troppo grande (massimo {VOICE_MAX_BYTES // 1_000_000} MB)")
+        item = pack().add_custom(data, upload.filename, request.form.get("description", ""))
+        name, style = request.form.get("name", "").strip(), request.form.get("style", "giochi")
+        if name:
+            pack().assign(style, name, list(pack().assignments.get(style, {}).get(name, [])) + [item["rel"]])
+        return ok(item=item)
 
     return app

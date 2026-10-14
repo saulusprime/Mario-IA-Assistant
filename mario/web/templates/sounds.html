@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% block title %}Suoni{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Suoni dell'assistente e delle avventure <small class="muted" id="snd-stats">{{ status.files }} file in archivio</small></h1>
+  <div class="actions">
+    <label title="Lo stile usato dall'assistente e dalle avventure (anche nelle impostazioni della pagina Assistente)">Stile in uso
+      <select id="snd-style"><option value="giochi">effetti dei giochi</option><option value="voce">voce di Mario</option><option value="sintetici">sintetizzati</option></select></label>
+    <label>Volume degli effetti <input type="range" id="snd-volume" min="0" max="150" step="5"> <span id="snd-volume-v"></span>%</label>
+    <span class="spacer"></span>
+    <label title="Quale tabella modificare qui sotto">Modifica lo stile
+      <select id="snd-edit">{% for s in styles %}<option value="{{ s }}">{{ 'effetti dei giochi' if s == 'giochi' else 'voce di Mario' }}</option>{% endfor %}</select></label>
+    <span id="snd-msg" class="muted"></span>
+  </div>
+  <table class="compact" id="snd-table"><thead><tr><th>Nome</th><th>Usato per</th><th>File</th><th></th></tr></thead><tbody></tbody></table>
+  <div class="actions">
+    <label>Nuovo nome per le avventure <input type="text" id="snd-newname" placeholder="es. risata" pattern="[a-z0-9_]{1,32}" style="width:10em"></label>
+    <button id="snd-add" class="small">Aggiungi</button>
+    <span class="hint">Lettere minuscole, cifre e _. Si usa nell'azione "sound" o nel campo <code>sound</code> dei passi.</span>
+  </div>
+  <p class="hint">Per ogni nome vale la tua scelta, altrimenti quella predefinita (in grigio). Con più file, a ogni volta ne viene scelto uno a caso. "Scegli" porta all'archivio qui sotto con il nome già selezionato.</p>
+</section>
+
+<section class="card" id="snd-archive">
+  <h1>Archivio <small class="muted" id="snd-matches"></small></h1>
+  <div class="actions">
+    <label>Sezione <select id="snd-sec">
+      <option value="">tutte</option><option value="wav">effetti e voci (WAV)</option><option value="mp3">MP3</option>
+      <option value="nsf">NES (NSF)</option><option value="spc">Super NES (SPC)</option><option value="mod">moduli (MOD/XM/IT)</option>
+      <option value="mid">MIDI</option><option value="custom">i miei suoni</option></select></label>
+    <label>Gioco <select id="snd-game"><option value="">tutti</option></select></label>
+    <label>Cerca <input type="text" id="snd-q" placeholder="es. coin, Mamma-mia, Bowser" style="width:14em"></label>
+    <button id="snd-search" class="primary">Cerca</button>
+    <span class="spacer"></span>
+    <label title="Il nome a cui aggiungere i file scelti con +">Assegna a <select id="snd-target"></select></label>
+  </div>
+  <table class="compact" id="snd-list"><thead><tr><th></th><th>Descrizione</th><th>Gioco / categoria</th><th>Dettagli</th><th></th></tr></thead><tbody></tbody></table>
+  <audio id="snd-audio" preload="none"></audio>
+  <p class="hint">▶ ascolta nel browser, PC suona dagli altoparlanti del computer, + aggiunge il file al nome scelto in "Assegna a". NSF, SPC e moduli vengono convertiti al volo con ffmpeg (i primi 30 secondi per l'anteprima); i MIDI richiedono fluidsynth o timidity.</p>
+</section>
+
+<section class="card">
+  <h1>I miei suoni</h1>
+  <div class="actions">
+    <input type="file" id="snd-file" accept=".wav,.mp3,.ogg,.oga,.opus,.m4a,.flac,audio/*">
+    <input type="text" id="snd-desc" placeholder="Descrizione (es. risata di Leo)" style="width:16em">
+    <label>Assegna a <select id="snd-up-name"><option value="">nessuno</option></select></label>
+    <button id="snd-upload" class="primary">Carica</button>
+    <span id="snd-up-msg" class="muted"></span>
+  </div>
+  <p class="hint">WAV, oppure registrazioni del telefono (m4a, ogg, mp3) convertite con ffmpeg; i file vanno in <code>data/sounds/custom/</code>. Si cancellano dall'archivio, sezione "i miei suoni".</p>
+</section>
+
+<section class="card">
+  <h1>Da dove vengono</h1>
+  <p>L'archivio è la copia locale della sezione "Sounds &amp; Music" di <a href="https://themushroomkingdom.net/sounds.shtml">The Mushroom Kingdom</a> (suoni © Nintendo e degli autori indicati), scaricata con <code>./run.sh fetch-sounds --all</code> in <code>data/sounds/tmk/</code>. Resta sul PC: la cartella è esclusa dal repository.</p>
+  <p class="hint">Conversioni: ffmpeg {{ 'presente' if status.ffmpeg else 'assente' }}; sintetizzatore MIDI {{ status.midi or 'assente (sudo apt install fluidsynth fluid-soundfont-gm)' }}.</p>
+</section>
+{% endblock %}

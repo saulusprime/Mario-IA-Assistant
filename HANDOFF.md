@@ -11,8 +11,8 @@ scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); das
 Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
 versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
-con OpenVoice (piper + timbro di una registrazione, 14/10); effetti e voci veri dei giochi (uso privato);
-143 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato);
+149 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -611,6 +611,27 @@ servire" (musiche, effetti, voci).
   effetti, quindi un cattivo riferimento, e sono la voce di una persona reale senza il suo consenso.
 - Test: da 140 a 143.
 
+### 14/10 sera — Archivio completo e pagina Suoni
+
+Richiesta dell'utente: una pagina del portale per personalizzare i file multimediali e tenere in
+locale tutto l'archivio originale ("per uso privato non c'è problema").
+
+- **Archivio intero**: lo strumento ora copre tutte le sezioni di "Sounds & Music": WAV dei 31 giochi
+  (1.415), MP3 (13), MIDI (906 in 47 giochi), moduli tracker (114 `.mdr`, cioè moduli compressi RAR,
+  estratti con 7z), NSF (8 zip) e SPC (14 zip) estratti accanto. Il catalogo viene scritto ogni 25
+  file e anche se lo scaricamento viene interrotto. Il sito risponde in circa 3 s a file, quindi
+  l'archivio intero richiede circa due ore e mezza in background.
+- **Riproduzione**: il ffmpeg di Debian ha libgme (NSF, SPC) e libopenmpt (moduli); provata la
+  conversione di `SMB1.NSF` con `-track_index` (tracce diverse, audio diverso). Mancano fluidsynth e
+  timidity, quindi i MIDI restano non riproducibili finché non si installa un sintetizzatore.
+- **`soundpack.py` riscritto**: radice `data/sounds/` con `tmk/`, `custom/`, `cache/` e
+  `assegnazioni.json`; scelte dell'utente per stile prima delle tabelle; nomi nuovi; file precisi
+  con `#traccia`; conversioni in cache; percorsi confinati nella cartella; volume degli effetti.
+- **Pagina Suoni** (`/sounds`, voce di menù "Suoni"): tabella dei nomi con file scelti e predefiniti,
+  ascolto nel browser e sul PC, archivio filtrabile con "+" per assegnare, caricamento di suoni propri.
+  API `/api/sounds/*`.
+- Test: da 143 a 149 (`test_sounds_web`, nuovi casi in `test_openvoice`).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -625,7 +646,7 @@ servire" (musiche, effetti, voci).
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 143 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 149 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -636,7 +657,7 @@ servire" (musiche, effetti, voci).
 | `tools/live_checks.py` | verifiche dal vivo guidate a voce della sezione 1 del TODO (pulsante, pantaloni, gesti, RGB, RSSI, allarmi, disconnect, off) |
 | `tools/catalog_tiles.py` | sessione guidata con le basette reali: annunci vocali, eventi porta 3 per basetta, aggiornamento del database |
 | `tools/probe_port4.py` | prove a scatola nera: scritture sulla porta 4 con annunci vocali, `--in-level`, `--readback`, `--port7` |
-| `tools/fetch_mario_sounds.py` | scarica suoni e voci di Mario da themushroomkingdom.net in `data/sounds/tmk/` (uso privato) con il catalogo |
+| `tools/fetch_mario_sounds.py` | copia in locale l'archivio "Sounds & Music" di themushroomkingdom.net (WAV, MP3, MIDI, moduli, NSF, SPC) in `data/sounds/tmk/` con il catalogo (uso privato) |
 | `tools/setup_openvoice.sh` | installa la voce IA: `.venv-openvoice` (torch CPU, OpenVoice, piper), convertitore V2 da Hugging Face, voci piper italiane (circa 1,5 GB) |
 | `tools/re_checks.py` | reverse engineering dal vivo guidato a voce (sezione 2 del TODO): annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG, porte 4 e 7 nel gioco; mai provato con Mario |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
@@ -659,14 +680,14 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (143); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (149); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/
 ./run.sh decode docs/sessioni/tiles-20261012-182334.txt --summary   # rilettura offline di un log
 ./run.sh web                                 # dashboard su http://127.0.0.1:8765 (Assistente, Eventi, Avventure)
 ./run.sh assistant --no-mario                # assistente senza Bluetooth: tastiera, modello (demo), voce
-./run.sh fetch-sounds                        # suoni e voci dei giochi per gli effetti (uso privato, 49 MB)
+./run.sh fetch-sounds --all                  # archivio di suoni, voci e musiche (uso privato); pagina Suoni
 ./tools/setup_openvoice.sh                   # voce IA (una volta, circa 1,5 GB); poi:
 ./run.sh voice "Ciao!" --openvoice-ref data/voices/<file>.wav   # prova della voce IA con i tempi
 ./run.sh assistant                           # con Claude: la chiave è in .env (o nelle impostazioni della pagina)

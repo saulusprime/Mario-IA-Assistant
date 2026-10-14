@@ -86,3 +86,7 @@ svg.chart { width:100%; height:220px; background:#fafbfc; border:1px solid var(-
 .results { margin:0; padding-left:1.2rem; font-size:.9rem; } .results li.ok { color:var(--green); } .results li.ko { color:var(--red); }
 .stage.big .mission-text { font-size:2.6rem; } .stage.big .mission { padding:2.5rem; } .stage.big .stage-top { font-size:1.8rem; }
 .stage.finished .mission { border-color:var(--yellow); background:#fffbe6; }
+
+/* ---- suoni ---- */
+.chip { display:inline-flex; align-items:center; gap:.2rem; padding:.05rem .4rem .05rem .1rem; margin:.1rem .2rem .1rem 0; border:1px solid var(--line); border-radius:999px; background:#fafbfc; font-size:.86rem; }
+.nowrap { white-space:nowrap; }

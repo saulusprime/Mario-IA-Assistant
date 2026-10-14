@@ -477,19 +477,48 @@ class Speaker:
     # ----- effetti sonori ---------------------------------------------------------------
 
     def sound_path(self, name: str) -> Optional[Path]:
-        """Il file di un effetto: suono vero dei giochi (secondo lo stile) o, in mancanza, sintetizzato."""
+        """Il file di un effetto: scelta dell'utente o suono vero dei giochi (secondo lo stile) o, in mancanza,
+        quello sintetizzato."""
+        if self.sound_style == "sintetici":
+            return ensure_sound(name)
         return self.pack.path(name, self.sound_style) or ensure_sound(name)
 
-    def play(self, name: str) -> bool:
-        if not (self.enabled and self.sounds and self.player):
-            return False
-        path = self.sound_path(name)
-        if path is None:
+    def effect_command(self, path: Path) -> list[str]:
+        """Riga di comando del lettore con il volume degli effetti della pagina Suoni (0-150%)."""
+        cmd = list(self.player or [])
+        volume = self.pack.volume
+        if cmd and volume != 100:
+            if cmd[0] == "paplay":
+                cmd.append(f"--volume={int(65536 * volume / 100)}")
+            elif cmd[0] == "pw-play":
+                cmd.append(f"--volume={volume / 100:.2f}")
+            elif cmd[0] == "ffplay":
+                cmd += ["-volume", str(min(100, volume))]
+        return cmd + [str(path)]
+
+    def _play_path(self, path: Optional[Path]) -> bool:
+        if path is None or not self.player:
             return False
         try:
-            proc = subprocess.Popen(self.player + [str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            proc = subprocess.Popen(self.effect_command(path), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             threading.Thread(target=proc.wait, daemon=True).start()  # niente processi zombie
             return True
         except OSError as exc:
             self.last_error = str(exc)
             return False
+
+    def play(self, name: str) -> bool:
+        if not (self.enabled and self.sounds and self.player):
+            return False
+        return self._play_path(self.sound_path(name))
+
+    def preview(self, name: str, style: Optional[str] = None) -> Optional[Path]:
+        """Suona un effetto nello stile indicato (prova dalla pagina Suoni), anche a voce spenta."""
+        style = style if style in STYLES else self.sound_style
+        path = ensure_sound(name) if style == "sintetici" else (self.pack.path(name, style) or ensure_sound(name))
+        return path if self._play_path(path) else None
+
+    def play_file(self, rel: str, seconds: Optional[float] = None) -> Optional[Path]:
+        """Suona sul PC un file preciso dell'archivio (prova dalla pagina Suoni), anche a voce spenta."""
+        path = self.pack.playable(rel, seconds)
+        return path if self._play_path(path) else None
