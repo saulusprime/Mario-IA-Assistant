@@ -2,7 +2,8 @@
 
 Diario dettagliato del lavoro svolto dall'11 al 15 ottobre 2026 (prima sessione l'11/10 dalle
 12:40 alle 19:00, prove dal vivo il 12/10, documentazione e sviluppo senza Mario il 13/10, voce IA
-con OpenVoice il 14/10, moduli e MIDI dell'archivio dei suoni il 15/10) e stato
+con OpenVoice il 14/10, moduli e MIDI dell'archivio dei suoni e sistema Bluetooth del PC il 15/10)
+e stato
 del progetto per chi lo riprende. Il README spiega *come si usa*; questo file spiega *cosa è stato
 fatto, perché, cosa ha funzionato e cosa no*.
 
@@ -12,7 +13,7 @@ Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claud
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
 versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
 con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato; tutti i formati riproducibili dal 15/10); messaggi
-"stile Mario" (esclamazioni originali + piper più acuto), anche nella sessione con il modello; 159 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+"stile Mario" (esclamazioni originali + piper più acuto), anche nella sessione con il modello; `./run.sh doctor` per il PC e agente di pairing ristretto a Mario; 166 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -34,7 +35,7 @@ tempo reale per 3 minuti e 40 secondi, shell interattiva funzionante.
 | Sistema | Debian 13, kernel 6.12.111, BlueZ 5.82, Python 3.13.5 sull'host |
 | Bluetooth | Broadcom BCM20703A1 integrato, USB `05ac:8290`, driver `btusb`, HCI 4.2 |
 | Wi-Fi | Broadcom BCM43602 (`brcmfmac`), stesso modulo e stessa antenna del Bluetooth |
-| Firmware BT | **nessun file `.hcd` in `/lib/firmware/brcm/`**: il chip gira col firmware ROM |
+| Firmware BT | nessun file `.hcd`, e non serve: per i controller Apple `btusb` usa `btbcm_setup_apple`, che non carica patch (verificato il 15/10 sui sorgenti del kernel 6.12) |
 | Ambiente di lavoro | VS Code da Flatpak: nel sandbox non esistono `bluetoothctl` né `org.bluez` sul bus di sistema |
 | Utente | utente normale nei gruppi `bluetooth` e `sudo` (password richiesta, niente sudo automatico) |
 | Mario | nome iniziale `Mario 5wzZ` (rinominato durante i test con un nome di famiglia, qui `MarioCasa`), firmware 6.5.01, hardware 0.4, LWP 3.0 |
@@ -711,6 +712,43 @@ Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiun
 - Test: da 155 a 159 (`test_rar20` con un archivio costruito bit per bit, MIDI più forte e tagliato in
   `test_openvoice`).
 
+### 15/10 notte — Sistema e Bluetooth del PC (sezione 3 del TODO)
+
+- **Stato rilevato**: PC acceso dall'11/10 (mai riavviato), `enable_autosuspend` di btusb ancora
+  `Y`, dispositivo `1-3` su `control=on`, Wi-Fi sui 5 GHz (5200 MHz), `hex2hcd` installato,
+  `dmesg` e journal del kernel non leggibili senza sudo.
+- **Firmware: premessa sbagliata.** Sui sorgenti del kernel 6.12, la regola Apple di `btusb.c`
+  (`USB_VENDOR_AND_INTERFACE_INFO(0x05ac, 0xff, 0x01, 0x01)`, flag `BTUSB_BCM_APPLE`) imposta
+  `hdev->setup = btbcm_setup_apple`. Questa funzione fa reset, legge versione, prodotto, funzioni
+  e nome e imposta un quirk, senza caricare file. `.hcd` viene cercato solo da
+  `btbcm_initialize`, chiamata da `btbcm_setup_patchram`. L'interfaccia del nostro adattatore è
+  proprio `255/1/1`. Nei log salvati non c'è mai stato un "Patch not found": l'11/10 era una
+  deduzione dalla cartella vuota. Punto chiuso.
+- **Autosospensione persistente**, verificata senza riavvio:
+  - `modprobe -c` mostra l'opzione;
+  - l'initramfs del 14/10 contiene `etc/modprobe.d/btusb.conf` e non contiene `btusb`;
+  - `60-autosuspend.rules` agisce solo con `ID_AUTOSUSPEND=1`, che per 05ac:8290 non c'è;
+  - powertop è disabilitato, TLP non è installato;
+  - quindi al riavvio il dispositivo resta su `on`.
+- **Agente di pairing**: in `src/agent.c` di BlueZ 5.82 c'è una coda `default_agents`.
+  `RequestDefaultAgent` porta l'agente in testa e `remove_default_agent` promuove il successivo,
+  quindi alla chiusura dell'app torna quello di GNOME. Problema trovato: il nostro `_Agent1`
+  approvava ogni richiesta (passkey 0, conferme, autorizzazioni dei servizi) per tutta la durata
+  della connessione. Con il PC accoppiabile (pannello Bluetooth di GNOME aperto) un dispositivo
+  qualsiasi si sarebbe accoppiato senza conferma. Ora `BlueZAgent.allow()` riceve l'indirizzo
+  del Mario trovato e le altre richieste ricevono `org.bluez.Error.Rejected` con un avviso nel log.
+- **`./run.sh doctor`** (`mario/syscheck.py`): controlli in sola lettura con comando di rimedio.
+  - Fonti: sysfs, `/sys/class/rfkill`, `systemctl is-active`, `bluetoothctl show/devices/info`,
+    nmcli o `iw` per la frequenza, file in `/etc/modprobe.d`.
+  - Nel sandbox Flatpak avvisa che i risultati sono parziali, perché `/etc` non è quello dell'host.
+  - Gli stessi controlli compaiono nella pagina Scansione ("Controllo del PC") e in
+    `/api/system/checks`.
+  - Il suggerimento sugli errori di connessione ora rimanda a `doctor` e non cita più il firmware.
+  - Sull'host: tutto a posto in 124 ms.
+- Restano: verifica al primo riavvio (basta `doctor`) e reset completo del pairing con Mario acceso.
+- Test: da 159 a 166 (`test_syscheck` su un sysfs finto, agente ristretto in `test_device_fake`,
+  sezione della pagina Scansione in `test_web_pages`).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -721,12 +759,13 @@ Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiun
 | `mario/codes.py`, `mario/data/mario_codes.json` | tabelle Mario (pantaloni, gesti, barcode 61, colori, eventi 22) con fonte e verifica; IO type; modi di default per nome; delta |
 | `mario/device.py` | `MarioDevice` (scansione, connessione con retry, agente di pairing, bonding, notifiche, richieste con attesa, scoperta, modalità combinata con delta per modo, report, JSON), `BlueZAgent`, `remove_bluez_device` |
 | `mario/decode.py` | decodifica offline: btsnoop (monitor/H4/HCI, riassemblaggio L2CAP), bugreport Android (zip, sezioni btsnooz), PacketLogger di Apple, gzip, log di testo, btmon -r, hex; note sui pacchetti troncati; riepilogo |
-| `mario/cli.py` | comandi `scan`, `info [--json] [--quick] [--no-save]`, `monitor [--sub] [--combined] [--json] [--duration] [--no-battery] [--rssi] [--raw-accel] [--no-reconnect]`, `shell [--no-reconnect]`, `decode`, `assistant [--minutes] [--block] [--no-memory] [--no-db] [--piper-model]`, `adventure [--list] [--play] [--no-mario]`, `web [--server] [--token] [--threads]`, comandi rapidi, strumenti di tools/ come sottocomandi; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
+| `mario/cli.py` | comandi `scan`, `info [--json] [--quick] [--no-save]`, `monitor [--sub] [--combined] [--json] [--duration] [--no-battery] [--rssi] [--raw-accel] [--no-reconnect]`, `shell [--no-reconnect]`, `decode`, `doctor [--json]`, `assistant [--minutes] [--block] [--no-memory] [--no-db] [--piper-model]`, `adventure [--list] [--play] [--no-mario]`, `web [--server] [--token] [--threads]`, comandi rapidi, strumenti di tools/ come sottocomandi; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
+| `mario/syscheck.py` | controllo del PC per il Bluetooth (`doctor`, pagina Scansione, `/api/system/checks`): adattatore, rfkill, servizio, autosospensione, banda del Wi-Fi, hub LEGO associati |
 | `mario/rar20.py` | estrazione RAR 2.0 in Python (Unpack20 con modalità audio, CRC32) per i moduli `.mdr` dell'archivio dei suoni |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 159 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 166 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -760,7 +799,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (159); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (166); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

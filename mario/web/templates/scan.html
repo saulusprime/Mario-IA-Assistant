@@ -20,4 +20,17 @@
   </table>
   {% if last_scan_time %}<p class="muted">Ultima scansione: {{ fmt_time(last_scan_time) }}</p>{% endif %}
 </section>
+
+<section class="card" id="sistema">
+  <h1>Controllo del PC <span class="badge {{ {'ok': 'ok', 'attenzione': 'warn', 'errore': 'err'}[worst] }}">{{ {'ok': 'nessun problema noto', 'attenzione': 'da sistemare', 'errore': 'Bluetooth non utilizzabile'}[worst] }}</span></h1>
+  <table class="compact">
+    <tbody>
+    {% for c in checks %}
+      <tr><td class="nowrap"><span class="badge {{ {'ok': 'ok', 'info': '', 'attenzione': 'warn', 'errore': 'err'}[c.status] }}">{{ c.status }}</span></td>
+      <td class="nowrap">{{ c.name }}</td><td>{{ c.detail }}{% if c.fix %}<br>→ <code>{{ c.fix }}</code>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Le cause note dei problemi di collegamento (adattatore, servizio, autosospensione USB, Wi-Fi a 2,4 GHz sullo stesso chip, pairing), lette senza sudo a ogni apertura della pagina. Da terminale: <code>./run.sh doctor</code>; in JSON: <code>/api/system/checks</code>.</p>
+</section>
 {% endblock %}

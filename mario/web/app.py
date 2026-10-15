@@ -14,7 +14,7 @@ from typing import Any, Callable, Optional
 from bleak.exc import BleakError
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, url_for
 
-from .. import codes, lwp3
+from .. import codes, lwp3, syscheck
 from ..assistant import AssistantBusy
 from ..assistant.emotions import EMOTIONS, SAMPLES
 from ..assistant.llm import ANTHROPIC_MODELS
@@ -251,8 +251,9 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
 
     @app.get("/scan")
     def page_scan():
+        checks = syscheck.run_checks()
         return render_template("scan.html", page="scan", last_scan=worker.last_scan,
-                               last_scan_time=worker.last_scan_time)
+                               last_scan_time=worker.last_scan_time, checks=checks, worst=syscheck.worst(checks))
 
     @app.get("/devices")
     def page_devices():
@@ -337,6 +338,12 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @api
     def api_status():
         return ok(status=worker.status())
+
+    @app.get("/api/system/checks")
+    @api
+    def api_system_checks():
+        checks = syscheck.run_checks()
+        return ok(checks=syscheck.as_dicts(checks), worst=syscheck.worst(checks))
 
     @app.post("/api/scan")
     @api

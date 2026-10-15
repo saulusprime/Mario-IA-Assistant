@@ -27,6 +27,7 @@ try:  # dbus-fast arriva con bleak su Linux; serve per agente di pairing e Remov
     from dbus_fast import Message as DBusMessage  # alias: Message e' gia' quello di lwp3
     from dbus_fast import MessageType as DBusMessageType
     from dbus_fast.aio import MessageBus
+    from dbus_fast.errors import DBusError
     from dbus_fast.service import ServiceInterface, method as dbus_method
     HAVE_DBUS = True
 except ImportError:  # altri backend (macOS/Windows)
@@ -133,16 +134,36 @@ async def remove_bluez_device(device: BLEDevice) -> bool:
 # Pairing: Mario richiede un pairing "Just Works" (IO NoInputNoOutput, bonding) per
 # scrivere i CCCD. Senza un agente che accetti, BlueZ chiede conferma all'agente di
 # sistema (GNOME), che la nega, e Mario chiude la connessione. Verificato con btmon.
+# L'agente accetta solo gli indirizzi passati ad allow() (il Mario che si sta collegando): finché
+# l'app è aperta è l'agente predefinito, e con il pannello Bluetooth di GNOME aperto (PC
+# accoppiabile) accettare tutto farebbe accoppiare senza conferma qualsiasi dispositivo vicino,
+# anche una tastiera. Alla chiusura BlueZ torna da solo all'agente predefinito precedente
+# (coda default_agents di src/agent.c, verificato sui sorgenti di BlueZ 5.82).
 # ---------------------------------------------------------------------------
 
 AGENT_PATH = "/it/lego/mario/agent"
 
+
+def agent_address(device_path: str) -> str:
+    """Indirizzo di un oggetto org.bluez.Device1 (`/org/bluez/hci0/dev_AA_BB_...` -> `AA:BB:...`)."""
+    tail = device_path.rsplit("/", 1)[-1]
+    return tail[4:].replace("_", ":").upper() if tail.startswith("dev_") else ""
+
+
 if HAVE_DBUS:
     class _Agent1(ServiceInterface):
-        """org.bluez.Agent1 che accetta ogni richiesta (capacita' NoInputNoOutput)."""
+        """org.bluez.Agent1 con capacità NoInputNoOutput che accetta solo i dispositivi in `allowed`."""
 
-        def __init__(self):
+        def __init__(self, allowed: set[str]):
             super().__init__("org.bluez.Agent1")
+            self.allowed = allowed
+
+        def _check(self, device: str, what: str) -> None:
+            address = agent_address(device)
+            if address not in self.allowed:
+                log.warning("%s da %s rifiutata: l'agente accetta solo il dispositivo LEGO in collegamento",
+                            what, address or device)
+                raise DBusError("org.bluez.Error.Rejected", "non è il dispositivo LEGO in collegamento")
 
         @dbus_method()
         def Release(self):
@@ -150,6 +171,7 @@ if HAVE_DBUS:
 
         @dbus_method()
         def RequestPinCode(self, device: "o") -> "s":
+            self._check(device, "richiesta del PIN")
             return "0000"
 
         @dbus_method()
@@ -158,6 +180,7 @@ if HAVE_DBUS:
 
         @dbus_method()
         def RequestPasskey(self, device: "o") -> "u":
+            self._check(device, "richiesta della passkey")
             return 0
 
         @dbus_method()
@@ -166,14 +189,17 @@ if HAVE_DBUS:
 
         @dbus_method()
         def RequestConfirmation(self, device: "o", passkey: "u"):
+            self._check(device, "conferma del pairing")
             log.info("conferma pairing accettata automaticamente (passkey %06d)", passkey)
 
         @dbus_method()
         def RequestAuthorization(self, device: "o"):
+            self._check(device, "autorizzazione del pairing")
             log.info("autorizzazione pairing accettata automaticamente")
 
         @dbus_method()
         def AuthorizeService(self, device: "o", uuid: "s"):
+            self._check(device, f"autorizzazione del servizio {uuid}")
             log.debug("servizio %s autorizzato", uuid)
 
         @dbus_method()
@@ -187,13 +213,17 @@ class BlueZAgent:
     def __init__(self):
         self.bus = None
         self.registered = False
+        self.allowed: set[str] = set()  # indirizzi accettati; condiviso con l'oggetto esportato
+
+    def allow(self, address: str) -> None:
+        self.allowed.add(address.upper())
 
     async def start(self) -> bool:
         if not HAVE_DBUS:
             return False
         try:
             self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-            self.bus.export(AGENT_PATH, _Agent1())
+            self.bus.export(AGENT_PATH, _Agent1(self.allowed))
             for member, signature, body in (("RegisterAgent", "os", [AGENT_PATH, "NoInputNoOutput"]),
                                             ("RequestDefaultAgent", "o", [AGENT_PATH])):
                 reply = await self.bus.call(DBusMessage(destination="org.bluez", path="/org/bluez",
@@ -252,8 +282,8 @@ def _connect_hint(error: Optional[BaseException]) -> str:
     if ("abort-by-local" in text or "discover services" in text
             or isinstance(error, asyncio.TimeoutError)):
         text += (" | BlueZ interrompe il collegamento LE subito dopo averlo stabilito: di solito è colpa "
-                 "dell'adattatore (firmware Broadcom mancante, autosospensione USB). Vedi README, "
-                 "sezione 'Problemi di connessione'.")
+                 "dell'adattatore (autosospensione USB, Wi-Fi a 2,4 GHz sullo stesso chip). Controllo "
+                 "automatico: ./run.sh doctor; vedi anche il README, sezione 'Problemi di connessione'.")
     return text
 
 # ---------------------------------------------------------------------------
@@ -352,6 +382,7 @@ class MarioDevice:
                                  "premi di nuovo il tasto Bluetooth e riprova") from last_error
             self.ble_device = device
             self.address = device.address
+            self.agent.allow(device.address)  # l'agente accetta il pairing solo da questo Mario
             say(f"Trovato {device.name!r} [{device.address}] (indirizzo {bluez_address_type(device)}), "
                 f"mi connetto (tentativo {attempt}/{retries})...")
             # Fermiamo la scansione PRIMA di connetterci. Se resta attiva, BlueZ la riprende

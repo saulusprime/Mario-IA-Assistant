@@ -80,13 +80,21 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 - Claude Code gira nel Flatpak di VS Code: BlueZ non è raggiungibile dal sandbox, `run.sh` salta
   sull'host con `flatpak-spawn`; venv dell'host in `.venv` (Python 3.13, bleak 3.0.2, dbus-fast 5.2,
   Flask 3.1, waitress 3.0).
-- MacBookPro12,1 con Bluetooth e Wi-Fi Broadcom sullo stesso modulo e senza firmware `.hcd`
-  disponibile: la connessione regge con il Wi-Fi sulla rete a 5 GHz; autosospensione USB
-  disattivata (`/sys/bus/usb/devices/1-3/power/control` = `on`). Il 13/10 il PC risultava acceso
-  dall'11/10 alle 11:30, cioè mai riavviato dopo la creazione di `/etc/modprobe.d/btusb.conf`: la
-  persistenza dopo il riavvio resta da controllare; regola udev pronta in `tools/99-mario-btusb.rules`.
-- Firmware `BCM20703A1-05ac-8290.hcd` cercato di nuovo il 13/10: assente da linux-firmware e dai
-  pacchetti comunitari (confermato da altri utenti dello stesso MacBook su Launchpad).
+- MacBookPro12,1 con Bluetooth e Wi-Fi Broadcom sullo stesso modulo: la connessione regge con il
+  Wi-Fi sulla rete a 5 GHz; autosospensione USB disattivata (`/sys/bus/usb/devices/1-3/power/control`
+  = `on`). Il PC non è stato riavviato dall'11/10; verificato il 15/10 che dopo il riavvio resterà
+  disattivata (initramfs con `btusb.conf` e senza il modulo, nessuna regola di systemd, powertop e TLP
+  assenti).
+- Firmware: non serve. Per i controller Apple il kernel usa `btbcm_setup_apple`, che non carica
+  nessun `.hcd` (sorgenti del kernel 6.12, 15/10); la ricerca del file dell'11 e del 13/10 partiva da
+  una premessa sbagliata.
+- **`./run.sh doctor`** (15/10) controlla senza sudo adattatore, rfkill, servizio, controller,
+  autosospensione (subito e ai prossimi avvii), banda del Wi-Fi e hub LEGO associati, con il comando
+  per ogni problema; lo stesso nella pagina Scansione e in `/api/system/checks`. Provato sull'host:
+  tutto a posto, 124 ms.
+- Agente di pairing ristretto al Mario in collegamento (15/10): prima approvava qualsiasi richiesta
+  mentre l'app era aperta. Alla chiusura BlueZ ripristina l'agente di GNOME (coda degli agenti,
+  sorgenti di BlueZ 5.82).
 - Cause dei blocchi iniziali trovate con tre catture btmon: scansione al 100 % durante la
   connessione (supervision timeout), coesistenza radio a 2,4 GHz (0x3E), pairing negato
   dall'agente di GNOME (`Insufficient Authentication`). Tutte risolte nell'app.
@@ -158,7 +166,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   delle disponibili nel prompt, massimo due per risposta, testo salvato senza graffe). Provato con
   `claude-sonnet-5-5`: risposta aperta da `{herewego}`, esclamazione suonata prima delle frasi, prima
   frase dopo 1,8 s, log pulito.
-- **Test**: 159 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Test**: 166 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

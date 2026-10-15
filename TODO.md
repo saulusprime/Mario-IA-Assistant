@@ -98,23 +98,34 @@ vivo i passi qui sotto; la cattura dal telefono ha la sua guida in `docs/cattura
 
 ## 3. Sistema e Bluetooth del PC
 
-- [ ] **Firmware Broadcom** `BCM20703A1-05ac-8290.hcd`: ricercato di nuovo il 13/10, non è in
-      linux-firmware né nei repository comunitari (altri utenti dello stesso MacBook lo
-      confermano su Launchpad). Resta l'estrazione dal kext di macOS o dal driver Boot Camp con
-      `hex2hcd`, copia in `/lib/firmware/brcm/`, ricarica di `btusb` e verifica con
-      `sudo dmesg | grep -i brcm`. Dovrebbe migliorare la coesistenza con il Wi-Fi a 2,4 GHz.
-- [ ] **Senza firmware**: tenere il Wi-Fi sui 5 GHz quando si usa Mario; in alternativa
-      una chiavetta Bluetooth USB (`./run.sh -i hci1 …`).
-- [ ] **Rendere persistente** l'autosospensione disattivata dopo un riavvio: il 13/10 il PC non
-      era ancora stato riavviato dalla creazione di `/etc/modprobe.d/btusb.conf` (il parametro del
-      modulo diceva ancora `Y`). Al primo riavvio controllare `cat /sys/bus/usb/devices/1-3/power/control`
-      (atteso `on`); se torna `auto`, installare `tools/99-mario-btusb.rules` (istruzioni nel file).
+Controllo automatico di tutti i punti qui sotto: `./run.sh doctor` (anche nella pagina Scansione).
+
+- [x] **Firmware Broadcom** (chiuso il 15/10: non serve). Per i controller Apple (05ac,
+      interfaccia ff/01/01) `btusb` usa `btbcm_setup_apple`, che non carica nessun `.hcd`;
+      la patch la cerca solo `btbcm_setup_patchram`, usata per gli altri Broadcom. Verificato sui
+      sorgenti del kernel 6.12: un file in `/lib/firmware/brcm/` non verrebbe letto. Caricare una
+      patch a mano (comandi HCI del vendor a ogni avvio) richiederebbe un file che non esiste in
+      pubblico: non conviene.
+- [x] **Wi-Fi sui 5 GHz quando si usa Mario** (15/10: era già sui 5 GHz; `doctor` avvisa se il
+      Wi-Fi torna a 2,4 GHz sullo stesso chip Broadcom). In alternativa una chiavetta Bluetooth
+      USB (`./run.sh -i hci1 …`).
+- [ ] **Autosospensione dopo un riavvio**: verificato il 15/10 senza riavviare che resterà
+      disattivata. L'initramfs contiene `btusb.conf` ma non il modulo `btusb`, che quindi si carica
+      dal disco con l'opzione. Il database hardware di systemd non elenca l'adattatore, powertop è
+      disabilitato e TLP non è installato. Al primo riavvio basta `./run.sh doctor`, che deve dire
+      "disattivata (opzione del modulo btusb)". Per applicarla subito senza riavviare:
+      `sudo modprobe -r btusb && sudo modprobe btusb` (scollega per un attimo i dispositivi Bluetooth).
 - [ ] **Parametri LE del kernel** (solo se il link torna instabile): supervision timeout e
       intervallo via debugfs, comandi nel README.
-- [ ] **Agente di pairing**: verificare che dopo l'uscita dell'app l'agente di GNOME torni
-      predefinito (BlueZ dovrebbe farlo da solo); altrimenti riavviare `bluetooth.service`.
-- [ ] **Reset completo**: `./run.sh unpair` (o `bluetoothctl remove <indirizzo di Mario>`)
-      e nuovo pairing, per verificare che il flusso automatico funzioni da zero.
+- [x] **Agente di pairing** (15/10): BlueZ tiene una coda degli agenti predefiniti
+      (`default_agents` in `src/agent.c`, sorgenti 5.82). Quando l'agente dell'app si scollega,
+      anche per una chiusura brusca, torna predefinito quello di GNOME. Trovato e corretto un
+      problema: l'agente dell'app approvava qualsiasi richiesta, e con il pannello Bluetooth di GNOME
+      aperto un dispositivo vicino qualsiasi si sarebbe accoppiato senza conferma. Ora accetta solo
+      il Mario in collegamento.
+- [ ] **Reset completo** (serve Mario acceso): `./run.sh unpair` (o `bluetoothctl remove
+      <indirizzo di Mario>`) e nuovo collegamento, per verificare che il pairing automatico funzioni da
+      zero, ora con l'agente ristretto a Mario. `doctor` mostra prima e dopo gli hub associati.
 
 ## 4. Miglioramenti software
 

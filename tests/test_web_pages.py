@@ -50,6 +50,23 @@ class EventsPageTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/charts?device_id=999").get_json()["gestures"], {})
         self.assertIn(b"/events", self.client.get("/").data)  # voce di menù
 
+    def test_scan_page_system_checks(self):
+        from mario import syscheck
+        fake = [syscheck.Check("autosospensione", syscheck.WARN, "hci0: attiva", "echo on | sudo tee x"),
+                syscheck.Check("Wi-Fi", syscheck.OK, "wlp3s0: 5 GHz (5200 MHz)")]
+        orig = syscheck.run_checks
+        syscheck.run_checks = lambda *a, **k: fake  # niente comandi veri nei test
+        try:
+            html = self.client.get("/scan").get_data(as_text=True)
+            r = self.client.get("/api/system/checks").get_json()
+        finally:
+            syscheck.run_checks = orig
+        self.assertIn("Controllo del PC", html)
+        self.assertIn("da sistemare", html)
+        self.assertIn("<code>echo on | sudo tee x</code>", html)
+        self.assertEqual((r["worst"], r["checks"][0]["fix"], r["checks"][1]["status"]),
+                         ("attenzione", "echo on | sudo tee x", "ok"))
+
     def test_exports(self):
         r = self.client.get("/api/history.csv?port=1")
         self.assertEqual(r.status_code, 200)

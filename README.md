@@ -21,6 +21,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ## Avvio
 
 ```sh
+./run.sh doctor               # controlla il PC (adattatore, autosospensione, Wi-Fi, pairing) senza Mario
 ./run.sh scan                 # cerca i Mario nelle vicinanze
 ./run.sh info                 # si connette e stampa tutte le funzioni scoperte
 ./run.sh info --json          # stessa cosa in JSON
@@ -610,31 +611,51 @@ Sintomo: Mario viene trovato, compare `Connected: yes` per un istante e subito d
 Succede identico anche con `bluetoothctl connect`, quindi non dipende dall'app: è il
 lato PC che chiude il collegamento LE.
 
+**Primo passo: `./run.sh doctor`.** Controlla senza sudo e senza Mario le cause note qui sotto
+e per ognuna stampa il comando che la risolve (le stesse righe compaiono nella pagina
+Scansione della dashboard, sezione "Controllo del PC", e in `/api/system/checks`):
+
+```
+✓ adattatore       hci0: 05ac:8290 (Apple, chip Broadcom), driver btusb
+· firmware         hci0: controller Apple, il kernel non carica patch (btbcm_setup_apple) e il chip usa il firmware interno: nessun file .hcd da installare
+✓ servizio         bluetooth.service attivo
+✓ controller       controller acceso
+✓ autosospensione  hci0: disattivata a mano; dal prossimo avvio vale /etc/modprobe.d/btusb.conf (subito: sudo modprobe -r btusb && sudo modprobe btusb)
+✓ Wi-Fi            wlp3s0: 5 GHz (5200 MHz)
+✓ pairing          hub LEGO associati (bond): XX:XX:XX:XX:XX:XX
+· versioni         kernel 6.12.111+deb13-amd64, BlueZ 5.82
+
+Esito: nessun problema noto
+```
+
+Controlla l'adattatore, rfkill, `bluetooth.service`, il controller acceso, l'autosospensione USB
+(stato attuale e opzione per i prossimi avvii), la banda del Wi-Fi (nmcli o `iw`, senza mostrare
+il nome della rete) e gli hub LEGO associati (servizio `00001623-...` o costruttore `0x0397`).
+Esce con 1 se il Bluetooth non è utilizzabile; `--json` per gli script.
+
 Su questo PC (MacBook, controller Broadcom `05ac:8290`, driver `btusb`, Debian 13,
-verificato l'11 ottobre 2026) le cause trovate sono due:
+verificato l'11 ottobre 2026) le cause trovate sono due, più il pairing descritto sotto:
 
-1. **Firmware Broadcom assente.** In `/lib/firmware/brcm/` non c'è nessun file `.hcd`,
-   quindi il chip gira con il firmware ROM, che ha bug noti sul Bluetooth LE. Il
-   pacchetto Debian `bluez-firmware` non contiene il file per questo chip
-   (`BCM20703A1-05ac-8290.hcd`): va preso dai driver Windows/Boot Camp, per esempio
-   dal repository https://github.com/winterheart/broadcom-bt-firmware, e copiato in
-   `/lib/firmware/brcm/`.
-2. **Autosospensione USB del controller** (`btusb enable_autosuspend=Y`,
+1. **Autosospensione USB del controller** (`btusb enable_autosuspend=Y`,
    `power/control = auto`, stato `suspended` a riposo).
+2. **Wi-Fi a 2,4 GHz** sullo stesso modulo Broadcom (antenna condivisa): il link LE non si
+   forma o cade. Sui 5 GHz funziona (terza cattura qui sotto).
 
-Comandi, tutti con privilegi di root:
+Il firmware invece non c'entra. L'11/10 avevamo supposto che mancasse la patch
+`BCM20703A1-05ac-8290.hcd`, ma per i controller Apple (interfaccia USB ff/01/01) `btusb`
+usa `btbcm_setup_apple`, che fa reset e legge le informazioni del chip senza caricare file:
+la patch viene cercata solo da `btbcm_setup_patchram`, usata per gli altri Broadcom.
+Verificato il 15/10 sui sorgenti del kernel 6.12; anche copiando un `.hcd` in
+`/lib/firmware/brcm/` il kernel non lo leggerebbe.
+
+Comandi per l'autosospensione, con privilegi di root:
 
 ```sh
-# 1) autosospensione: subito (vale fino al riavvio)...
+# subito (vale fino al riavvio)...
 echo on | sudo tee /sys/bus/usb/devices/1-3/power/control
-#    ...e in modo permanente
+# ...e in modo permanente (agisce al caricamento di btusb: riavvio, oppure subito con la riga dopo)
 echo "options btusb enable_autosuspend=0" | sudo tee /etc/modprobe.d/btusb.conf
-
-# 2) firmware: copia il file BCM20703A1-05ac-8290.hcd in /lib/firmware/brcm/ e ricarica il driver
 sudo modprobe -r btusb && sudo modprobe btusb
-
-# verifica: deve comparire la riga di caricamento del patch, non "Patch ... not found"
-sudo dmesg | grep -iE "bluetooth|brcm|patch"
 ```
 
 **Cosa ha mostrato `btmon` (11 ottobre 2026, 14:02).** Il link LE si stabilisce
@@ -692,18 +713,23 @@ Per vedere il motivo esatto con cui il controller chiude il collegamento (es. 0x
 established") c'è `./tools/capture_btmon.sh`: avvia `btmon` con sudo, tenta la
 connessione e stampa gli eventi HCI rilevanti; il log completo finisce in `logs/`.
 
-Poi `./run.sh info`. Fattore secondario: il Wi-Fi è collegato a 2,4 GHz (canale 11)
-sulla stessa scheda combo; se i problemi persistono prova una rete a 5 GHz.
+**Autosospensione USB dopo un riavvio.** `/etc/modprobe.d/btusb.conf` agisce al caricamento
+del driver; il PC non è stato riavviato dalla creazione del file (11/10), quindi
+`/sys/module/btusb/parameters/enable_autosuspend` dice ancora `Y` mentre il dispositivo è su `on`
+per la scrittura manuale. Verificato il 15/10 che al riavvio resterà `on`: l'initramfs
+(rigenerato il 14/10) contiene `btusb.conf` e non contiene `btusb`, che quindi si carica dal disco
+con l'opzione; la regola `60-autosuspend.rules` di systemd non riguarda questo adattatore (nessun
+`ID_AUTOSUSPEND` nel database hardware); powertop è disabilitato e TLP non c'è. La regola udev
+`tools/99-mario-btusb.rules` resta una sicurezza in più, non necessaria; `doctor` segnala se
+qualcosa cambia.
 
-**Autosospensione USB.** `/etc/modprobe.d/btusb.conf` (`options btusb enable_autosuspend=0`)
-agisce al caricamento del driver; il 13/10/2026 il PC non era ancora stato riavviato dalla
-creazione del file, quindi `/sys/module/btusb/parameters/enable_autosuspend` diceva ancora `Y`
-mentre il dispositivo era già su `on` per via della scrittura manuale. Dopo il primo riavvio va
-controllato `cat /sys/bus/usb/devices/1-3/power/control`; se torna `auto`, c'è la regola udev
-pronta in `tools/99-mario-btusb.rules` (istruzioni nel file). Il firmware
-`BCM20703A1-05ac-8290.hcd` è stato cercato di nuovo il 13/10: non è in linux-firmware né nei
-pacchetti comunitari (altri proprietari di MacBookPro12,1 riportano lo stesso), resta la via
-dell'estrazione dal driver macOS o Boot Camp.
+**Agente di pairing.** L'app registra un agente NoInputNoOutput come predefinito e accetta il
+pairing solo dal Mario che sta collegando (dal 15/10: prima approvava qualsiasi richiesta, e con il
+pannello Bluetooth di GNOME aperto, PC accoppiabile, un dispositivo vicino qualsiasi si sarebbe
+accoppiato senza conferma). Le altre richieste ricevono `org.bluez.Error.Rejected`, con un avviso
+nel log. Alla chiusura, anche brusca, BlueZ torna da solo all'agente predefinito precedente
+(quello di GNOME): tiene una coda degli agenti (`default_agents` in `src/agent.c`, verificato sui
+sorgenti di BlueZ 5.82).
 
 ## File di log
 
@@ -717,14 +743,15 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centocinquantanove test senza Bluetooth né rete esterna, raggruppati per file:
+Centosessantasei test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
 | `test_lwp3` (18) | codec LWP3, decodificatori e tabelle di Mario |
 | `test_hubstate` (5) | stato dell'hub da `capabilities`, valori combinati con i dati reali del 12/10 |
 | `test_decode` (9) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri |
-| `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata |
+| `test_device_fake` (6) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata; agente di pairing che accetta solo il Mario in collegamento |
+| `test_syscheck` (5) | `doctor` su un sysfs finto: adattatore Apple, rfkill, servizio, autosospensione (subito e ai prossimi avvii), banda del Wi-Fi (nmcli e `iw`), hub LEGO associati, sandbox Flatpak |
 | `test_db` (6) | database della dashboard |
 | `test_assistant` (30), `test_assistant_ext` (15) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
 | `test_openvoice` (21) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni (MIDI con il volume alzato e il taglio, dove c'è fluidsynth), lettura del catalogo del sito |
@@ -733,7 +760,7 @@ Centocinquantanove test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
 | `test_service` (3), `test_tts` (5) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
 | `test_adventures` (7), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
-| `test_web_pages` (6), `test_web_static` (5) | pagina Eventi, esportazioni, grafici, token; sintassi del JavaScript e coerenza id/azioni con i template |
+| `test_web_pages` (7), `test_web_static` (5) | pagina Eventi, esportazioni, grafici, token, controllo del PC nella pagina Scansione; sintassi del JavaScript e coerenza id/azioni con i template |
 | `test_cli` (8), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, `decode`; importazione senza Bluetooth |
 
 I test che importano Flask o bleak vengono saltati dove mancano (per esempio nel sandbox) e
@@ -749,7 +776,7 @@ mario/hubstate.py       stato dell'hub senza bleak: porte, modi, formati, valori
 mario/codes.py          tabelle Mario caricate da mario/data/mario_codes.json (fonte e verifica), modi di default
 mario/device.py         MarioDevice (bleak), agente di pairing BlueZ, scoperta, report
 mario/decode.py         decodifica offline: btsnoop, bugreport Android (zip, btsnooz), PacketLogger, gzip, log di testo, byte, riepilogo
-mario/cli.py            comandi scan/info/monitor/shell/decode/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
+mario/cli.py            comandi scan/info/monitor/shell/decode/doctor/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
                         e gli strumenti di tools/ come sottocomandi
 mario/web/              dashboard: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
 mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, memory, session, service,
@@ -758,11 +785,12 @@ mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, b
 mario/adventures/       designer di avventure: model, engine, library, service
 mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
+mario/syscheck.py       controllo del PC per il Bluetooth (`doctor`, pagina Scansione): adattatore, autosospensione, Wi-Fi, pairing
 mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'archivio dei suoni
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), fetch_mario_sounds.py (suoni dei giochi)
-tests/                  test offline (159)
+tests/                  test offline (166)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
@@ -794,6 +822,7 @@ Cosa è fatto e verificato è in [ASIS.md](ASIS.md); i punti aperti e le idee so
 - bricklife/LEGO-Mario-Reveng: https://github.com/bricklife/LEGO-Mario-Reveng
 - djipko/legomario.py: https://github.com/djipko/legomario.py
 - node-poweredup: https://github.com/nathankellenicki/node-poweredup
-- Firmware Broadcom del MacBook (05ac:8290), segnalazione su Launchpad con il file mancante:
-  https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1065400 ; pacchetto comunitario
-  broadcom-bt-firmware: https://github.com/winterheart/broadcom-bt-firmware
+- Bluetooth Broadcom del MacBook (05ac:8290): `btbcm_setup_apple` in `drivers/bluetooth/btbcm.c` e la
+  regola Apple in `drivers/bluetooth/btusb.c` del kernel (nessun firmware caricato); coda degli agenti
+  in `src/agent.c` di BlueZ; segnalazioni su Launchpad https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1065400
+  e https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1861295

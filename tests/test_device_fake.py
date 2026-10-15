@@ -212,6 +212,35 @@ class DeviceFakeTests(unittest.TestCase):
             self.assertFalse(dev.connected)
         run(go())
 
+    def test_pairing_agent_only_for_connecting_device(self):
+        devmod = self.devmod
+        self.assertEqual(devmod.agent_address("/org/bluez/hci0/dev_aa_bb_cc_dd_ee_ff"), "AA:BB:CC:DD:EE:FF")
+        self.assertEqual(devmod.agent_address("/org/bluez/hci0"), "")
+
+        async def go():
+            dev = self.make()
+            await dev.connect(timeout=2.0)
+            self.assertEqual(dev.agent.allowed, {dev.address.upper()})  # il Mario trovato, nessun altro
+            await dev.disconnect()
+        run(go())
+        if not devmod.HAVE_DBUS:
+            return
+        agent = devmod.BlueZAgent()
+        agent.allow("aa:bb:cc:dd:ee:ff")
+        iface = devmod._Agent1(agent.allowed)
+        mario, other = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF", "/org/bluez/hci0/dev_11_22_33_44_55_66"
+        iface.RequestConfirmation(mario, 123456)
+        iface.RequestAuthorization(mario)
+        iface.RequestPasskey("/org/bluez/hci1/dev_AA_BB_CC_DD_EE_FF")  # anche da un'altra chiavetta
+        calls = {"conferma": lambda p: iface.RequestConfirmation(p, 1), "autorizzazione": iface.RequestAuthorization,
+                 "passkey": iface.RequestPasskey, "PIN": iface.RequestPinCode,
+                 "servizio": lambda p: iface.AuthorizeService(p, "00001124-0000-1000-8000-00805f9b34fb")}
+        with self.assertLogs("mario", "WARNING"):
+            for name, call in calls.items():
+                with self.assertRaises(devmod.DBusError, msg=name) as ctx:
+                    call(other)  # per esempio una tastiera che chiede il pairing con il PC accoppiabile
+                self.assertEqual(ctx.exception.type, "org.bluez.Error.Rejected")
+
     def test_request_error_and_timeout(self):
         async def go():
             dev = self.make()
@@ -270,7 +299,7 @@ class DeviceFakeTests(unittest.TestCase):
             with self.assertRaises(BleakError):
                 await dev.send(b"\x04\x00\x02\x02")
             hint = self.devmod._connect_hint(BleakError("le-connection-abort-by-local"))
-            self.assertIn("Broadcom", hint)
+            self.assertIn("./run.sh doctor", hint)
             await dev.disconnect()
         run(go())
 

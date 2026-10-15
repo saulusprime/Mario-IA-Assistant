@@ -1080,6 +1080,17 @@ def cmd_voice(args) -> int:
             shutil.rmtree(record_dir, ignore_errors=True)
     return 0
 
+def cmd_doctor(args) -> int:
+    """Controllo del PC (mario/syscheck.py); esce con 1 se il Bluetooth non è utilizzabile."""
+    from . import syscheck
+    checks = syscheck.run_checks()
+    if args.json:
+        print(json.dumps(syscheck.as_dicts(checks), ensure_ascii=False, indent=1))
+    else:
+        print(syscheck.format_checks(checks))
+    return 1 if syscheck.worst(checks) == syscheck.ERROR else 0
+
+
 def cmd_decode(args) -> int:
     """Decodifica offline: file btsnoop, log di testo, '-' (stdin) o byte esadecimali."""
     from . import decode
@@ -1419,6 +1430,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-default-modes", action="store_true",
                    help="non presumere i modi di default di monitor per le porte senza sottoscrizione nel file")
     p.set_defaults(func=cmd_decode)
+
+    p = sub.add_parser("doctor", help="controlla il PC per il Bluetooth di Mario: adattatore, servizio, autosospensione "
+                                      "USB, Wi-Fi a 2,4 GHz, pairing (senza sudo, senza Mario)")
+    p.add_argument("--json", action="store_true", help="risultati in JSON")
+    p.set_defaults(func=cmd_doctor)
 
     for name, (_script, help_text) in TOOLS.items():
         p = sub.add_parser(name, help=f"{help_text} (tools/{_script}; opzioni dopo il nome)")
