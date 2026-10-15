@@ -1,18 +1,18 @@
 # HANDOFF — LEGO Mario via Bluetooth LE
 
-Diario dettagliato del lavoro svolto dall'11 al 14 ottobre 2026 (prima sessione l'11/10 dalle
+Diario dettagliato del lavoro svolto dall'11 al 15 ottobre 2026 (prima sessione l'11/10 dalle
 12:40 alle 19:00, prove dal vivo il 12/10, documentazione e sviluppo senza Mario il 13/10, voce IA
-con OpenVoice il 14/10) e stato
+con OpenVoice il 14/10, moduli e MIDI dell'archivio dei suoni il 15/10) e stato
 del progetto per chi lo riprende. Il README spiega *come si usa*; questo file spiega *cosa è stato
 fatto, perché, cosa ha funzionato e cosa no*.
 
-**Stato al 14/10 sera, in breve.** Connessione e pairing stabili; sensori decodificati (gesti,
+**Stato al 15/10 sera, in breve.** Connessione e pairing stabili; sensori decodificati (gesti,
 scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); dashboard con pagine
 Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
 versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
-con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato); messaggi
-"stile Mario" (esclamazioni originali + piper più acuto), anche nella sessione con il modello; 155 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato; tutti i formati riproducibili dal 15/10); messaggi
+"stile Mario" (esclamazioni originali + piper più acuto), anche nella sessione con il modello; 159 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -683,6 +683,34 @@ Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiun
 - Conversioni provate sull'host con il codice della pagina Suoni: SPC 8 s in 0,24 s, NSF traccia 5
   in 0,19 s, modulo IT 6 s in 0,21 s.
 
+### 15/10 sera — Moduli tracker e MIDI sbloccati
+
+- L'utente ha installato `unar`, `fluidsynth` e `fluid-soundfont-gm`. `fetch-sounds --reindex` con
+  `unar`: 101 moduli su 112; gli altri 11 falliscono con "Attempted to read more data than was
+  available", con l'archivio integro (62 byte di intestazione + dati = dimensione del file). Tutti i
+  107 RAR sono 2.0, metodo "Best", file singolo: `unar` 1.10.8 sbaglia su alcuni flussi (probabilmente i
+  blocchi audio). libarchive (provata via ctypes, senza installare bsdtar) non conosce il 2.0: fallisce
+  su 108 archivi su 112. `unrar` e `7zip-rar` sono nel ramo non-free, non attivo.
+- **`mario/rar20.py`**: decompressore RAR 2.0 in Python (Unpack20 dei sorgenti pubblici di unrar:
+  tabelle di Huffman canoniche con tabella rapida a 10 bit, copie corte e lunghe, distanze ricordate,
+  modalità audio con il predittore a 5 coefficienti per canale), controllato con il CRC32 dell'archivio.
+  Al primo tentativo 107 archivi su 107 con il CRC giusto, 17,9 MB in 25 s. Ogni troncamento dà
+  `RarError`, mai un `IndexError`. `fetch-sounds` lo usa per primo, poi `unar` e `7z`; 112 moduli su 112.
+- **MIDI**: il codice c'era ma non era mai stato provato con un sintetizzatore vero. Due difetti: il
+  taglio a `seconds` era ignorato (un'anteprima di 30 s produceva il brano intero) e il volume era
+  10–20 dB sotto le altre musiche (media da −29 a −41 dB contro −16/−24 di SPC, NSF e moduli). Prima
+  correzione con un file intermedio e la misura del picco con ffmpeg; la prova su tutto l'archivio ha
+  mostrato che fluidsynth sintetizza comunque tutto il brano (oltre 90 s per "Life in the Mines" con sei
+  conversioni in parallelo). Versione finale: fluidsynth scrive PCM sullo standard output (`-F - -T raw`),
+  `read_stream` legge solo i byte necessari e lo ferma, il picco si misura in Python (`pcm_peak_db`) e
+  ffmpeg applica guadagno (picco a −1 dB, al massimo +30 dB) e dissolvenza. Banco scelto per nome
+  (`default-GM.sf2`, poi `FluidR3_GM.sf2`). Tolto timidity, non installato e mai provato.
+- **Prova completa** (anteprime da 30 s, sei in parallelo): 904 MIDI e 112 moduli, 1.016 su 1.016
+  convertiti in 517 s; da soli i casi peggiori richiedono 2,6–2,9 s. Volume dei MIDI dopo la
+  correzione: media da −16 a −21 dB, picco −1,0 dB.
+- Test: da 155 a 159 (`test_rar20` con un archivio costruito bit per bit, MIDI più forte e tagliato in
+  `test_openvoice`).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -695,9 +723,10 @@ Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiun
 | `mario/decode.py` | decodifica offline: btsnoop (monitor/H4/HCI, riassemblaggio L2CAP), bugreport Android (zip, sezioni btsnooz), PacketLogger di Apple, gzip, log di testo, btmon -r, hex; note sui pacchetti troncati; riepilogo |
 | `mario/cli.py` | comandi `scan`, `info [--json] [--quick] [--no-save]`, `monitor [--sub] [--combined] [--json] [--duration] [--no-battery] [--rssi] [--raw-accel] [--no-reconnect]`, `shell [--no-reconnect]`, `decode`, `assistant [--minutes] [--block] [--no-memory] [--no-db] [--piper-model]`, `adventure [--list] [--play] [--no-mario]`, `web [--server] [--token] [--threads]`, comandi rapidi, strumenti di tools/ come sottocomandi; opzioni globali `-a`, `-t`, `-i`, `--any-lego`, `--no-pair`, `-d` |
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
+| `mario/rar20.py` | estrazione RAR 2.0 in Python (Unpack20 con modalità audio, CRC32) per i moduli `.mdr` dell'archivio dei suoni |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 155 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 159 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -731,7 +760,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (155); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (159); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

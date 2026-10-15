@@ -35,7 +35,7 @@
   </div>
   <table class="compact" id="snd-list"><thead><tr><th></th><th>Descrizione</th><th>Gioco / categoria</th><th>Dettagli</th><th></th></tr></thead><tbody></tbody></table>
   <audio id="snd-audio" preload="none"></audio>
-  <p class="hint">▶ ascolta nel browser, PC suona dagli altoparlanti del computer, + aggiunge il file al nome scelto in "Assegna a". NSF, SPC e moduli vengono convertiti al volo con ffmpeg (i primi 30 secondi per l'anteprima); i MIDI richiedono fluidsynth o timidity.</p>
+  <p class="hint">▶ ascolta nel browser, PC suona dagli altoparlanti del computer, + aggiunge il file al nome scelto in "Assegna a". NSF, SPC e moduli vengono convertiti al volo con ffmpeg, i MIDI con fluidsynth e portati al volume delle altre musiche (i primi 30 secondi per l'anteprima).</p>
 </section>
 
 <section class="card">
@@ -53,6 +53,6 @@
 <section class="card">
   <h1>Da dove vengono</h1>
   <p>L'archivio è la copia locale della sezione "Sounds &amp; Music" di <a href="https://themushroomkingdom.net/sounds.shtml">The Mushroom Kingdom</a> (suoni © Nintendo e degli autori indicati), scaricata con <code>./run.sh fetch-sounds --all</code> in <code>data/sounds/tmk/</code>. Resta sul PC: la cartella è esclusa dal repository.</p>
-  <p class="hint">Conversioni: ffmpeg {{ 'presente' if status.ffmpeg else 'assente' }}; sintetizzatore MIDI {{ status.midi or 'assente (sudo apt install fluidsynth fluid-soundfont-gm)' }}.</p>
+  <p class="hint">Conversioni: ffmpeg {{ 'presente' if status.ffmpeg else 'assente' }}; sintetizzatore MIDI {{ (status.midi ~ (' con ' ~ status.soundfont if status.soundfont else '')) if status.midi else 'assente (sudo apt install fluidsynth fluid-soundfont-gm)' }}. I moduli <code>.mdr</code> (RAR 2.0) vengono estratti da <code>fetch-sounds</code> in Python, senza programmi esterni.</p>
 </section>
 {% endblock %}

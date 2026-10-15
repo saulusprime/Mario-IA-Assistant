@@ -20,7 +20,7 @@ Uso:
 
 Risultato: data/sounds/tmk/catalogo.json (sezione, gioco, categoria, descrizione, URL, file) e i file:
   <gioco>/<file>.wav            effetti e voci (sezione wav)
-  <sezione>/<gruppo>/<file>     mp3, mid, mod (con il modulo estratto da .mdr se c'è 7z), nsf e spc
+  <sezione>/<gruppo>/<file>     mp3, mid, mod (con il modulo estratto dal .mdr accanto), nsf e spc
                                 (gli zip vengono estratti accanto)
 `mario/assistant/soundpack.py` e la pagina Suoni della dashboard leggono il catalogo.
 """
@@ -42,6 +42,10 @@ from pathlib import Path
 
 BASE = "https://themushroomkingdom.net"
 PROJECT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT))
+
+from mario import rar20  # noqa: E402
+
 OUT = PROJECT / "data" / "sounds" / "tmk"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) LEGO-Mario-home-assistant (uso privato)"
 SECTIONS = ("wav", "mp3", "mid", "mod", "nsf", "spc")
@@ -239,7 +243,7 @@ def safe_target(rel: str) -> Path:
 
 
 def extract(item: dict) -> list[dict]:
-    """Zip (NSF, SPC): estratto in <sezione>/<nome>/; .mdr (modulo compresso RAR): estratto con 7z se c'è."""
+    """Zip (NSF, SPC): estratto in <sezione>/<nome>/; .mdr (modulo compresso RAR): estratto in <nome>/."""
     archive = OUT / item["file"]
     found: list[dict] = []
     if archive.suffix.lower() == ".zip":
@@ -289,9 +293,10 @@ def _module_in(folder: Path):
 
 
 def extract_module(archive: Path):
-    """.mdr = modulo compresso con RAR (spesso RAR 2.0, del 2001). Il 7zip di Debian non ha il decompressore RAR
-    (licenza non libera) e crea file vuoti: si prova prima `unar` (pacchetto libero `unar`), poi `7z`, e le
-    estrazioni vuote vengono scartate. Alcuni .mdr sono moduli non compressi: riconosciuti dal contenuto."""
+    """.mdr = modulo compresso con RAR 2.0 (del 2001). Il 7zip di Debian non ha il decompressore RAR, libarchive
+    non conosce il 2.0 e `unar` sbaglia su 11 moduli: si usa `mario.rar20` (Python, controllato con il CRC32),
+    poi `unar` e `7z` per eventuali formati RAR più recenti; le estrazioni vuote vengono scartate. Alcuni .mdr
+    sono moduli non compressi: riconosciuti dal contenuto."""
     folder = archive.with_suffix("")
     module = _module_in(folder)
     if module is not None:
@@ -303,6 +308,20 @@ def extract_module(archive: Path):
         target = folder / (archive.stem + kind)
         target.write_bytes(data)
         return target
+    try:
+        found = rar20.extract_first(data)
+    except (rar20.RarError, ValueError, IndexError) as exc:
+        print(f"  {archive.name}: {exc}", file=sys.stderr)
+        found = None
+    if found is not None:
+        name, content = found
+        kind = Path(name).suffix.lower() if Path(name).suffix.lower() in MODULE_EXT else module_kind(content)
+        if kind:
+            stem = Path(name).stem if re.fullmatch(r"[\w .()+!-]{1,80}", Path(name).stem) else archive.stem
+            folder.mkdir(parents=True, exist_ok=True)
+            target = folder / (stem + kind)
+            target.write_bytes(content)
+            return target
     for cmd in (["unar", "-q", "-f", "-D", "-o", str(folder), str(archive)],
                 ["7z", "x", "-y", f"-o{folder}", str(archive)]):
         if not shutil.which(cmd[0]):
@@ -392,7 +411,7 @@ def main() -> int:
         write_index(items, replace=True)
         mdr = [x for x in items if x["file"].lower().endswith(".mdr")]
         print(f"catalogo rifatto: {len(items)} voci; moduli .mdr estratti {sum(1 for x in mdr if x.get('play'))}"
-              f" su {len(mdr)}" + ("" if shutil.which("unar") else " (per gli altri: sudo apt install unar)"))
+              f" su {len(mdr)}")
         return 0
     if args.list:
         for slug in WAV_GAMES:

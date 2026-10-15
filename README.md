@@ -293,10 +293,13 @@ intero:
 | nsf | colonne sonore NES originali, da 8 zip estratti | 10 brani a più tracce |
 | spc | colonne sonore Super NES originali, da 14 zip estratti | 348 |
 
-In tutto 2.783 voci di catalogo, 170 MB. I `.mdr` sono quasi tutti RAR 2.0 del 2001: il pacchetto `7zip`
-di Debian non ha il decompressore RAR (licenza non libera) e crea file vuoti, quindi lo strumento usa
-`unar` se c'è e scarta le estrazioni vuote; senza `unar` si ascoltano solo i 5 moduli non compressi.
-Dopo `sudo apt install unar`, `./run.sh fetch-sounds --reindex` estrae il resto senza contattare il sito.
+In tutto 2.783 voci di catalogo, 170 MB. I `.mdr` sono RAR 2.0 del 2001 (107 su 112; gli altri 5 sono
+moduli non compressi). Il pacchetto `7zip` di Debian non ha il decompressore RAR (licenza non libera),
+libarchive non conosce il formato 2.0 e `unar` 1.10 sbaglia 11 archivi: lo strumento li estrae con
+`mario/rar20.py`, un decompressore RAR 2.0 in Python (l'algoritmo Unpack20 dei sorgenti pubblici di
+unrar, compresa la modalità audio), controllato con il CRC32 scritto nell'archivio; `unar` e `7z`
+servono solo per eventuali formati RAR più recenti. Estratti tutti i 112 moduli, 18 MB, in 25 s.
+`./run.sh fetch-sounds --reindex` rifà estrazioni e catalogo senza contattare il sito.
 Alcuni link del sito usano la barra rovesciata (`mlrpg3\file.wav`): lo strumento li tratta come un browser.
 
 Una richiesta al secondo; i file già presenti non vengono riscaricati, quindi si può interrompere e
@@ -321,8 +324,10 @@ ascolta nel browser, si toglie, si ripristina la scelta predefinita, oppure si p
 altoparlanti del PC; si possono creare nomi nuovi per le avventure. L'archivio si filtra per sezione,
 gioco e testo; ogni voce si ascolta e con "+" si aggiunge al nome scelto. NSF, SPC e moduli vengono
 convertiti in WAV con ffmpeg (libgme, libopenmpt) e messi in `data/sounds/cache/`; per gli NSF si
-sceglie la traccia. I MIDI richiedono fluidsynth o timidity, che sul PC di sviluppo non ci sono. La
-sezione "I miei suoni" carica file propri (WAV, o m4a, ogg, mp3 convertiti) in `data/sounds/custom/`.
+sceglie la traccia. I MIDI vengono suonati da fluidsynth con il banco General MIDI di
+`fluid-soundfont-gm`, letto in streaming e fermato dopo i secondi richiesti (30 s di anteprima di un brano
+di 6 minuti in 2,6 s), poi portati da ffmpeg a un picco di −1 dB: da soli escono 10–20 dB sotto le altre
+musiche. La sezione "I miei suoni" carica file propri (WAV, o m4a, ogg, mp3 convertiti) in `data/sounds/custom/`.
 Le scelte vanno in `data/sounds/assegnazioni.json`, che leggono anche la CLI e le avventure. API:
 `/api/sounds/catalog`, `/api/sounds/file/<percorso>` (`?wav=1&seconds=&track=`), `/api/sounds/assignments`,
 `/api/sounds/assign`, `/api/sounds/volume`, `/api/sounds/play`, `/api/sounds/upload`. Conversioni provate
@@ -712,7 +717,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centocinquantacinque test senza Bluetooth né rete esterna, raggruppati per file:
+Centocinquantanove test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -722,7 +727,8 @@ Centocinquantacinque test senza Bluetooth né rete esterna, raggruppati per file
 | `test_device_fake` (5) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata |
 | `test_db` (6) | database della dashboard |
 | `test_assistant` (30), `test_assistant_ext` (15) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
-| `test_openvoice` (20) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni, lettura del catalogo del sito |
+| `test_openvoice` (21) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni (MIDI con il volume alzato e il taglio, dove c'è fluidsynth), lettura del catalogo del sito |
+| `test_rar20` (3) | estrazione RAR 2.0 in Python su un archivio costruito bit per bit (tabelle, letterali, copie corte e sovrapposte, ripetizione, CRC, errori) e da `fetch-sounds` |
 | `test_sounds_web` (3) | pagina Suoni: catalogo, file per l'anteprima e percorsi vietati, assegnazioni, stile, caricamento e cancellazione |
 | `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
 | `test_service` (3), `test_tts` (5) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
@@ -752,10 +758,11 @@ mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, b
 mario/adventures/       designer di avventure: model, engine, library, service
 mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
+mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'archivio dei suoni
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), fetch_mario_sounds.py (suoni dei giochi)
-tests/                  test offline (155)
+tests/                  test offline (159)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il

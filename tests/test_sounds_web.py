@@ -64,7 +64,7 @@ class SoundsWebTests(unittest.TestCase):
         r.close()
         for bad in ("tmk/../../t.sqlite3", "tmk/manca.wav", "..%2Ft.sqlite3"):
             self.assertEqual(self.client.get("/api/sounds/file/" + bad).status_code, 404, bad)
-        if not self.speaker.pack.midi_synth():  # senza fluidsynth/timidity il MIDI non si converte
+        if not self.speaker.pack.midi_synth():  # senza fluidsynth il MIDI non si converte
             self.assertEqual(self.client.get("/api/sounds/file/tmk/mid/smb/smb_over.mid").status_code, 415)
 
     def test_assignments_volume_style_and_play(self):

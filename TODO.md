@@ -46,9 +46,9 @@ dentro ogni gruppo le prime sono le più utili.
       predefinite nei due stili e cambiare quelle che non piacciono; regolare il volume degli
       effetti rispetto alla voce; provare in una sessione dell'assistente se le esclamazioni si
       sovrappongono alla frase successiva; ascoltare nel browser un NSF, un SPC e un modulo
-      convertiti; caricare un suono dal telefono. Per i MIDI installare un sintetizzatore
-      (`sudo apt install fluidsynth fluid-soundfont-gm`); per i 107 moduli tracker compressi
-      `sudo apt install unar` e poi `./run.sh fetch-sounds --reindex`.
+      convertiti; caricare un suono dal telefono. Ascoltare qualche MIDI (fluidsynth, 15/10) per
+      il volume rispetto agli altri brani e qualcuno degli 11 moduli estratti in Python
+      (`super_mario_rpg-culex-5`, `super_mario_land-muda-1`, ...).
 - [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
       (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
       `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON

@@ -974,7 +974,7 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
             path = p.playable(rel + (f"#{track}" if track.isdigit() else ""), seconds)
             if path is None:
                 return jsonify({"ok": False, "error": "non riproducibile su questo PC: serve ffmpeg (per i MIDI "
-                                                      "fluidsynth o timidity)"}), 415
+                                                      "fluidsynth e fluid-soundfont-gm)"}), 415
         return send_file(path, conditional=True)
 
     @app.delete("/api/sounds/file/<path:rel>")

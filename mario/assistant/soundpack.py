@@ -25,14 +25,18 @@ clear, gameover, ...) e quelli creati dall'utente; un'avventura può anche indic
 """
 from __future__ import annotations
 
+import array
 import hashlib
 import json
+import math
 import random
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
+import wave
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +51,11 @@ BROWSER = (".wav", ".mp3", ".ogg", ".oga", ".opus", ".flac")  # ascoltabili dire
 CONVERTIBLE = (".mp3", ".ogg", ".oga", ".opus", ".flac", ".m4a", ".nsf", ".nsfe", ".spc", ".it", ".xm", ".mod",
                ".s3m", ".mid", ".midi")
 GAME_MUSIC = (".nsf", ".nsfe", ".spc", ".it", ".xm", ".mod", ".s3m", ".mid", ".midi")
+SOUNDFONT_DIRS = (Path("/usr/share/sounds/sf2"), Path("/usr/share/soundfonts"))
+SOUNDFONTS = ("default-GM.sf2", "FluidR3_GM.sf2", "default.sf2")  # in ordine di preferenza, poi il primo .sf2
+MIDI_RATE = 44100
+MIDI_PEAK_DB = -1.0      # fluidsynth esce 10-20 dB sotto le altre musiche: picco portato a -1 dB
+MIDI_MAX_GAIN_DB = 30.0  # il sintetizzatore non ha fruscio: si può alzare molto senza sporcare
 NAME_RE = re.compile(r"^[a-z0-9_]{1,32}$")
 
 Rule = tuple[str, str]  # (gioco, descrizione nel catalogo, senza distinzione di maiuscole)
@@ -147,6 +156,51 @@ def section_of(rel: str) -> str:
     if len(parts) > 1 and parts[0] == "tmk" and parts[1] in ("mp3", "mid", "mod", "nsf", "spc"):
         return parts[1]
     return "wav"
+
+
+def run_to(cmd: list[str], dest: Path) -> bool:
+    """Esegue una conversione e dice se ha prodotto un WAV non vuoto in `dest`."""
+    try:
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0 and dest.is_file() and dest.stat().st_size > 44
+
+
+def fade_out(seconds: float) -> str:
+    return f"afade=t=out:st={max(0.0, seconds - 2):g}:d=2"
+
+
+def read_stream(cmd: list[str], limit: int, timeout: float = 120.0) -> bytes:
+    """I primi `limit` byte dello standard output di un comando, che poi viene fermato."""
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except OSError:
+        return b""
+    timer = threading.Timer(timeout, proc.kill)
+    timer.start()
+    data = bytearray()
+    try:
+        while len(data) < limit:
+            chunk = proc.stdout.read(min(1 << 16, limit - len(data)))
+            if not chunk:
+                break
+            data += chunk
+    finally:
+        timer.cancel()
+        proc.kill()
+        proc.stdout.close()
+        proc.wait()
+    return bytes(data)
+
+
+def pcm_peak_db(pcm: bytes) -> float:
+    """Picco in dB di audio a 16 bit little endian."""
+    samples = array.array("h", pcm[:len(pcm) // 2 * 2])
+    if sys.byteorder == "big":
+        samples.byteswap()
+    peak = max(max(samples, default=0), -min(samples, default=0), 1)
+    return 20 * math.log10(peak / 32768)
 
 
 class SoundPack:
@@ -270,11 +324,18 @@ class SoundPack:
     # ----- conversioni ------------------------------------------------------------------
 
     @staticmethod
-    def midi_synth() -> Optional[str]:
-        for cmd in ("fluidsynth", "timidity"):
-            if shutil.which(cmd):
-                return cmd
-        return None
+    def midi_font() -> Optional[Path]:
+        """Il banco di suoni General MIDI per fluidsynth (fluid-soundfont-gm su Debian)."""
+        for folder in SOUNDFONT_DIRS:
+            for name in SOUNDFONTS:
+                if (folder / name).is_file():
+                    return folder / name
+        fonts = sorted(f for folder in SOUNDFONT_DIRS if folder.is_dir() for f in folder.glob("*.sf2"))
+        return fonts[0] if fonts else None
+
+    @classmethod
+    def midi_synth(cls) -> Optional[str]:
+        return "fluidsynth" if shutil.which("fluidsynth") and cls.midi_font() is not None else None
 
     def can_play(self, rel: str, tools: Optional[tuple[bool, Optional[str]]] = None) -> bool:
         """Vero se il PC può suonare il file (subito o dopo la conversione). `tools` = (ffmpeg c'è, synth MIDI)."""
@@ -289,7 +350,7 @@ class SoundPack:
 
     def playable(self, rel: str, seconds: Optional[float] = None) -> Optional[Path]:
         """WAV pronto per il lettore: il file stesso o la sua conversione in cache (ffmpeg per MP3, NSF, SPC,
-        moduli tracker; fluidsynth/timidity per i MIDI). `seconds` taglia i brani lunghi (le musiche NES e
+        moduli tracker; fluidsynth per i MIDI). `seconds` taglia i brani lunghi (le musiche NES e
         SNES girano all'infinito: 90 s se non indicato)."""
         base, _, track = rel.partition("#")
         item = self.by_rel.get(base, {})
@@ -303,43 +364,59 @@ class SoundPack:
             return None
         if seconds is None and suffix in GAME_MUSIC:
             seconds = 90.0
-        key = hashlib.sha1(f"{src}|{src.stat().st_mtime}|{track}|{seconds}".encode()).hexdigest()[:16]
+        midi = f"|{MIDI_PEAK_DB}|{MIDI_MAX_GAIN_DB}" if suffix in (".mid", ".midi") else ""  # regola del volume nella chiave
+        key = hashlib.sha1(f"{src}|{src.stat().st_mtime}|{track}|{seconds}{midi}".encode()).hexdigest()[:16]
         out = self.cache_dir / f"{src.stem[:40]}-{key}.wav"
         if out.is_file() and out.stat().st_size > 44:
             return out
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".tmp.wav")
         if suffix in (".mid", ".midi"):
-            synth = self.midi_synth()
-            if synth == "fluidsynth":
-                fonts = sorted(Path("/usr/share/sounds/sf2").glob("*.sf2"))
-                if not fonts:
-                    return None
-                cmd = ["fluidsynth", "-ni", "-F", str(tmp), "-r", "44100", str(fonts[0]), str(src)]
-            elif synth == "timidity":
-                cmd = ["timidity", "-Ow", "-o", str(tmp), str(src)]
-            else:
-                return None
-        else:
-            if not shutil.which("ffmpeg"):
-                return None
+            done = self._render_midi(src, tmp, seconds)
+        elif shutil.which("ffmpeg"):
             cmd = ["ffmpeg", "-v", "error", "-y"]
             if track.isdigit() and suffix in (".nsf", ".nsfe"):
                 cmd += ["-track_index", track]
             cmd += ["-i", str(src)]
             if seconds:
-                cmd += ["-t", f"{seconds:g}", "-af", f"afade=t=out:st={max(0.0, seconds - 2):g}:d=2"]
+                cmd += ["-t", f"{seconds:g}", "-af", fade_out(seconds)]
             cmd += ["-ac", "2", "-ar", "44100", str(tmp)]
-        try:
-            proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
-        except (OSError, subprocess.TimeoutExpired):
-            tmp.unlink(missing_ok=True)
-            return None
-        if proc.returncode != 0 or not tmp.is_file() or tmp.stat().st_size <= 44:
+            done = run_to(cmd, tmp)
+        else:
+            done = False
+        if not done:
             tmp.unlink(missing_ok=True)
             return None
         tmp.replace(out)
         return out
+
+    def _render_midi(self, src: Path, dest: Path, seconds: float) -> bool:
+        """MIDI -> WAV con fluidsynth e il banco General MIDI. fluidsynth suona sullo standard output e viene
+        fermato dopo `seconds` (per 30 s di anteprima non serve sintetizzare un brano di 6 minuti); poi ffmpeg
+        alza il volume (picco a MIDI_PEAK_DB, al massimo +MIDI_MAX_GAIN_DB) e sfuma la fine."""
+        font = self.midi_font()
+        if not shutil.which("fluidsynth") or font is None:
+            return False
+        pcm = read_stream(["fluidsynth", "-ni", "-q", "-F", "-", "-T", "raw", "-O", "s16", "-E", "little",
+                           "-r", str(MIDI_RATE), str(font), str(src)], int(seconds * MIDI_RATE) * 4)
+        pcm = pcm[:len(pcm) // 4 * 4]  # fotogrammi stereo interi
+        if not pcm:
+            return False
+        if not shutil.which("ffmpeg"):
+            with wave.open(str(dest), "wb") as out:
+                out.setnchannels(2)
+                out.setsampwidth(2)
+                out.setframerate(MIDI_RATE)
+                out.writeframes(pcm)
+            return True
+        gain = max(0.0, min(MIDI_MAX_GAIN_DB, MIDI_PEAK_DB - pcm_peak_db(pcm)))
+        cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ar", str(MIDI_RATE), "-ac", "2", "-i", "-",
+               "-af", f"volume={gain:.1f}dB,{fade_out(seconds)}", str(dest)]
+        try:
+            proc = subprocess.run(cmd, input=pcm, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return proc.returncode == 0 and dest.is_file() and dest.stat().st_size > 44
 
     # ----- scelte dell'utente -----------------------------------------------------------
 
@@ -504,4 +581,5 @@ class SoundPack:
         missing = sorted(n for table in (EFFECTS, VOICE) for n, rules in table.items()
                          if self.index and not any((g, d.lower()) in self.index for g, d in rules))
         return {"folder": str(self.folder), "files": len(self.items), "games": games, "missing": missing,
-                "volume": self.volume, "ffmpeg": bool(shutil.which("ffmpeg")), "midi": self.midi_synth()}
+                "volume": self.volume, "ffmpeg": bool(shutil.which("ffmpeg")), "midi": self.midi_synth(),
+                "soundfont": (self.midi_font() or Path()).name if self.midi_synth() == "fluidsynth" else ""}

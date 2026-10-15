@@ -144,9 +144,10 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   catalogo. La pagina Suoni della dashboard permette di scegliere il file di ogni effetto, regolare
   il volume, ascoltare l'archivio e caricare suoni propri. Archivio completo il 14/10: 2.783 voci,
   170 MB (1.374 WAV, 904 MIDI, 114 moduli, 13 MP3, 10 NSF, 348 SPC), nessun errore dopo la correzione
-  dei link con la barra rovesciata. Conversioni provate: SPC, NSF con traccia, moduli IT/XM/MOD (5 su
-  112: gli altri sono RAR 2.0 e servono `unar`); i MIDI richiedono un sintetizzatore. Da ascoltare
-  per volume e scelte.
+  dei link con la barra rovesciata. Dal 15/10 si ascolta tutto: i 112 moduli `.mdr` (RAR 2.0) vengono
+  estratti da `mario/rar20.py`, in Python e controllati con il CRC32; i MIDI vengono suonati da fluidsynth,
+  fermato dopo i secondi richiesti e portato al volume delle altre musiche. Provati tutti i 904 MIDI e i
+  112 moduli: nessun errore. Da ascoltare per volume e scelte.
 - **Messaggio stile Mario (14/10)**: `./run.sh voice` compone esclamazioni originali (`{letsago}`,
   `{wahoo}`) e frasi di piper con l'effetto `mario` (rubberband: +6 semitoni, ×1,1) e salva il
   messaggio in WAV. Provato sull'host: frasi pronte in 0,2–0,35 s più 0,16–0,19 s di effetto, altezza
@@ -157,7 +158,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   delle disponibili nel prompt, massimo due per risposta, testo salvato senza graffe). Provato con
   `claude-sonnet-5-5`: risposta aperta da `{herewego}`, esclamazione suonata prima delle frasi, prima
   frase dopo 1,8 s, log pulito.
-- **Test**: 155 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Test**: 159 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

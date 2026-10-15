@@ -453,8 +453,29 @@ class SoundPackTests(unittest.TestCase):
             self.assertIs(pack.playable("tmk/smb/smb_coin.wav", seconds=0.05).samefile(cut), True)
         self.assertIsNone(pack.playable("tmk/manca.wav"))
         midi = pack.can_play("tmk/mid/smb/smb_over.mid", (True, None))
-        self.assertFalse(midi)  # senza fluidsynth/timidity il MIDI non si suona
-        self.assertTrue(pack.can_play("tmk/mid/smb/smb_over.mid", (False, "timidity")))
+        self.assertFalse(midi)  # senza fluidsynth il MIDI non si suona
+        self.assertTrue(pack.can_play("tmk/mid/smb/smb_over.mid", (False, "fluidsynth")))
+
+    def test_midi_rendered_louder_and_cut(self):
+        import shutil as _sh
+        pack = self.pack()
+        if not (pack.midi_synth() and _sh.which("ffmpeg")):
+            self.skipTest("servono un sintetizzatore MIDI e ffmpeg")
+        track = (b"\x00\x90\x3c\x64"          # nota do centrale, velocità 100
+                 b"\x84\x40\x80\x3c\x00"      # spenta dopo 576 tick (3 s)
+                 b"\x00\xff\x2f\x00")
+        midi = b"MThd" + bytes([0, 0, 0, 6, 0, 0, 0, 1, 0, 96]) + b"MTrk" + len(track).to_bytes(4, "big") + track
+        (self.dir / "mid" / "smb" / "smb_over.mid").write_bytes(midi)
+        out = pack.playable("tmk/mid/smb/smb_over.mid", seconds=2.5)
+        self.assertIsNotNone(out)
+        with wave.open(str(out)) as w:
+            self.assertLessEqual(w.getnframes() / w.getframerate(), 2.55)  # fermato a 2,5 s, non a fine brano
+            self.assertEqual((w.getnchannels(), w.getsampwidth()), (2, 2))
+            frames = w.readframes(w.getnframes())
+        self.assertAlmostEqual(self.sp.pcm_peak_db(frames), self.sp.MIDI_PEAK_DB, delta=0.6)  # più forte
+        self.assertEqual([f.name for f in self.root.joinpath("cache").iterdir()], [out.name])  # niente file intermedi
+        self.assertAlmostEqual(self.sp.pcm_peak_db(b"\x00\x40" * 10), -6.02, places=2)
+        self.assertLess(self.sp.pcm_peak_db(b""), -90)
 
     def test_speaker_uses_pack_then_synth(self):
         sp = Speaker(enabled=False, engine=None, soundpack=self.pack())
