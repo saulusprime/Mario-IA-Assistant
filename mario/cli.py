@@ -870,7 +870,8 @@ async def cmd_assistant(args) -> int:
             if verbose:
                 out.line(f"[{ts()}] · Mario: {ev['text']}")
 
-    cfg = LLMConfig(backend=args.backend, model=args.model or "", base_url=args.base_url or "")
+    cfg = LLMConfig(backend=args.backend, model=args.model or "", base_url=args.base_url or "",
+                    sensor_model=args.sensor_model)
     speaker = Speaker(enabled=not args.no_tts, sounds=not args.no_tts, piper_model=effect_piper_model(args),
                       openvoice_reference=args.openvoice_ref or "", openvoice_tau=args.openvoice_tau,
                       openvoice_watermark=args.openvoice_watermark, sound_style=args.sound_style,
@@ -897,6 +898,7 @@ async def cmd_assistant(args) -> int:
         except Exception as exc:
             say(f"Database non disponibile ({exc}): ricordi solo in memoria, nessun diario")
     session = AssistantSession(lambda: make_backend(cfg), speaker, engine, emit=emit, persona=args.persona or "",
+                               sensor_backend_factory=lambda: make_backend(cfg.for_sensors()),
                                memory=memory, memory_enabled=not args.no_memory, on_message=on_message,
                                session_limit=max(0.0, float(args.minutes or 0)) * 60,
                                blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()],
@@ -1467,6 +1469,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backend", default="auto", choices=["auto", "anthropic", "openai", "demo"],
                    help="auto = Claude se c'è ANTHROPIC_API_KEY, altrimenti demo")
     p.add_argument("--model", help="nome del modello (default claude-sonnet-5-5 per Claude)")
+    p.add_argument("--sensor-model", default="auto",
+                   help="modello per le reazioni ai sensori: auto (claude-haiku-5-5 con Claude, altrimenti lo stesso), "
+                        "'' per lo stesso della conversazione, oppure un nome")
     p.add_argument("--base-url", help="endpoint compatibile OpenAI, es. http://localhost:11434/v1 per Ollama")
     p.add_argument("--persona", help="istruzioni in più per il modello")
     p.add_argument("--no-tts", action="store_true", help="senza voce ed effetti sonori")

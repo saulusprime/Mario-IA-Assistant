@@ -23,7 +23,8 @@ from .tts import Speaker
 log = logging.getLogger("mario.assistant")
 
 DEFAULTS: dict[str, str] = {
-    "assistant.backend": "auto", "assistant.model": "", "assistant.api_key": "", "assistant.base_url": "",
+    "assistant.backend": "auto", "assistant.model": "", "assistant.sensor_model": "auto", "assistant.api_key": "",
+    "assistant.base_url": "",
     "assistant.max_tokens": "350", "assistant.temperature": "0.8",
     "assistant.tts": "1", "assistant.voice": "", "assistant.rate": "0", "assistant.pitch": "0", "assistant.sounds": "1",
     "assistant.behaviours": "1", "assistant.volume_effects": "1", "assistant.busy_indication": "0",
@@ -109,7 +110,8 @@ class AssistantService:
                                         memory=DatabaseMemory(db), memory_enabled=as_bool(s["memory"]),
                                         session_limit=minutes_to_seconds(s["session_minutes"]),
                                         blocked_words=split_words(s["blocked_words"]),
-                                        exclamations=as_bool(s["exclamations"]))
+                                        exclamations=as_bool(s["exclamations"]),
+                                        sensor_backend_factory=self._make_sensor_backend)
         self.session.listening = as_bool(s["listening"])
         self._apply_rules(self._json(s["rules"]))
         self._thread = threading.Thread(target=self._consume, name="assistant-events", daemon=True)
@@ -193,11 +195,15 @@ class AssistantService:
 
     def config(self) -> LLMConfig:
         s = self.settings()
-        return LLMConfig(backend=s["backend"] or "auto", model=s["model"], api_key=s["api_key"], base_url=s["base_url"],
+        return LLMConfig(backend=s["backend"] or "auto", model=s["model"], sensor_model=s["sensor_model"],
+                         api_key=s["api_key"], base_url=s["base_url"],
                          max_tokens=int(s["max_tokens"] or 350), temperature=float(s["temperature"] or 0.8))
 
     def _make_backend(self):
         return make_backend(self.config())
+
+    def _make_sensor_backend(self):
+        return make_backend(self.config().for_sensors())
 
     # ----- collegamenti --------------------------------------------------------------------
 

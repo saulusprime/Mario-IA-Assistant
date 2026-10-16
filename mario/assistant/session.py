@@ -59,8 +59,9 @@ class AssistantSession:
                  on_message: Optional[Callable[[dict], None]] = None,
                  memory: Optional[MemoryStore] = None, memory_enabled: bool = True,
                  session_limit: float = 0.0, blocked_words: Optional[list[str]] = None,
-                 exclamations: bool = True):
+                 exclamations: bool = True, sensor_backend_factory: Optional[Callable[[], Backend]] = None):
         self.backend_factory = backend_factory
+        self.sensor_backend_factory = sensor_backend_factory  # turni "[sensore: ...]": modello più rapido (o None)
         self.speaker = speaker
         self.behaviours = behaviours
         self.emit_cb = emit or (lambda ev: None)
@@ -335,7 +336,8 @@ class AssistantSession:
         self._turn_sounds = 0
         self._turn_allowed = self.available_exclamations()
         try:
-            backend = self.backend_factory()
+            factory = self.sensor_backend_factory if sensor and self.sensor_backend_factory else self.backend_factory
+            backend = factory()
             self.backend_name = backend.describe()
             self.emit("start", turn=turn, backend=self.backend_name, text=f"chiedo a {self.backend_name}")
             messages = self.history + [{"role": "user", "content": prompt}]

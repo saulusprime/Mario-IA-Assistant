@@ -19,13 +19,16 @@ import os
 import time
 import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Iterator, Optional
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 ANTHROPIC_MODELS = ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5", "claude-fable-5-1"]
+# turni dei sensori ("[sensore: ...]", una o due frasi): con sensor_model "auto" un modello più rapido ed
+# economico dove c'è; altrove lo stesso della conversazione
+SENSOR_MODEL_AUTO = {"anthropic": "claude-haiku-5-5"}
 
 
 class LLMError(Exception):
@@ -36,6 +39,7 @@ class LLMError(Exception):
 class LLMConfig:
     backend: str = "auto"          # auto / anthropic / openai / demo
     model: str = ""
+    sensor_model: str = "auto"     # turni dei sensori: "auto", "" (= model) o un nome
     api_key: str = ""
     base_url: str = ""             # solo openai: es. http://localhost:11434/v1
     max_tokens: int = 350
@@ -53,11 +57,22 @@ class LLMConfig:
             return "openai"
         return "demo"
 
+    def resolved_sensor_model(self) -> str:
+        """Il modello dei turni dei sensori; "" = lo stesso della conversazione."""
+        name = (self.sensor_model or "").strip()
+        if name == "auto":
+            name = SENSOR_MODEL_AUTO.get(self.resolved_backend(), "")
+        return "" if name == self.model else name
+
+    def for_sensors(self) -> "LLMConfig":
+        return replace(self, model=self.resolved_sensor_model() or self.model)
+
     def to_dict(self, mask_key: bool = True) -> dict:
         d = asdict(self)
         if mask_key:
             d["api_key"] = mask(self.api_key)
         d["resolved_backend"] = self.resolved_backend()
+        d["resolved_sensor_model"] = self.resolved_sensor_model()
         return d
 
 

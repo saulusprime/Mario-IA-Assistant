@@ -71,6 +71,8 @@
       </div>
       <div class="actions"><label>Modello <input type="text" id="set-model" list="models" placeholder="claude-sonnet-5-5" style="width:16em"></label>
         <datalist id="models">{% for m in models %}<option value="{{ m }}"></option>{% endfor %}</datalist></div>
+      <div class="actions"><label title="Per i messaggi [sensore: …] (una o due frasi): auto = claude-haiku-5-5 con Claude, lo stesso modello con gli altri backend; vuoto = sempre lo stesso modello">Modello per i sensori <input type="text" id="set-smodel" list="smodels" placeholder="vuoto = come sopra" style="width:16em"></label>
+        <datalist id="smodels"><option value="auto"></option>{% for m in models %}<option value="{{ m }}"></option>{% endfor %}</datalist> <span class="muted" id="set-sresolved"></span></div>
       <div class="actions"><label>Chiave API <input type="password" id="set-key" placeholder="lascia vuoto per non cambiare" style="width:20em"></label> <span class="muted" id="set-key-state"></span> <label><input type="checkbox" id="set-key-clear"> cancella</label></div>
       <div class="actions"><label>Base URL (solo OpenAI-compatibile) <input type="text" id="set-base" placeholder="http://localhost:11434/v1" style="width:20em"></label></div>
       <div class="actions"><label>Token massimi <input type="number" id="set-max" min="50" max="2000" style="width:6em"></label> <label title="Solo per gli endpoint compatibili OpenAI: Claude 5 non la accetta">Temperatura (OpenAI) <input type="number" id="set-temp" min="0" max="1" step="0.1" style="width:5em"></label></div>
