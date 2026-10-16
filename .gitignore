@@ -11,3 +11,4 @@ pyLegoMario/
 third_party/
 .pytest_cache/
 /.venv-openvoice/
+/.venv-stt/

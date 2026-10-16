@@ -256,6 +256,10 @@
         case "memory_forgotten": flash(msg, ev.text); loadMemory(); break;
         case "time_up": flash(msg, ev.text, true); $("#as-listen").checked = false; showChallenge(null); break;
         case "challenge": showChallenge(ev); break;
+        case "voice_listening": $("#as-talk").classList.add("on"); flash(msg, ev.text); break;
+        case "voice_processing": $("#as-talk").classList.remove("on"); flash(msg, ev.text); break;
+        case "voice_text": flash(msg, `🎤 ${ev.text}` + (ev.info && ev.info.elapsed_s ? ` (capito in ${ev.info.elapsed_s} s)` : "")); break;
+        case "voice_empty": case "voice_error": $("#as-talk").classList.remove("on"); flash(msg, ev.text, true); break;
         case "challenge_done": case "challenge_missed": case "challenge_timeout": case "challenge_invalid": showChallenge(null); flash(msg, ev.text); break;
         case "blocked": bubble("error", esc(ev.text)); break;
         case "error": bubble("error", esc(ev.text)); current = null; $("#face").classList.remove("busy"); $("#face-sub").textContent = "errore"; break;
@@ -285,6 +289,7 @@
       $("#set-ovstate").textContent = !ovs ? "" : ovs.problem ? `non disponibile: ${ovs.problem}` : ovs.state === "spento" ? "" : `${ovs.mode === "piper" ? "processo piper" : "voce IA"}: ${ovs.state}` + (ovs.load_s ? `, caricata in ${ovs.load_s} s` : "") + (ovs.avg_s ? `, ${ovs.avg_s} s per frase` : "") + (ovs.last_error ? ` (${ovs.last_error})` : "");
       $("#set-piper").value = s.piper_model || ""; $("#set-minutes").value = s.session_minutes || 0; $("#set-blocked").value = s.blocked_words || ""; $("#set-memory").checked = !!s.memory;
       $("#set-challenges").checked = !!s.challenges; $("#set-wait").value = s.wait_seconds || 20;
+      $("#set-voicein").checked = !!s.voice_input; $("#set-voicebtn").checked = !!s.voice_button; $("#set-sttmodel").value = s.stt_model || "small"; $("#as-talk").hidden = !s.voice_input;
     }
     function renderMemory(items) {
       const ul = $("#memory-list"); ul.innerHTML = "";
@@ -308,6 +313,7 @@
       (st.emotions || []).forEach((e) => { EMO[e.key] = e; });
       setFace(st.emotion); $("#as-listen").checked = !!st.listening; renderContext(st.context);
       showChallenge(st.challenge ? { challenge: st.challenge, seconds: st.wait_seconds } : null);
+      const vs = st.voice; $("#set-voicestate").textContent = !vs ? "" : vs.problem ? `non disponibile: ${vs.problem}` : `${vs.model}: ${vs.worker.state}` + (vs.worker.avg_s ? `, ${vs.worker.avg_s} s per frase` : "") + (vs.worker.last_error ? ` (${vs.worker.last_error})` : "");
       $("#as-backend").textContent = st.backend || (st.llm.resolved_backend + (st.llm.model ? " · " + st.llm.model : ""));
       if (st.busy) $("#face").classList.add("busy");
       renderSettings(st.settings, st.speaker, st.llm); renderRules(st.rules || []); renderMemory(st.memory || []);
@@ -320,6 +326,12 @@
     $("#as-send").addEventListener("click", send);
     $("#as-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); send(); } });
     $("#as-stop").addEventListener("click", () => api("/api/assistant/stop", "POST", {}).catch((e) => flash(msg, e.message, true)));
+    const talk = (on) => api("/api/assistant/talk", "POST", { on: on ? 1 : 0 }).catch((e) => { $("#as-talk").classList.remove("on"); flash(msg, e.message, true); });
+    let talking = false;
+    const talkDown = (ev) => { ev.preventDefault(); if (talking) return; talking = true; talk(true); };
+    const talkUp = () => { if (!talking) return; talking = false; talk(false); };
+    $("#as-talk").addEventListener("mousedown", talkDown); $("#as-talk").addEventListener("touchstart", talkDown);
+    ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach((n) => $("#as-talk").addEventListener(n, talkUp));
     $("#as-repeat").addEventListener("click", () => api("/api/assistant/repeat", "POST", {}).then((r) => flash(msg, r.repeated ? "ripeto" : "niente da ripetere")).catch((e) => flash(msg, e.message, true)));
     $("#as-reset").addEventListener("click", () => { if (confirm("Nuova conversazione? Il modello dimentica quanto detto finora (lo storico resta nel database).")) api("/api/assistant/reset", "POST", {}).catch((e) => flash(msg, e.message, true)); });
     $("#as-listen").addEventListener("change", () => api("/api/assistant/listen", "POST", { on: $("#as-listen").checked ? 1 : 0 }).catch((e) => flash(msg, e.message, true)));
@@ -339,7 +351,7 @@
     $("#set-save").addEventListener("click", async () => {
       let payloads = {};
       try { payloads = $("#set-payloads").value.trim() ? JSON.parse($("#set-payloads").value) : {}; } catch (e) { flash($("#set-msg"), "JSON dei payload non valido", true); return; }
-      const data = { backend: $("#set-backend").value, model: $("#set-model").value, sensor_model: $("#set-smodel").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads, piper_model: $("#set-piper").value, openvoice_reference: $("#set-ovref").value, openvoice_tau: $("#set-ovtau").value, openvoice_watermark: $("#set-ovwm").checked ? 1 : 0, sound_style: $("#set-soundstyle").value, voice_effect: $("#set-veffect").value, exclamations: $("#set-exclam").checked ? 1 : 0, session_minutes: $("#set-minutes").value, blocked_words: $("#set-blocked").value, memory: $("#set-memory").checked ? 1 : 0, challenges: $("#set-challenges").checked ? 1 : 0, wait_seconds: $("#set-wait").value };
+      const data = { backend: $("#set-backend").value, model: $("#set-model").value, sensor_model: $("#set-smodel").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads, piper_model: $("#set-piper").value, openvoice_reference: $("#set-ovref").value, openvoice_tau: $("#set-ovtau").value, openvoice_watermark: $("#set-ovwm").checked ? 1 : 0, sound_style: $("#set-soundstyle").value, voice_effect: $("#set-veffect").value, exclamations: $("#set-exclam").checked ? 1 : 0, session_minutes: $("#set-minutes").value, blocked_words: $("#set-blocked").value, memory: $("#set-memory").checked ? 1 : 0, challenges: $("#set-challenges").checked ? 1 : 0, wait_seconds: $("#set-wait").value, voice_input: $("#set-voicein").checked ? 1 : 0, voice_button: $("#set-voicebtn").checked ? 1 : 0, stt_model: $("#set-sttmodel").value };
       try { const r = await api("/api/assistant/settings", "POST", data); $("#set-key").value = ""; $("#set-key-clear").checked = false; renderSettings(r.settings, null, null); const st = (await api("/api/assistant/status")).status; renderSettings(st.settings, st.speaker, st.llm); flash($("#set-msg"), "impostazioni salvate"); } catch (e) { flash($("#set-msg"), e.message, true); }
     });
     $("#set-ovfile").addEventListener("change", async (ev) => {

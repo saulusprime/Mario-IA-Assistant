@@ -34,9 +34,10 @@ DEFAULTS: dict[str, str] = {
     "assistant.openvoice_reference": "", "assistant.openvoice_tau": "0.3", "assistant.openvoice_watermark": "0",
     "assistant.sound_style": "giochi", "assistant.voice_effect": "", "assistant.exclamations": "1",
     "assistant.challenges": "1", "assistant.wait_seconds": "20",
+    "assistant.voice_input": "0", "assistant.voice_button": "1", "assistant.stt_model": "small",
 }
 BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
-             "openvoice_watermark", "exclamations", "challenges"}
+             "openvoice_watermark", "exclamations", "challenges", "voice_input", "voice_button"}
 SECRET_KEYS = {"api_key"}
 
 
@@ -116,6 +117,8 @@ class AssistantService:
                                         challenges=as_bool(s["challenges"]),
                                         wait_seconds=as_float(s["wait_seconds"], 20.0))
         self.session.listening = as_bool(s["listening"])
+        self._voice = None
+        self._configure_voice(s)
         self._apply_rules(self._json(s["rules"]))
         self._thread = threading.Thread(target=self._consume, name="assistant-events", daemon=True)
         if start:
@@ -186,11 +189,27 @@ class AssistantService:
         self.session.persona = s["persona"]
         self.session.exclamations_enabled = as_bool(s["exclamations"])
         self.session.challenges_enabled = as_bool(s["challenges"])
+        self._configure_voice(s)
         self.session.wait_seconds = min(120.0, max(5.0, as_float(s["wait_seconds"], 20.0)))
         if "listening" in data and as_bool(data["listening"]) != self.session.listening:
             self.session.set_listening(as_bool(data["listening"]))
         self._apply_rules(self._json(s["rules"]))
         return self.public_settings()
+
+    def _configure_voice(self, s: dict) -> None:
+        """Ingresso vocale (microfono -> faster-whisper): acceso solo se richiesto e mai in modalità silenziosa
+        (test); il modello si carica in background appena si accende."""
+        from .stt import MODELS, VoiceInput
+        model = s["stt_model"] if s["stt_model"] in MODELS else MODELS[0]
+        wanted = as_bool(s["voice_input"]) and not self.quiet
+        if self._voice is not None and (not wanted or self._voice.model != model):
+            self._voice.close()
+            self._voice = None
+        if wanted and self._voice is None:
+            self._voice = VoiceInput(model)
+            self._voice.warmup()
+        self.session.voice_input = self._voice
+        self.session.voice_button = as_bool(s["voice_button"])
 
     def _apply_rules(self, overrides: dict) -> None:
         for name, opts in overrides.items():

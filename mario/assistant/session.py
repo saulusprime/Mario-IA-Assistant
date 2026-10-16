@@ -29,6 +29,7 @@ Ogni frase inizia con un'emozione tra parentesi quadre, scelta solo tra: {tags}.
 I messaggi che iniziano con "[sensore: ...]" non li scrive una persona: arrivano dal tuo corpo (gesti, pantaloni, basette con il codice a barre, colore del terreno, pulsante, batteria). Reagisci come farebbe Mario nel gioco, in una o due frasi.
 Le righe "(Stato del corpo: ...)" descrivono come sei in questo momento: tienine conto senza ripeterle.
 {memory_rule}
+{voice_rule}
 {wait_rule}
 {sound_rule}
 {persona}
@@ -89,6 +90,10 @@ def parse_challenge(text: str, turn: int = 0, enabled: Optional[set] = None) -> 
         value = ""
     return Challenge(rule, value, text.strip(), turn)
 
+VOICE_RULE = ("I messaggi che iniziano con \"(a voce)\" sono la voce di chi gioca, trascritta in automatico: "
+              "qualche parola può essere sbagliata. Se il senso non è chiaro, chiedi in modo simpatico di ripetere.")
+NOT_HEARD_SPEECH = "Non ho sentito bene. Tieni premuto il pulsante mentre parli, e lascialo alla fine!"
+
 FALLBACK_ERROR_SPEECH = "Ops, adesso non riesco a rispondere."
 BLOCKED_SPEECH = "Mmm, di questo preferisco non parlare. Facciamo un bel salto, piuttosto!"
 TIME_UP_SPEECH = "Che bella giocata! Adesso Mario deve riposare un po'. Alla prossima avventura!"
@@ -106,7 +111,8 @@ class AssistantSession:
                  memory: Optional[MemoryStore] = None, memory_enabled: bool = True,
                  session_limit: float = 0.0, blocked_words: Optional[list[str]] = None,
                  exclamations: bool = True, sensor_backend_factory: Optional[Callable[[], Backend]] = None,
-                 challenges: bool = True, wait_seconds: float = WAIT_SECONDS):
+                 challenges: bool = True, wait_seconds: float = WAIT_SECONDS,
+                 voice_input=None, voice_button: bool = True):
         self.backend_factory = backend_factory
         self.sensor_backend_factory = sensor_backend_factory  # turni "[sensore: ...]": modello più rapido (o None)
         self.speaker = speaker
@@ -125,6 +131,8 @@ class AssistantSession:
         self.wait_seconds = float(wait_seconds or WAIT_SECONDS)
         self.challenge: Optional[Challenge] = None
         self._timeouts_in_row = 0
+        self.voice_input = voice_input              # stt.VoiceInput: microfono -> testo (None = spento)
+        self.voice_button = voice_button            # pulsante di Mario = tieni premuto e parla
         self._turn_sounds = 0
         self.started = time.time()
         self.time_up = False
@@ -193,6 +201,8 @@ class AssistantSession:
                 "intents": [i.to_dict() for i in list(self.intents)[-10:]],
                 "challenge": self.challenge.to_dict() if self.challenge else None,
                 "challenges_enabled": self.challenges_enabled, "wait_seconds": self.wait_seconds,
+                "voice": self.voice_input.status() if self.voice_input is not None else None,
+                "voice_button": self._push_to_talk(),
                 "speaker": self.speaker.status(), "behaviours": self.behaviours.status(),
                 "rules": self.mapper.rules_dict(), "emotions": [EMOTIONS[k].to_dict() for k in EMOTIONS]}
 
@@ -208,7 +218,8 @@ class AssistantSession:
         if not self.challenges_enabled:
             return []
         rules = self.mapper.rules
-        return [name for rule, name in WAIT_TARGET_NAMES.items() if rule in rules and rules[rule].enabled]
+        return [name for rule, name in WAIT_TARGET_NAMES.items() if rule in rules and rules[rule].enabled
+                and not (rule == "pulsante" and self._push_to_talk())]
 
     def build_system_prompt(self) -> str:
         memories = memory_prompt(self.memory.list()) if self.memory_enabled else ""
@@ -219,7 +230,8 @@ class AssistantSession:
         wait_rule = WAIT_RULE.format(targets=", ".join(targets), seconds=self.wait_seconds) if targets else ""
         text = BASE_PROMPT.format(tags=" ".join(f"[{k}]" for k in MODEL_EMOTIONS), persona=self.persona.strip(),
                                   memory_rule=MEMORY_RULE if self.memory_enabled else "", memory=memories,
-                                  wait_rule=wait_rule, sound_rule=sound_rule, context=self.mapper.context_text())
+                                  wait_rule=wait_rule, sound_rule=sound_rule, context=self.mapper.context_text(),
+                                  voice_rule=VOICE_RULE if self.voice_input is not None else "")
         return "\n".join(line for line in text.splitlines() if line.strip()).strip()
 
     # ----- sicurezza: parole bloccate e limite di tempo --------------------------------------------
@@ -272,6 +284,12 @@ class AssistantSession:
         return self.listening
 
     def handle_event(self, ev: dict) -> list[Intent]:
+        if ev.get("type") == "HUB_PROPERTIES" and ev.get("prop") == "BUTTON" and self._push_to_talk():
+            if ev.get("value") in (True, 1):  # pulsante premuto: si parla finché non viene lasciato
+                self.listen_start("pulsante di Mario")
+            else:
+                self.listen_stop()
+            return []
         intents = self.mapper.feed(ev)
         if ev.get("type") == "PORT_VALUE_SINGLE" and ev.get("io_type") in (0x4A, 0x49) or intents:
             self.emit("context", context=self.mapper.context, text=self.mapper.context_text())
@@ -294,6 +312,55 @@ class AssistantSession:
             self.intents.append(intent)
             outcome = self._challenge_outcome(intent) or self._apply(intent)
             self.emit("intent", intent=intent.to_dict(), outcome=outcome, text=f"{intent.source}: {outcome}")
+
+    # ----- ingresso vocale ---------------------------------------------------------------------------
+
+    def _push_to_talk(self) -> bool:
+        return bool(self.voice_button and self.voice_input is not None and not self.voice_input.problem())
+
+    def listen_start(self, source: str = "dashboard") -> bool:
+        """Inizia ad ascoltare dal microfono (finché listen_stop o il tempo massimo)."""
+        vi = self.voice_input
+        if vi is None:
+            self.emit("voice_error", text="ingresso vocale spento (impostazioni dell'assistente)")
+            return False
+        if vi.listening:
+            return True
+        if not self._check_time():
+            return False
+        self.speaker.stop()  # la voce di Mario non deve finire nel microfono
+        try:
+            vi.start(on_auto_stop=lambda: self.listen_stop("tempo massimo"))
+        except Exception as exc:
+            self.emit("voice_error", text=f"microfono non disponibile: {exc}")
+            return False
+        self.emit("voice_listening", source=source, text="🎤 ti ascolto…")
+        return True
+
+    def listen_stop(self, reason: str = "") -> bool:
+        """Chiude la registrazione e la fa trascrivere; il testo diventa una domanda (vedi _on_voice_text)."""
+        vi = self.voice_input
+        if vi is None or not vi.stop(self._on_voice_text):
+            return False
+        self.speaker.play("think")
+        self.behaviours.express("attesa")
+        self.emit("voice_processing", reason=reason, text="sto capendo…" + (f" ({reason})" if reason else ""))
+        return True
+
+    def _on_voice_text(self, text: str, info: dict) -> None:
+        if not text:
+            if info.get("error") == "registrazione troppo corta":
+                self.emit("voice_empty", info=info, text="pulsante premuto troppo poco: niente da ascoltare")
+                return
+            self.emit("voice_empty", info=info, text="non ho capito: " + (info.get("error") or "nessuna parola"))
+            self._set_emotion("pensieroso")
+            self.speaker.speak(NOT_HEARD_SPEECH, "pensieroso")
+            return
+        self.emit("voice_text", info=info, text=text)
+        try:
+            self.ask(text, source="voce", priority=2)  # chi parla ha la precedenza, come chi scrive
+        except (AssistantBusy, ValueError) as exc:
+            self.emit("voice_error", text=str(exc))
 
     # ----- storia interattiva: [aspetta: ...] ------------------------------------------------------
 
@@ -456,7 +523,7 @@ class AssistantSession:
             hint = "Rispondi con una frase breve, al massimo due." if quick else "Continua la storia in due o tre frasi."
             prompt = f"[sensore: {source}] {text} ({hint})"
         else:
-            prompt = text
+            prompt = f"(a voce) {text}" if source == "voce" else text
         ctx = self.mapper.context_text()
         if ctx != self._ctx_sent:
             prompt = f"(Stato del corpo: {ctx})\n{prompt}"
@@ -612,6 +679,8 @@ class AssistantSession:
             self._abort = True
         self.pending.clear()
         self.challenge = None
+        if self.voice_input is not None:
+            self.voice_input.close()
         self.speaker.stop()
         self.speaker.on_start = None
         self.speaker.on_end = None

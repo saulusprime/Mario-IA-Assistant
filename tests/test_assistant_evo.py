@@ -3,9 +3,11 @@
 Senza rete né audio: backend a copione e voce finta."""
 import importlib.util
 import os
+import sys
 import tempfile
 import time
 import unittest
+import wave
 from pathlib import Path
 
 from mario.assistant import AssistantSession, LLMConfig, Speaker
@@ -262,6 +264,148 @@ class ChallengeTests(unittest.TestCase):
         speaker.stop()
         session._on_spoken("Salta!", "gioia")
         self.assertIsNotNone(session.challenge.started)
+
+
+FAKE_STT = """
+import json, sys, wave
+print(json.dumps({"event": "ready", "load_s": 0.01, "model": "finto", "threads": 1}), flush=True)
+for line in sys.stdin:
+    req = json.loads(line)
+    if req.get("cmd") == "quit":
+        break
+    if req.get("cmd") == "transcribe":
+        with wave.open(req["path"]) as w:
+            secs = w.getnframes() / w.getframerate()
+        text = "Sottotitoli creati dalla comunità Amara.org" if secs > 1.4 else "Facciamo un salto insieme"
+        print(json.dumps({"id": req["id"], "ok": True, "text": text, "audio_s": round(secs, 2),
+                          "speech_s": round(secs, 2), "elapsed_s": 0.01}), flush=True)
+"""
+
+
+def write_wav(path, seconds):
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\x00\x01" * int(16000 * seconds))
+
+
+class VoiceInputTests(unittest.TestCase):
+    def setUp(self):
+        from mario.assistant import stt
+        self.stt = stt
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        (self.dir / "worker.py").write_text(FAKE_STT, encoding="utf-8")
+        self._tmp_dir = stt.TMP_DIR
+        stt.TMP_DIR = self.dir / "registrazioni"
+
+    def tearDown(self):
+        self.stt.TMP_DIR = self._tmp_dir
+        self.tmp.cleanup()
+
+    def voice(self, seconds):
+        src = self.dir / f"sorgente-{seconds}.wav"
+        write_wav(src, seconds)
+        client = self.stt.SpeechClient(command=[sys.executable, str(self.dir / "worker.py")])
+        recorder = self.stt.Recorder(name="finto", command=["sh", "-c", f"cp {src} {{path}}; exec sleep 30"])
+        return self.stt.VoiceInput(client=client, recorder=recorder)
+
+    def session_with(self, vi, *texts):
+        self.events = []
+        self.backend = SequenceBackend(*texts or ("[gioia] Andiamo!",))
+        session = AssistantSession(lambda: self.backend, quiet_speaker(), BehaviourEngine(NullActions()),
+                                   emit=self.events.append, voice_input=vi)
+        return session
+
+    def wait_kind(self, kinds, timeout=10.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            found = [e for e in self.events if e["kind"] in kinds]
+            if found:
+                return found[-1]
+            time.sleep(0.02)
+        self.fail(f"nessun evento {kinds}: {[e['kind'] for e in self.events]}")
+
+    def button(self, session, pressed):
+        return session.handle_event({"ts": time.time(), "type": "HUB_PROPERTIES", "prop": "BUTTON", "value": pressed})
+
+    def test_helpers(self):
+        stt = self.stt
+        self.assertEqual(stt.clean_transcript("  Ciao   Mario! "), "Ciao Mario!")
+        self.assertEqual(stt.clean_transcript("Sottotitoli a cura di QTSS"), "")
+        self.assertEqual(stt.clean_transcript(" ... "), "")
+        self.assertEqual(stt.clean_transcript("Grazie per la visione!"), "")
+        path = self.dir / "a.wav"
+        write_wav(path, 0.5)
+        self.assertAlmostEqual(stt.wav_seconds(path), 0.5, places=2)
+        raw = self.dir / "troncato.wav"
+        raw.write_bytes(b"RIFF" + bytes(40) + b"\x00" * 32000)  # intestazione non chiusa: stima dai byte
+        self.assertAlmostEqual(stt.wav_seconds(raw), 1.0, places=2)
+        self.assertIn("setup_stt.sh", stt.problem(python=self.dir / "manca"))
+        argv = stt.SpeechClient("base")._argv()
+        self.assertEqual(argv[1:3], ["-I", str(stt.WORKER)])
+        self.assertEqual(argv[argv.index("--model") + 1], str(stt.MODELS_DIR / "base"))
+
+    def test_mario_button_is_push_to_talk(self):
+        vi = self.voice(1.0)
+        session = self.session_with(vi)
+        self.assertIn("(a voce)", session.build_system_prompt())
+        self.assertNotIn("pulsante", session.wait_targets())  # il pulsante serve per parlare
+        self.assertEqual(self.button(session, True), [])
+        self.assertTrue(vi.listening)
+        self.assertEqual(self.wait_kind({"voice_listening"})["source"], "pulsante di Mario")
+        time.sleep(0.2)
+        self.button(session, False)
+        ev = self.wait_kind({"voice_text"})
+        self.assertEqual(ev["text"], "Facciamo un salto insieme")
+        self.assertTrue(wait_idle(session))
+        self.assertIn("(a voce) Facciamo un salto insieme", self.backend.calls[-1])
+        self.assertTrue(session.listening)  # il pulsante non ha cambiato l'ascolto dei sensori
+        self.assertEqual(list((self.dir / "registrazioni").glob("*.wav")), [])  # l'audio non resta
+        self.assertEqual(session.status()["voice"]["worker"]["transcriptions"], 1)
+        session.shutdown()
+        self.assertEqual(vi.client.state, "spento")
+
+    def test_short_press_and_silence(self):
+        short = self.voice(0.1)
+        session = self.session_with(short)
+        session.listen_start()
+        time.sleep(0.1)
+        session.listen_stop()
+        self.assertIn("troppo poco", self.wait_kind({"voice_empty"})["text"])
+        self.assertEqual(self.backend.calls, [])
+        session.shutdown()
+        noise = self.voice(1.5)  # Whisper "sente" i sottotitoli nel silenzio: scartati
+        session = self.session_with(noise)
+        session.listen_start("tastiera")
+        time.sleep(0.2)
+        session.listen_stop()
+        self.assertIn("non ho capito", self.wait_kind({"voice_empty"})["text"])
+        self.assertEqual(self.backend.calls, [])
+        self.assertEqual(session.emotion, "pensieroso")
+        session.shutdown()
+
+    def test_without_voice_input(self):
+        events = []
+        session = AssistantSession(lambda: SequenceBackend("[gioia] Ciao"), quiet_speaker(),
+                                   BehaviourEngine(NullActions()), emit=events.append)
+        self.assertFalse(session.listen_start())
+        self.assertEqual(events[-1]["kind"], "voice_error")
+        self.assertNotIn("(a voce)", session.build_system_prompt())
+        self.button(session, True)  # senza ingresso vocale il pulsante attiva o sospende l'ascolto, come prima
+        self.assertFalse(session.listening)
+
+    @unittest.skipUnless(HAVE_WEB, "servono flask e bleak (venv dell'host)")
+    def test_settings_and_api(self):
+        from mario.web import create_app
+        app = create_app(db_path=self.dir / "t.sqlite3", start_worker=False, quiet_assistant=True)
+        client = app.test_client()
+        s = client.post("/api/assistant/settings", json={"voice_input": 1, "stt_model": "base"}).get_json()["settings"]
+        self.assertEqual((s["voice_input"], s["voice_button"], s["stt_model"]), (True, True, "base"))
+        self.assertIsNone(app.extensions["assistant"].session.voice_input)  # silenzioso (test): niente microfono
+        self.assertEqual(client.post("/api/assistant/talk", json={"on": 1}).status_code, 409)
+        self.assertTrue(client.post("/api/assistant/talk", json={"on": 0}).get_json()["ok"])
 
 if __name__ == "__main__":
     unittest.main()

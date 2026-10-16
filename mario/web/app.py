@@ -661,6 +661,20 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
         assistant.session.stop()
         return ok()
 
+    @app.post("/api/assistant/talk")
+    @api
+    def api_assistant_talk():
+        """Tieni premuto e parla dalla pagina: on=1 inizia ad ascoltare dal microfono del PC, on=0 trascrive."""
+        session = assistant.session
+        if str(body().get("on", "")).strip().lower() in ("1", "true", "on", "yes"):
+            started = session.listen_start("pagina")
+            if not started:
+                return jsonify({"ok": False, "error": "ingresso vocale non disponibile: vedi le impostazioni"}), 409
+        else:
+            session.listen_stop()
+        vi = session.voice_input
+        return ok(listening=bool(vi and vi.listening), voice=vi.status() if vi else None)
+
     @app.post("/api/assistant/repeat")
     @api
     def api_assistant_repeat():

@@ -687,9 +687,10 @@ ASSISTANT_HELP = """Comandi: una riga di testo = messaggio per il modello.
   /di TESTO        fa dire un testo con la voce       /stato         stato della sessione
   /ricordi         ricordi salvati                    /ricorda TESTO  aggiunge un ricordo
   /dimentica [N|tutto]  cancella un ricordo o tutti   /regole        regole sensori -> intenti
+  /parla           parla nel microfono (con --voice), Invio per finire
   /aiuto           questo elenco                      /esci"""
 ASSISTANT_COMMANDS = ["/stop", "/ripeti", "/nuova", "/ascolto", "/emozione", "/di", "/stato", "/ricordi", "/ricorda",
-                      "/dimentica", "/regole", "/aiuto", "/esci"]
+                      "/dimentica", "/regole", "/parla", "/aiuto", "/esci"]
 
 
 class AssistantPrinter:
@@ -738,6 +739,13 @@ def handle_assistant_command(session, speaker, line: str) -> tuple[bool, str]:
     if cmd == "stop":
         session.stop()
         return False, ""
+    if cmd == "parla":
+        if session.voice_input is None:
+            return False, "ingresso vocale spento: rilancia con --voice (serve ./tools/setup_stt.sh)"
+        if session.voice_input.listening:
+            session.listen_stop()
+            return False, ""
+        return False, "🎤 parla ora, poi premi Invio" if session.listen_start("tastiera") else ""
     if cmd == "ripeti":
         return False, "" if session.repeat() else "niente da ripetere"
     if cmd == "nuova":
@@ -860,7 +868,8 @@ async def cmd_assistant(args) -> int:
             out.end(f"[{ts()}] (interrotto)")
         elif kind in ("intent", "intent_dropped", "listening", "stopped", "reset", "repeat", "time_up", "blocked",
                       "memory_forgotten", "challenge", "challenge_done", "challenge_missed", "challenge_timeout",
-                      "challenge_invalid"):
+                      "challenge_invalid", "voice_listening", "voice_processing", "voice_text", "voice_empty",
+                      "voice_error"):
             out.line(f"[{ts()}] · {ev['text']}")
             session_log.write(ev["text"])
         elif kind == "memory":
@@ -881,6 +890,15 @@ async def cmd_assistant(args) -> int:
     if args.openvoice_ref and speaker.engine != "openvoice":
         say(f"Voce IA non disponibile, uso {speaker.engine or 'nessun motore'}: {speaker.openvoice_reason()}")
     engine = BehaviourEngine(LoopActions() if dev else NullActions(), emit=emit, enabled=not args.no_behaviours)
+    voice_input = None
+    if args.voice:
+        from .assistant.stt import VoiceInput
+        voice_input = VoiceInput(args.stt_model)
+        if voice_input.problem():
+            say(f"Ingresso vocale non disponibile: {voice_input.problem()}")
+            voice_input = None
+        else:
+            voice_input.warmup()
     # ricordi e diario nel database della dashboard (data/mario.sqlite3), condivisi con la pagina Assistente
     memory, on_message = None, None
     if not args.no_db:
@@ -904,7 +922,8 @@ async def cmd_assistant(args) -> int:
                                memory=memory, memory_enabled=not args.no_memory, on_message=on_message,
                                session_limit=max(0.0, float(args.minutes or 0)) * 60,
                                blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()],
-                               exclamations=not args.no_exclamations)
+                               exclamations=not args.no_exclamations,
+                               voice_input=voice_input, voice_button=dev is not None and not args.no_voice_button)
     if dev is not None:
         def on_message(msg, text):
             ev = event_from_message(dev, msg)
@@ -918,6 +937,9 @@ async def cmd_assistant(args) -> int:
         + (" · senza Mario" if dev is None else ""))
     if speaker.engine == "openvoice":
         say("Voce IA in caricamento in background (10-25 s): fino ad allora parla la voce di riserva")
+    if voice_input is not None:
+        say(f"Ingresso vocale ({args.stt_model}): " + ("tieni premuto il pulsante di Mario e parla, oppure " if
+                                                        session.voice_button else "") + "/parla e Invio per finire")
     if session_log.path:
         say(f"Log della sessione: {session_log.path}")
     print(ASSISTANT_HELP)
@@ -945,6 +967,8 @@ async def cmd_assistant(args) -> int:
                 break
             line = line.strip()
             if not line:
+                if session.voice_input is not None and session.voice_input.listening:
+                    session.listen_stop()  # Invio dopo /parla: fine della frase
                 show_prompt()
                 continue
             if line.startswith("/"):
@@ -1083,6 +1107,47 @@ def cmd_voice(args) -> int:
         if record_dir:
             shutil.rmtree(record_dir, ignore_errors=True)
     return 0
+
+def cmd_listen(args) -> int:
+    """Prova dell'ingresso vocale: trascrive un file, oppure registra qualche secondo dal microfono."""
+    from .assistant import stt
+    reason = stt.problem(args.model, recorder="file" if args.file else "auto")
+    if reason:
+        print(f"Ingresso vocale non disponibile: {reason}", file=sys.stderr)
+        return 1
+    client = stt.SpeechClient(args.model)
+    started = time.monotonic()
+    client.start()
+    try:
+        if not client.wait_ready(90):
+            print(f"Il riconoscimento vocale non è partito: {client.last_error}", file=sys.stderr)
+            return 1
+        say(f"Modello {args.model} pronto in {time.monotonic() - started:.1f} s")
+        if args.file:
+            path = Path(args.file).resolve()
+        else:
+            recorder = stt.Recorder()
+            path = stt.TMP_DIR / "prova-microfono.wav"
+            say(f"Parla adesso: registro {args.seconds:g} s dal microfono ({recorder.name})...")
+            recorder.start(path)
+            time.sleep(max(0.5, args.seconds))
+            path, _seconds = recorder.stop()
+            if path is None:
+                print("Registrazione fallita: nessun file", file=sys.stderr)
+                return 1
+        reply = client.transcribe(str(path))
+        text = stt.clean_transcript(reply.get("text", ""))
+        print(f"Testo: {text or '(niente)'}" + ("" if text or not reply.get("text") else f"  [scartato: {reply['text']}]"))
+        print(f"(audio {reply.get('audio_s')} s, parlato {reply.get('speech_s')} s, trascritto in {reply.get('elapsed_s')} s)")
+        if not args.file:
+            if args.keep:
+                say(f"Registrazione tenuta in {path}")
+            else:
+                path.unlink(missing_ok=True)
+        return 0
+    finally:
+        client.stop()
+
 
 def cmd_doctor(args) -> int:
     """Controllo del PC (mario/syscheck.py); esce con 1 se il Bluetooth non è utilizzabile."""
@@ -1471,6 +1536,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backend", default="auto", choices=["auto", "anthropic", "openai", "demo"],
                    help="auto = Claude se c'è ANTHROPIC_API_KEY, altrimenti demo")
     p.add_argument("--model", help="nome del modello (default claude-sonnet-5-5 per Claude)")
+    p.add_argument("--voice", action="store_true",
+                   help="ingresso vocale dal microfono del PC (offline, faster-whisper; serve ./tools/setup_stt.sh): "
+                        "si parla tenendo premuto il pulsante di Mario, oppure con /parla")
+    p.add_argument("--stt-model", default="small", choices=["small", "base"],
+                   help="modello Whisper: small (circa 3 s per frase, preciso) o base (circa 1 s)")
+    p.add_argument("--no-voice-button", action="store_true",
+                   help="con --voice: il pulsante di Mario resta per l'ascolto dei sensori, si parla solo con /parla")
     p.add_argument("--no-challenges", action="store_true",
                    help="il modello non può chiedere azioni con [aspetta: ...] (storia interattiva; mai senza Mario)")
     p.add_argument("--wait-seconds", type=float, default=20.0, help="attesa massima di un'azione chiesta (default 20)")
@@ -1503,6 +1575,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-db", action="store_true", help="non usare data/mario.sqlite3 (niente partite salvate)")
     p.add_argument("--webhooks", action="store_true", help="consente alle azioni webhook di fare POST verso URL esterni")
     p.set_defaults(func=cmd_adventure)
+
+    p = sub.add_parser("listen", help="prova dell'ingresso vocale: trascrive un file o qualche secondo dal microfono "
+                                      "(offline; serve ./tools/setup_stt.sh)")
+    p.add_argument("--file", help="file audio da trascrivere (altrimenti registra dal microfono)")
+    p.add_argument("--seconds", type=float, default=5.0, help="secondi da registrare dal microfono (default 5)")
+    p.add_argument("--model", default="small", choices=["small", "base"], help="modello Whisper (default small)")
+    p.add_argument("--keep", action="store_true", help="tiene la registrazione (cartella temporanea) invece di cancellarla")
+    p.set_defaults(func=cmd_listen)
 
     p = sub.add_parser("voice", help="prova della voce dal PC con i tempi (spd-say, piper o voce IA OpenVoice)")
     p.add_argument("text", nargs="*", help="testo da dire, con gli effetti tra graffe: \"{letsago} Ciao! {wahoo}\"")
