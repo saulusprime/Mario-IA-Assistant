@@ -29,6 +29,14 @@ ANTHROPIC_MODELS = ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5", 
 # turni dei sensori ("[sensore: ...]", una o due frasi): con sensor_model "auto" un modello più rapido ed
 # economico dove c'è; altrove lo stesso della conversazione
 SENSOR_MODEL_AUTO = {"anthropic": "claude-haiku-5-5"}
+# Claude 5 può iniziare a ragionare ("thinking") da solo e consumare tutti i max_tokens prima del testo: con 350
+# token una richiesta di storia dava una risposta vuota (verificato il 16/10). Il modo di spegnerlo cambia da
+# modello a modello (risposte dell'API del 16/10); dove non si spegne si chiede il minimo e si lascia margine.
+THINKING_OFF = {"claude-haiku-5-5": {"thinking": {"type": "disabled"}},
+                "claude-sonnet-5-5": {"thinking": {"type": "between_tools"}}}
+THINKING_LOW = {"thinking": {"type": "adaptive"}, "output_config": {"effort": "low"}}
+THINKING_MARGIN = 1024  # token in più per il ragionamento dei modelli in cui non si spegne (opus, fable)
+_NO_THINKING_PARAMS: set = set()  # modelli che hanno rifiutato i parametri sul ragionamento: si mandano senza
 
 
 class LLMError(Exception):
@@ -123,6 +131,12 @@ def _post_sse(url: str, headers: dict, body: dict, timeout: float) -> Iterator[s
             raise LLMError(f"connessione interrotta durante la risposta ({type(exc).__name__})") from None
 
 
+def _chain(first, rest: Iterator[str]) -> Iterator[str]:
+    if first is not None:
+        yield first
+    yield from rest
+
+
 class AnthropicBackend(Backend):
     name = "anthropic"
 
@@ -133,28 +147,60 @@ class AnthropicBackend(Backend):
         if not self.api_key:
             raise LLMError("manca la chiave API di Claude (ANTHROPIC_API_KEY o impostazioni dell'assistente)")
 
-    def stream(self, system: str, messages: list[dict]) -> Iterator[str]:
+    def thinking_params(self) -> dict:
+        """Parametri per avere il testo subito: ragionamento spento dove si può, minimo altrove."""
+        if self.model in _NO_THINKING_PARAMS:
+            return {}
+        if self.model in THINKING_OFF:
+            return THINKING_OFF[self.model]
+        return THINKING_LOW if self.model.startswith("claude-") else {}
+
+    def body(self, system: str, messages: list[dict], thinking: bool = True) -> dict:
         # niente `temperature`: i modelli Claude 5 la rifiutano ("deprecated for this model", HTTP 400)
-        body = {"model": self.model, "max_tokens": int(self.cfg.max_tokens), "system": system, "stream": True,
-                "messages": [{"role": m["role"], "content": m["content"]} for m in messages]}
+        extra = self.thinking_params() if thinking else {}
+        margin = THINKING_MARGIN if extra.get("thinking", {}).get("type") == "adaptive" else 0
+        return {"model": self.model, "max_tokens": int(self.cfg.max_tokens) + margin, "system": system,
+                "stream": True, "messages": [{"role": m["role"], "content": m["content"]} for m in messages], **extra}
+
+    def stream(self, system: str, messages: list[dict]) -> Iterator[str]:
         headers = {"x-api-key": self.api_key, "anthropic-version": ANTHROPIC_VERSION}
-        for data in _post_sse(ANTHROPIC_URL, headers, body, self.cfg.timeout):
-            if not data:
-                continue
-            try:
-                ev = json.loads(data)
-            except ValueError:
-                continue
-            etype = ev.get("type")
-            if etype == "content_block_delta":
-                delta = ev.get("delta") or {}
-                if delta.get("type") == "text_delta" and delta.get("text"):
-                    yield delta["text"]
-            elif etype == "error":
-                err = ev.get("error") or {}
-                raise LLMError(f"{err.get('type', 'errore')}: {err.get('message', data)}")
-            elif etype == "message_stop":
-                return
+        body = self.body(system, messages)
+        try:
+            events = _post_sse(ANTHROPIC_URL, headers, body, self.cfg.timeout)
+            first = next(events, None)
+        except LLMError as exc:
+            # modello che non conosce i parametri sul ragionamento (HTTP 400): una volta senza, e ce lo ricordiamo
+            if "HTTP 400" not in str(exc) or not ({"thinking", "output_config"} & body.keys()):
+                raise
+            _NO_THINKING_PARAMS.add(self.model)
+            events = _post_sse(ANTHROPIC_URL, headers, self.body(system, messages, thinking=False), self.cfg.timeout)
+            first = next(events, None)
+        got_text = False
+        try:
+            for data in _chain(first, events):
+                if not data:
+                    continue
+                try:
+                    ev = json.loads(data)
+                except ValueError:
+                    continue
+                etype = ev.get("type")
+                if etype == "content_block_delta":
+                    delta = ev.get("delta") or {}
+                    if delta.get("type") == "text_delta" and delta.get("text"):
+                        got_text = True
+                        yield delta["text"]
+                elif etype == "message_delta":
+                    if (ev.get("delta") or {}).get("stop_reason") == "max_tokens" and not got_text:
+                        raise LLMError(f"risposta vuota: {self.model} ha usato tutti i token massimi per ragionare "
+                                       "(alza 'Token massimi')")
+                elif etype == "error":
+                    err = ev.get("error") or {}
+                    raise LLMError(f"{err.get('type', 'errore')}: {err.get('message', data)}")
+                elif etype == "message_stop":
+                    return
+        finally:
+            events.close()
 
 
 class OpenAICompatBackend(Backend):

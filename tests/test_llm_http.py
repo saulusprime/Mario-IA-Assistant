@@ -43,6 +43,19 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"no key")
             return
         if self.path.endswith("/messages"):  # Anthropic
+            if model == "claude-rifiuta" and "thinking" in body:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": {"type": "invalid_request_error",
+                                                       "message": "thinking.type.adaptive is not supported"}}).encode())
+                return
+            if model == "pensatore":  # ragiona fino al limite e non scrive niente
+                self._sse(['data: {"type":"message_start"}\n\n',
+                           'data: {"type":"content_block_start","content_block":{"type":"thinking"}}\n\n',
+                           'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"mmm"}}\n\n',
+                           'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n\n',
+                           'data: {"type":"message_stop"}\n\n'])
+                return
             if model == "sse-error":
                 self._sse(["event: error\n", 'data: {"type":"error","error":{"type":"overloaded_error","message":"riprova"}}\n\n'])
                 return
@@ -99,6 +112,28 @@ class HttpBackendTests(unittest.TestCase):
         self.assertEqual((req["body"]["max_tokens"], req["body"]["system"], req["body"]["stream"]), (99, "sistema", True))
         self.assertEqual(req["body"]["messages"], [{"role": "user", "content": "ciao"}])
         self.assertEqual(backend.describe(), "anthropic (ok)")
+
+    def test_claude5_thinking_parameters(self):
+        def body_for(model):
+            text = "".join(AnthropicBackend(LLMConfig(api_key="k", model=model, max_tokens=350)).stream("s", []))
+            self.assertEqual(text, "[gioia] Ciao a te!")
+            return RECEIVED[-1]["body"]
+        self.assertEqual(body_for("claude-haiku-5-5")["thinking"], {"type": "disabled"})
+        self.assertEqual(body_for("claude-sonnet-5-5")["thinking"], {"type": "between_tools"})
+        opus = body_for("claude-opus-5-5")  # non si spegne: minimo impegno e margine per il ragionamento
+        self.assertEqual((opus["thinking"], opus["output_config"], opus["max_tokens"]),
+                         ({"type": "adaptive"}, {"effort": "low"}, 350 + 1024))
+        self.assertNotIn("thinking", body_for("ok"))  # modelli non Claude (test, endpoint vari): niente parametri
+        self.assertEqual(body_for("claude-rifiuta").get("thinking"), None)  # 400 sui parametri: ripete senza
+        self.assertEqual([("thinking" in r["body"]) for r in RECEIVED[-2:]], [True, False])
+        RECEIVED.clear()
+        body_for("claude-rifiuta")  # e se lo ricorda: una sola richiesta
+        self.assertEqual(len(RECEIVED), 1)
+
+    def test_empty_answer_after_thinking_is_an_error(self):
+        with self.assertRaises(LLMError) as ctx:
+            list(AnthropicBackend(LLMConfig(api_key="k", model="pensatore")).stream("s", []))
+        self.assertIn("risposta vuota", str(ctx.exception))
 
     def test_openai_stream_and_done(self):
         backend = OpenAICompatBackend(LLMConfig(backend="openai", base_url=self.base + "/v1/", model="ok", api_key="k"))
