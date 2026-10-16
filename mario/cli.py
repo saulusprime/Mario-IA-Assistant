@@ -859,7 +859,8 @@ async def cmd_assistant(args) -> int:
         elif kind == "stopped" and out.streaming:
             out.end(f"[{ts()}] (interrotto)")
         elif kind in ("intent", "intent_dropped", "listening", "stopped", "reset", "repeat", "time_up", "blocked",
-                      "memory_forgotten"):
+                      "memory_forgotten", "challenge", "challenge_done", "challenge_missed", "challenge_timeout",
+                      "challenge_invalid"):
             out.line(f"[{ts()}] · {ev['text']}")
             session_log.write(ev["text"])
         elif kind == "memory":
@@ -899,6 +900,7 @@ async def cmd_assistant(args) -> int:
             say(f"Database non disponibile ({exc}): ricordi solo in memoria, nessun diario")
     session = AssistantSession(lambda: make_backend(cfg), speaker, engine, emit=emit, persona=args.persona or "",
                                sensor_backend_factory=lambda: make_backend(cfg.for_sensors()),
+                               challenges=not args.no_mario and not args.no_challenges, wait_seconds=args.wait_seconds,
                                memory=memory, memory_enabled=not args.no_memory, on_message=on_message,
                                session_limit=max(0.0, float(args.minutes or 0)) * 60,
                                blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()],
@@ -1469,6 +1471,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backend", default="auto", choices=["auto", "anthropic", "openai", "demo"],
                    help="auto = Claude se c'è ANTHROPIC_API_KEY, altrimenti demo")
     p.add_argument("--model", help="nome del modello (default claude-sonnet-5-5 per Claude)")
+    p.add_argument("--no-challenges", action="store_true",
+                   help="il modello non può chiedere azioni con [aspetta: ...] (storia interattiva; mai senza Mario)")
+    p.add_argument("--wait-seconds", type=float, default=20.0, help="attesa massima di un'azione chiesta (default 20)")
     p.add_argument("--sensor-model", default="auto",
                    help="modello per le reazioni ai sensori: auto (claude-haiku-5-5 con Claude, altrimenti lo stesso), "
                         "'' per lo stesso della conversazione, oppure un nome")

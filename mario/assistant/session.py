@@ -10,16 +10,16 @@ per la dashboard (SSE) o la CLI.
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from collections import deque
+from dataclasses import asdict, dataclass
 from typing import Callable, Optional
-
-import re
 
 from .behaviours import BehaviourEngine
 from .emotions import DEFAULT_EMOTION, EMOTIONS, MODEL_EMOTIONS, EmotionStream, SentenceBuffer, strip_tags
-from .intents import Intent, IntentMapper
+from .intents import Intent, IntentMapper, tile_family
 from .llm import Backend, LLMError
 from .memory import ListMemory, MemoryStore, memory_prompt
 from .tts import Speaker
@@ -29,6 +29,7 @@ Ogni frase inizia con un'emozione tra parentesi quadre, scelta solo tra: {tags}.
 I messaggi che iniziano con "[sensore: ...]" non li scrive una persona: arrivano dal tuo corpo (gesti, pantaloni, basette con il codice a barre, colore del terreno, pulsante, batteria). Reagisci come farebbe Mario nel gioco, in una o due frasi.
 Le righe "(Stato del corpo: ...)" descrivono come sei in questo momento: tienine conto senza ripeterle.
 {memory_rule}
+{wait_rule}
 {sound_rule}
 {persona}
 {memory}
@@ -42,6 +43,51 @@ SOUND_RULE = ("Puoi far sentire la tua vera voce del videogioco con un'esclamazi
               "graffe all'inizio della risposta o tra due frasi, al massimo una per risposta e non in tutte. "
               "Non la ripetere a parole. Esclamazioni: {items}.")
 SOUNDS_PER_TURN = 2
+
+WAIT_RULE = ("Nelle storie e nei giochi puoi chiedere a chi gioca di fare un'azione con te e aspettarla: scrivi alla "
+             "fine della risposta [aspetta: azione], con azione tra: {targets}. Puoi precisare pantaloni, basetta o "
+             "terreno, per esempio [aspetta: pantaloni Fuoco], [aspetta: basetta nemico], [aspetta: terreno blu]. "
+             "Poi il tuo corpo aspetta fino a {seconds:g} secondi e ti scrive \"[sensore: sfida ...]\" con quello che è "
+             "successo: allora continua la storia. Chiedi l'azione in modo naturale, al massimo una per risposta e non "
+             "in tutte; non chiedere mai di far cadere o lanciare Mario.")
+# parola del tag [aspetta: ...] -> regola dei sensori che la soddisfa
+WAIT_TARGETS = {"salto": "salto", "salta": "salto", "saltare": "salto", "giro": "rotazione", "gira": "rotazione",
+                "rotazione": "rotazione", "pantaloni": "pantaloni", "basetta": "basetta", "terreno": "terreno",
+                "colore": "terreno", "scossa": "scossa", "scuoti": "scossa", "pulsante": "pulsante",
+                "bottone": "pulsante"}
+WAIT_TARGET_NAMES = {"salto": "salto", "rotazione": "giro", "pantaloni": "pantaloni", "basetta": "basetta",
+                     "terreno": "terreno", "scossa": "scossa", "pulsante": "pulsante"}
+TILE_FAMILY_WORDS = {"nemico": "enemy", "nemica": "enemy", "amico": "friend", "amica": "friend", "premio": "prize",
+                     "partenza": "start", "start": "start", "traguardo": "goal", "arrivo": "goal"}
+WAIT_SECONDS = 20.0
+WAIT_TIMEOUTS_IN_ROW = 2   # attese scadute di fila: alla seconda Mario smette di chiedere (nessuno gioca più)
+
+
+@dataclass
+class Challenge:
+    """Un'azione chiesta dal modello con [aspetta: ...] e attesa dai sensori."""
+    rule: str                        # regola dei sensori che la soddisfa (salto, pantaloni, basetta, ...)
+    value: str                       # precisazione in minuscolo ("fuoco", "nemico", "blu"); "" = qualsiasi
+    text: str                        # come l'ha scritta il modello
+    turn: int
+    started: Optional[float] = None  # inizio dell'attesa: quando Mario ha finito di dire la richiesta
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def parse_challenge(text: str, turn: int = 0, enabled: Optional[set] = None) -> Optional[Challenge]:
+    """'pantaloni Fuoco' -> Challenge('pantaloni', 'fuoco', ...); None se l'azione non si può verificare."""
+    words = text.strip().strip(".!").split()
+    if not words:
+        return None
+    rule = WAIT_TARGETS.get(words[0].lower())
+    if rule is None or enabled is not None and rule not in enabled:
+        return None
+    value = " ".join(words[1:]).lower().strip(" '\"")
+    if rule not in ("pantaloni", "basetta", "terreno"):
+        value = ""
+    return Challenge(rule, value, text.strip(), turn)
 
 FALLBACK_ERROR_SPEECH = "Ops, adesso non riesco a rispondere."
 BLOCKED_SPEECH = "Mmm, di questo preferisco non parlare. Facciamo un bel salto, piuttosto!"
@@ -59,7 +105,8 @@ class AssistantSession:
                  on_message: Optional[Callable[[dict], None]] = None,
                  memory: Optional[MemoryStore] = None, memory_enabled: bool = True,
                  session_limit: float = 0.0, blocked_words: Optional[list[str]] = None,
-                 exclamations: bool = True, sensor_backend_factory: Optional[Callable[[], Backend]] = None):
+                 exclamations: bool = True, sensor_backend_factory: Optional[Callable[[], Backend]] = None,
+                 challenges: bool = True, wait_seconds: float = WAIT_SECONDS):
         self.backend_factory = backend_factory
         self.sensor_backend_factory = sensor_backend_factory  # turni "[sensore: ...]": modello più rapido (o None)
         self.speaker = speaker
@@ -74,6 +121,10 @@ class AssistantSession:
         self.session_limit = float(session_limit or 0.0)   # secondi di gioco per sessione (0 = nessun limite)
         self.blocked_words: list[str] = [w for w in (blocked_words or []) if w]
         self.exclamations_enabled = exclamations   # {letsago} nelle risposte = esclamazione originale di Mario
+        self.challenges_enabled = challenges        # [aspetta: salto] nelle risposte = azione attesa dai sensori
+        self.wait_seconds = float(wait_seconds or WAIT_SECONDS)
+        self.challenge: Optional[Challenge] = None
+        self._timeouts_in_row = 0
         self._turn_sounds = 0
         self.started = time.time()
         self.time_up = False
@@ -140,6 +191,8 @@ class AssistantSession:
                 "backend": self.backend_name, "last_answer": self.last_answer, "last_error": self.last_error,
                 "history": len(self.history), "context": {**self.mapper.context, "text": self.mapper.context_text()},
                 "intents": [i.to_dict() for i in list(self.intents)[-10:]],
+                "challenge": self.challenge.to_dict() if self.challenge else None,
+                "challenges_enabled": self.challenges_enabled, "wait_seconds": self.wait_seconds,
                 "speaker": self.speaker.status(), "behaviours": self.behaviours.status(),
                 "rules": self.mapper.rules_dict(), "emotions": [EMOTIONS[k].to_dict() for k in EMOTIONS]}
 
@@ -150,14 +203,23 @@ class AssistantSession:
             return {}
         return pack.exclamations()
 
+    def wait_targets(self) -> list[str]:
+        """Le azioni che il modello può chiedere con [aspetta: ...]: quelle con la regola dei sensori attiva."""
+        if not self.challenges_enabled:
+            return []
+        rules = self.mapper.rules
+        return [name for rule, name in WAIT_TARGET_NAMES.items() if rule in rules and rules[rule].enabled]
+
     def build_system_prompt(self) -> str:
         memories = memory_prompt(self.memory.list()) if self.memory_enabled else ""
         found = self.available_exclamations()
         sound_rule = SOUND_RULE.format(items="; ".join(f"{{{n}}} = \"{phrase}\", {when}" for n, (phrase, when)
                                                        in found.items())) if found else ""
+        targets = self.wait_targets()
+        wait_rule = WAIT_RULE.format(targets=", ".join(targets), seconds=self.wait_seconds) if targets else ""
         text = BASE_PROMPT.format(tags=" ".join(f"[{k}]" for k in MODEL_EMOTIONS), persona=self.persona.strip(),
                                   memory_rule=MEMORY_RULE if self.memory_enabled else "", memory=memories,
-                                  sound_rule=sound_rule, context=self.mapper.context_text())
+                                  wait_rule=wait_rule, sound_rule=sound_rule, context=self.mapper.context_text())
         return "\n".join(line for line in text.splitlines() if line.strip()).strip()
 
     # ----- sicurezza: parole bloccate e limite di tempo --------------------------------------------
@@ -197,6 +259,7 @@ class AssistantSession:
             self._set_emotion("sonno")
             self.speaker.speak(TIME_UP_SPEECH, "sonno")
             self.listening = False
+            self.challenge = None
         return False
 
     # ----- ingresso -----------------------------------------------------------------------
@@ -213,21 +276,91 @@ class AssistantSession:
         if ev.get("type") == "PORT_VALUE_SINGLE" and ev.get("io_type") in (0x4A, 0x49) or intents:
             self.emit("context", context=self.mapper.context, text=self.mapper.context_text())
         self._dispatch(intents)
+        self._check_challenge()
         return intents
 
     def tick(self) -> list[Intent]:
-        """Da chiamare ogni mezzo secondo circa: promuove pantaloni e colore rimasti stabili."""
+        """Da chiamare ogni mezzo secondo circa: promuove pantaloni e colore rimasti stabili e controlla
+        il tempo dell'azione attesa."""
         intents = self.mapper.tick()
         if intents:
             self.emit("context", context=self.mapper.context, text=self.mapper.context_text())
             self._dispatch(intents)
+        self._check_challenge()
         return intents
 
     def _dispatch(self, intents: list[Intent]) -> None:
         for intent in intents:
             self.intents.append(intent)
-            outcome = self._apply(intent)
+            outcome = self._challenge_outcome(intent) or self._apply(intent)
             self.emit("intent", intent=intent.to_dict(), outcome=outcome, text=f"{intent.source}: {outcome}")
+
+    # ----- storia interattiva: [aspetta: ...] ------------------------------------------------------
+
+    def _start_challenge(self, text: str, turn: int) -> None:
+        enabled = {rule for rule in WAIT_TARGET_NAMES if rule in self.mapper.rules and self.mapper.rules[rule].enabled}
+        challenge = parse_challenge(text, turn, enabled)
+        if challenge is None:
+            self.emit("challenge_invalid", turn=turn, text=f"azione da aspettare non riconosciuta: {text}")
+            return
+        if not self._voice_active() or self.speaker.idle:
+            challenge.started = time.time()
+        self.challenge = challenge
+        self.emit("challenge", turn=turn, challenge=challenge.to_dict(), seconds=self.wait_seconds,
+                  text=f"aspetto: {challenge.text} (fino a {self.wait_seconds:g} s)")
+
+    def _challenge_matches(self, challenge: Challenge, intent: Intent) -> bool:
+        if not challenge.value:
+            return True
+        got = intent.source.split(": ", 1)[-1].lower()
+        if challenge.value in got or got and got in challenge.value:
+            return True
+        family = TILE_FAMILY_WORDS.get(challenge.value)
+        tile = self.mapper.context.get("tile")
+        return challenge.rule == "basetta" and family is not None and tile is not None and tile_family(tile) == family
+
+    def _challenge_outcome(self, intent: Intent) -> Optional[str]:
+        """Se c'è un'azione attesa: la giusta (o una dello stesso tipo ma sbagliata) diventa un messaggio
+        "[sensore: sfida ...]" per il modello; gli altri sensori vengono ignorati per non perdere il filo del
+        gioco, tranne cadute e comandi (pulsante, scossa) che funzionano come sempre."""
+        challenge = self.challenge
+        if challenge is None or not self.listening:
+            return None
+        if intent.name != challenge.rule:
+            if intent.kind == "prompt" and intent.priority < 2:
+                return f"ignorato: Mario aspetta {challenge.text}"
+            return None
+        self.challenge = None
+        self._timeouts_in_row = 0
+        detail = f" {intent.text}" if intent.kind == "prompt" else ""
+        if self._challenge_matches(challenge, intent):
+            self.emit("challenge_done", challenge=challenge.to_dict(), source=intent.source,
+                      text=f"sfida riuscita: {challenge.text} ({intent.source})")
+            text, source = f"Ce l'ha fatta, ha fatto quello che avevi chiesto ({challenge.text})!{detail}", "sfida riuscita"
+        else:
+            self.emit("challenge_missed", challenge=challenge.to_dict(), source=intent.source,
+                      text=f"sfida: chiesto {challenge.text}, arrivato {intent.source}")
+            text, source = f"Avevi chiesto {challenge.text}, invece è arrivato: {intent.source}.{detail}", "sfida sbagliata"
+        return self._apply(Intent("prompt", "sfida", text, f"{source}: {intent.source}", 1, intent.ts))
+
+    def _check_challenge(self, now: Optional[float] = None) -> None:
+        challenge, now = self.challenge, now or time.time()
+        if challenge is None or challenge.started is None or self.busy or not self.speaker.idle:
+            return
+        if now - challenge.started < self.wait_seconds:
+            return
+        self.challenge = None
+        self._timeouts_in_row += 1
+        if self._timeouts_in_row >= WAIT_TIMEOUTS_IN_ROW:
+            self.emit("challenge_timeout", challenge=challenge.to_dict(), final=True,
+                      text=f"tempo scaduto per {challenge.text} di nuovo: Mario smette di aspettare")
+            return
+        self.emit("challenge_timeout", challenge=challenge.to_dict(), final=False,
+                  text=f"tempo scaduto: nessuno ha fatto {challenge.text}")
+        text = (f"Sono passati {self.wait_seconds:g} secondi e nessuno ha fatto quello che avevi chiesto "
+                f"({challenge.text}). Incoraggia, oppure cambia gioco; se chiedi un'azione, scrivi di nuovo "
+                "[aspetta: ...].")
+        self._apply(Intent("prompt", "sfida", text, "sfida: tempo scaduto", 1, now))
 
     def _apply(self, intent: Intent) -> str:
         if intent.kind == "control":
@@ -249,7 +382,8 @@ class AssistantSession:
             self._enqueue(intent)
             return "in attesa: Mario sta ancora parlando"
         try:
-            self.ask(intent.text, source=intent.source, priority=intent.priority, sensor=True)
+            self.ask(intent.text, source=intent.source, priority=intent.priority, sensor=True,
+                     quick=intent.name != "sfida")
         except AssistantBusy:
             self._enqueue(intent)
             return "in attesa: Mario sta ancora parlando"
@@ -279,7 +413,7 @@ class AssistantSession:
             text = "Nel frattempo sono successe più cose: " + " ".join(i.text for i in fresh)
             source = "sensori: " + ", ".join(i.source.split(": ", 1)[-1] for i in fresh)
         try:
-            self.ask(text, source=source, sensor=True)
+            self.ask(text, source=source, sensor=True, quick=all(i.name != "sfida" for i in fresh))
             self.emit("intent", intent=fresh[-1].to_dict(), outcome="inviato al modello (dalla coda)",
                       text=f"{source}: inviato al modello (dalla coda)")
         except (AssistantBusy, ValueError):
@@ -287,13 +421,20 @@ class AssistantSession:
 
     # ----- turni ----------------------------------------------------------------------------
 
-    def ask(self, text: str, source: str = "utente", priority: int = 1, sensor: bool = False) -> int:
+    def ask(self, text: str, source: str = "utente", priority: int = 1, sensor: bool = False,
+            quick: Optional[bool] = None) -> int:
+        """Nuovo turno. `sensor`: il messaggio arriva dal corpo ("[sensore: ...]"); `quick` (di solito uguale a
+        `sensor`): risposta breve con il modello dei sensori. Le sfide della storia interattiva sono messaggi dei
+        sensori ma non rapidi: la storia la continua il modello della conversazione."""
+        quick = sensor if quick is None else quick
         text = text.strip()
         if not text:
             raise ValueError("testo vuoto")
         if not self._check_time():
             raise AssistantBusy("tempo di gioco finito: premi Nuova (o /nuova) per ricominciare")
         if not sensor:
+            self.challenge = None  # chi scrive (o parla) cambia discorso: niente più azione attesa
+            self._timeouts_in_row = 0
             word = self._blocked_in(text)
             if word:
                 self.emit("blocked", text=f"messaggio non inviato al modello (parola bloccata)", source=source)
@@ -311,17 +452,21 @@ class AssistantSession:
             self.busy = True
             self.turn += 1
             turn = self.turn
-        prompt = f"[sensore: {source}] {text} (Rispondi con una frase breve, al massimo due.)" if sensor else text
+        if sensor:
+            hint = "Rispondi con una frase breve, al massimo due." if quick else "Continua la storia in due o tre frasi."
+            prompt = f"[sensore: {source}] {text} ({hint})"
+        else:
+            prompt = text
         ctx = self.mapper.context_text()
         if ctx != self._ctx_sent:
             prompt = f"(Stato del corpo: {ctx})\n{prompt}"
             self._ctx_sent = ctx
-        self._thread = threading.Thread(target=self._run_turn, args=(turn, text, source, prompt, sensor),
+        self._thread = threading.Thread(target=self._run_turn, args=(turn, text, source, prompt, sensor, quick),
                                         name=f"assistant-turn-{turn}", daemon=True)
         self._thread.start()
         return turn
 
-    def _run_turn(self, turn: int, text: str, source: str, prompt: str, sensor: bool) -> None:
+    def _run_turn(self, turn: int, text: str, source: str, prompt: str, sensor: bool, quick: bool = False) -> None:
         started = time.time()
         self._first_sentence_at: Optional[float] = None
         # se un turno precedente sta ancora finendo, gli lasciamo il tempo di uscire
@@ -336,7 +481,7 @@ class AssistantSession:
         self._turn_sounds = 0
         self._turn_allowed = self.available_exclamations()
         try:
-            factory = self.sensor_backend_factory if sensor and self.sensor_backend_factory else self.backend_factory
+            factory = self.sensor_backend_factory if quick and self.sensor_backend_factory else self.backend_factory
             backend = factory()
             self.backend_name = backend.describe()
             self.emit("start", turn=turn, backend=self.backend_name, text=f"chiedo a {self.backend_name}")
@@ -368,6 +513,8 @@ class AssistantSession:
                 del self.history[:-self.history_limit]
                 self.on_message({"role": "assistant", "content": plain, "emotion": self.emotion, "source": self.backend_name,
                                  "turn": turn, "ts": time.time()})
+                if self.challenges_enabled and parser.waits:
+                    self._start_challenge(parser.waits[-1], turn)
                 if self.memory_enabled:
                     for memory in parser.memories:
                         try:
@@ -396,8 +543,11 @@ class AssistantSession:
                 self._flush_pending()
 
     def _on_spoken(self, text: str, emotion: Optional[str]) -> None:
-        """Chiamato dal thread della voce alla fine di ogni frase: se la coda è vuota, tocca agli eventi in attesa."""
+        """Chiamato dal thread della voce alla fine di ogni frase: se la coda è vuota, tocca agli eventi in attesa
+        e parte l'attesa dell'azione chiesta (Mario ha finito di chiederla)."""
         if self.speaker.idle:
+            if self.challenge is not None and self.challenge.started is None and not self.busy:
+                self.challenge.started = time.time()
             self._flush_pending()
 
     def _consume(self, items: list[tuple[str, str]], sentences: SentenceBuffer, turn: int) -> None:
@@ -407,8 +557,8 @@ class AssistantSession:
                 if rest:
                     self._sentence(rest, turn)
                 self._set_emotion(value)
-            elif kind == "memory":
-                continue  # salvata a fine risposta (vedi _run_turn), mai letta a voce
+            elif kind in ("memory", "wait"):
+                continue  # gestiti a fine risposta (vedi _run_turn), mai letti a voce
             elif kind == "sound":
                 self._exclamation(value, sentences, turn)
             else:
@@ -451,6 +601,7 @@ class AssistantSession:
         if self.busy:
             self._abort = True
         self.pending.clear()
+        self.challenge = None
         self.speaker.stop()
         self.behaviours.restore()
         self.emit("stopped", text="fermato")
@@ -460,6 +611,7 @@ class AssistantSession:
         if self.busy:
             self._abort = True
         self.pending.clear()
+        self.challenge = None
         self.speaker.stop()
         self.speaker.on_start = None
         self.speaker.on_end = None

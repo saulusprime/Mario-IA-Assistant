@@ -56,8 +56,12 @@ _SOUND_NAME = re.compile(r"^[a-z0-9_]{1,%d}$" % SOUND_MAX)
 _SOUND_TOKEN = re.compile(r"\{\s*([a-z0-9_]{1,%d})\s*\}\s*" % SOUND_MAX)
 MEMORY_PREFIX = "ricorda:"   # [ricorda: il bambino si chiama Leo] -> memoria tra le sessioni, non viene letto
 MEMORY_MAX = 200
+WAIT_PREFIX = "aspetta:"     # [aspetta: salto] -> la sessione aspetta l'azione dai sensori, non viene letto
+WAIT_MAX = 60
+LONG_TAGS = {MEMORY_PREFIX: MEMORY_MAX, WAIT_PREFIX: WAIT_MAX}
 _SENTENCE_END = re.compile(r"[.!?…]+[\"'»)]*(\s+)")
 _MEMORY_TAG = re.compile(r"\[\s*ricorda:\s*([^\]]{1,%d})\]\s*" % MEMORY_MAX, re.IGNORECASE)
+_WAIT_TAG = re.compile(r"\[\s*aspetta:\s*([^\]]{1,%d})\]\s*" % WAIT_MAX, re.IGNORECASE)
 
 
 def resolve(tag: str) -> Optional[str]:
@@ -68,11 +72,12 @@ def resolve(tag: str) -> Optional[str]:
 
 
 def strip_tags(text: str) -> str:
-    """Toglie i tag emozione, i tag [ricorda: ...] e le esclamazioni {nome} da un testo completo (per il log e la
-    cronologia)."""
+    """Toglie i tag emozione, i tag [ricorda: ...] e [aspetta: ...] e le esclamazioni {nome} da un testo completo
+    (per il log e la cronologia)."""
     def repl(m: re.Match) -> str:
         return "" if resolve(m.group(1)) else m.group(0)
     text = _MEMORY_TAG.sub("", text)
+    text = _WAIT_TAG.sub("", text)
     text = _SOUND_TOKEN.sub("", text)
     return re.sub(r"\[([^\[\]]{1,%d})\]\s*" % TAG_MAX, repl, text).strip()
 
@@ -87,9 +92,14 @@ def memory_tags(text: str) -> list[str]:
     return [m.group(1).strip() for m in _MEMORY_TAG.finditer(text)]
 
 
+def wait_tags(text: str) -> list[str]:
+    """Le azioni dei tag [aspetta: ...] di un testo completo."""
+    return [m.group(1).strip() for m in _WAIT_TAG.finditer(text)]
+
+
 class EmotionStream:
     """Riceve il testo a pezzi e restituisce una lista di ("emotion", chiave) / ("text", str) / ("memory", str) /
-    ("sound", nome).
+    ("wait", azione) / ("sound", nome).
 
     Un tag può arrivare spezzato in due pezzi ("[gio" + "ia] Ciao", "{lets" + "ago}"): si aspetta la parentesi
     di chiusura prima di decidere. Le parentesi che non sono un'emozione, un ricordo o un nome di esclamazione
@@ -100,11 +110,16 @@ class EmotionStream:
         self.current = DEFAULT_EMOTION
         self.seen: list[str] = []
         self.memories: list[str] = []
+        self.waits: list[str] = []
         self.sounds: list[str] = []
 
-    def _is_memory_prefix(self) -> bool:
-        head = self.buffer[1:len(MEMORY_PREFIX) + 2].lstrip().lower()
-        return head.startswith(MEMORY_PREFIX) or MEMORY_PREFIX.startswith(head) and bool(head)
+    def _open_limit(self) -> int:
+        """Lunghezza massima di un tag ancora aperto: più lunga se può essere [ricorda: ...] o [aspetta: ...]."""
+        head = self.buffer[1:16].lstrip().lower()
+        for prefix, limit in LONG_TAGS.items():
+            if head.startswith(prefix) or head and prefix.startswith(head):
+                return limit + len(prefix) + 12
+        return TAG_MAX + 2
 
     def feed(self, chunk: str) -> list[tuple[str, str]]:
         self.buffer += chunk
@@ -138,8 +153,7 @@ class EmotionStream:
                 continue
             end = self.buffer.find("]")
             if end < 0:
-                limit = MEMORY_MAX + 12 if self._is_memory_prefix() else TAG_MAX + 2
-                if len(self.buffer) > limit:  # troppo lungo per essere un tag: è testo
+                if len(self.buffer) > self._open_limit():  # troppo lungo per essere un tag: è testo
                     out.append(("text", self.buffer))
                     self.buffer = ""
                 break  # aspettiamo il resto
@@ -149,6 +163,14 @@ class EmotionStream:
                 if memory:
                     out.append(("memory", memory))
                     self.memories.append(memory)
+                rest = self.buffer[end + 1:]
+                self.buffer = rest.lstrip(" ") if rest else ""
+                continue
+            if inner.lower().startswith(WAIT_PREFIX) and len(inner) <= WAIT_MAX + len(WAIT_PREFIX):
+                wait = inner[len(WAIT_PREFIX):].strip()
+                if wait:
+                    out.append(("wait", wait))
+                    self.waits.append(wait)
                 rest = self.buffer[end + 1:]
                 self.buffer = rest.lstrip(" ") if rest else ""
                 continue

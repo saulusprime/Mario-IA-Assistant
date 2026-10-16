@@ -46,6 +46,7 @@
   <h2>Prova un'emozione</h2>
   <div class="actions" id="emo-buttons">{% for e in emotions %}<button class="small" data-emotion="{{ e.key }}" title="{{ e.description }}" style="border-color:{{ e.color }}">{{ e.emoji }} {{ e.label }}</button>{% endfor %}</div>
   <div class="actions"><input type="text" id="say-text" placeholder="Frase da far dire a Mario con la voce" style="flex:1; min-width:10em"><button id="say-send">Di' questo</button></div>
+  <p id="as-challenge" class="challenge" hidden></p>
   <h2>Ultimi intenti dai sensori</h2>
   <ul id="intent-list" class="menu-list"><li class="muted">nessuno</li></ul>
   <h2>Comportamenti su Mario <small class="muted">(volume, indicazione occupato, porte sperimentali)</small></h2>
@@ -94,6 +95,7 @@
       <div class="actions"><label>Minuti di gioco per sessione <input type="number" id="set-minutes" min="0" max="240" style="width:5em"> <span class="muted">(0 = nessun limite; allo scadere Mario saluta e smette di ascoltare, "Nuova" ricomincia)</span></label></div>
       <div class="actions"><label>Parole bloccate <input type="text" id="set-blocked" placeholder="separate da virgola" style="width:22em"></label> <span class="muted">non vengono inviate al modello e vengono sostituite nelle risposte</span></div>
       <div class="actions"><label><input type="checkbox" id="set-memory"> memoria tra le sessioni (il modello può salvare ricordi con [ricorda: …])</label></div>
+      <div class="actions"><label title="Il modello scrive [aspetta: salto], [aspetta: basetta nemico]…: Mario aspetta l'azione dai sensori e la storia continua quando arriva (o quando scade il tempo)"><input type="checkbox" id="set-challenges"> storia interattiva: il modello può chiedere azioni e aspettarle</label> <label>attesa massima <input type="number" id="set-wait" min="5" max="120" step="5" style="width:5em"> s</label></div>
       <h2>Comportamenti sul Mario fisico</h2>
       <div class="actions"><label><input type="checkbox" id="set-beh"> attivi</label> <label><input type="checkbox" id="set-vol"> effetti di volume</label> <label title="Provato il 12/10/2026: Mario fw 6.5.01 risponde INVALID_USE, quindi non ha effetto"><input type="checkbox" id="set-busy"> indicazione "occupato" (azione hub 0x05/0x06: Mario la rifiuta, nessun effetto)</label></div>
       <div class="actions"><label><input type="checkbox" id="set-ports"> scritture sperimentali su porta 4/7</label></div>
