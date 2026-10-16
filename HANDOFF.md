@@ -1,19 +1,19 @@
 # HANDOFF — LEGO Mario via Bluetooth LE
 
-Diario dettagliato del lavoro svolto dall'11 al 15 ottobre 2026 (prima sessione l'11/10 dalle
+Diario dettagliato del lavoro svolto dall'11 al 16 ottobre 2026 (prima sessione l'11/10 dalle
 12:40 alle 19:00, prove dal vivo il 12/10, documentazione e sviluppo senza Mario il 13/10, voce IA
-con OpenVoice il 14/10, moduli e MIDI dell'archivio dei suoni e sistema Bluetooth del PC il 15/10)
-e stato
+con OpenVoice il 14/10, moduli e MIDI dell'archivio dei suoni e sistema Bluetooth del PC il 15/10,
+evoluzioni dell'assistente il 16/10) e stato
 del progetto per chi lo riprende. Il README spiega *come si usa*; questo file spiega *cosa è stato
 fatto, perché, cosa ha funzionato e cosa no*.
 
-**Stato al 15/10 sera, in breve.** Connessione e pairing stabili; sensori decodificati (gesti,
+**Stato al 16/10, in breve.** Connessione e pairing stabili; sensori decodificati (gesti,
 scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); dashboard con pagine
 Monitor, Eventi, Console, Accessori, Assistente, Avventure; assistente con Claude provato con Mario
 connesso (11/10), con ricordi, sicurezza per i bambini e diario; designer di avventure in prima
 versione (solo simulato); strumento `decode` per log, catture e bugreport dei telefoni; voce IA
 con OpenVoice (piper + timbro di una registrazione, 14/10); effetti, voci e musiche dei giochi in locale con la pagina Suoni (uso privato; tutti i formati riproducibili dal 15/10); messaggi
-"stile Mario" (esclamazioni originali + piper più acuto), anche nella sessione con il modello; `./run.sh doctor` per il PC e agente di pairing ristretto a Mario; 166 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
+"stile Mario" (esclamazioni originali + piper più acuto), anche nella sessione con il modello; `./run.sh doctor` per il PC e agente di pairing ristretto a Mario; dal 16/10 ingresso vocale offline (pulsante di Mario come push-to-talk), storia interattiva con `[aspetta: ...]`, modello rapido per i sensori, temi da evitare con riepilogo per i genitori, ricordi per bambino; 194 test offline; repository pubblico su GitHub allineato. Le porte 4 e 7 restano inerti: nessuna via per far
 suonare Mario via Bluetooth con i comandi standard. Da fare con Mario acceso: sezione 1 del TODO
 (compreso `./run.sh re-checks`, che esegue dal vivo le prove di reverse engineering della sezione 2).
 
@@ -749,6 +749,73 @@ Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiun
 - Test: da 159 a 166 (`test_syscheck` su un sysfs finto, agente ristretto in `test_device_fake`,
   sezione della pagina Scansione in `test_web_pages`).
 
+### 16/10 — Evoluzioni dell'assistente (sezione 7 del TODO)
+
+Sei commit, uno per punto, più una correzione trovata strada facendo.
+
+- **Modello per i sensori** (`ee13422`): `LLMConfig.sensor_model` "auto" usa haiku con Claude, e la sessione
+  lo usa solo per i turni `[sensore: ...]`.
+  - Misurato su tre turni: prima frase 1,2–1,5 s con haiku, 1,2–2,1 s con sonnet.
+- **Ragionamento di Claude 5** (`ed142bf`). Nella prima prova della storia interattiva la risposta era vuota:
+  sonnet e haiku avviavano da soli un blocco "thinking" che consumava tutti i 350 token
+  (`stop_reason: max_tokens`, `thinking_tokens: 350`). È un difetto vecchio: colpiva tutte le richieste
+  un po' articolate.
+  - Come spegnerlo, dalle risposte dell'API: haiku `{"type": "disabled"}`; sonnet `between_tools` (per
+    `disabled` risponde 400 e indica l'alternativa).
+  - Opus e fable non lo spengono: `adaptive` con `output_config.effort: "low"` e 1024 token di margine.
+  - Effetto sulla prima parola di sonnet: da 6–11 s a 1,0 s.
+  - Se un modello rifiuta i parametri (HTTP 400), un solo nuovo tentativo senza, e lo ricorda. Una
+    risposta vuota per max_tokens ora è un errore.
+- **Storia interattiva** (`a8d39ba`). `[aspetta: ...]` viene letto da `EmotionStream` come `[ricorda: ...]`.
+  - `Challenge` nella sessione: l'attesa parte quando Mario ha finito di parlare. Durante l'attesa gli altri
+    sensori sono ignorati, tranne cadute e comandi.
+  - Esiti "sfida riuscita" e "sfida sbagliata". Basette anche per famiglia, con `tile_family` sul codice
+    nel contesto.
+  - Dopo due scadenze di fila Mario smette di chiedere.
+  - La storia la continua il modello della conversazione (`quick=False`): nella prima versione la
+    proseguiva haiku, con il limite di "due frasi".
+  - Provato con Claude, una storia completa. Dopo una scadenza Claude aveva scritto "aspetto il tuo
+    salto!" senza tag: ora il messaggio di scadenza ricorda di usare `[aspetta: ...]`.
+- **Ingresso vocale** (`2fb08b1`): `.venv-stt` (Python 3.11 con uv, faster-whisper 1.x), modelli base e small.
+  - Misure con 6 frasi sintetiche di piper, anche alzate di 5 semitoni con rubberband per simulare un
+    bambino:
+
+    | Modello | Tempo per frase | Parole sbagliate |
+    |---|---|---|
+    | base | 1,0 s | 23–52 % |
+    | small, 4 thread | 4 s | 12–25 % |
+    | small, 2 thread | 3,1 s | 12–18 % |
+
+  - Il tempo non scende con `chunk_length` né con `without_timestamps`: CTranslate2 riempie comunque la
+    finestra di 30 s.
+  - whisper.cpp (pywhispercpp, small q5_1): 10 s con la finestra intera, 3,2 s con `audio_ctx=512`. Non
+    conviene.
+  - Processo `stt_worker.py` con il protocollo del worker di OpenVoice. La parte comune è diventata
+    `worker.py`: `OpenVoiceClient` ora ne eredita, con gli stessi test.
+  - Registratore `pw-record` a 16 kHz fermato con SIGINT; file cancellato dopo la trascrizione.
+  - Il pulsante di Mario fa da push-to-talk: `BUTTON` premuto e rilasciato, già verificato il 12/10.
+  - Prova completa con Whisper e Claude veri e un registratore finto: testo in 3,0 s e prima frase in
+    4,2 s dal rilascio. Una prima misura di 14 s era dovuta all'API in quel momento: nello stesso
+    minuto chiamate dirette impiegavano 2,5–4,4 s.
+  - Il microfono vero non è stato usato: niente registrazioni della stanza senza l'utente.
+- **Sicurezza, seconda tappa** (`c49cced`). `safety.py` con quattro temi; le parole sono state ripulite dai
+  falsi allarmi del mondo di Mario ("spara palle di fuoco", "un abito a righe", "il mio numero
+  preferito").
+  - Le frasi del modello si controllano prima di dirle, in `_sentence`; il resto della risposta viene
+    scartato.
+  - Corretto un difetto emerso dal test: dopo l'interruzione, il tag d'emozione nello stesso pezzo di
+    testo veniva ancora applicato.
+  - Blocchi nel diario con `role="system"`. Limite di turni accanto a quello dei minuti.
+  - `report.py`: riepilogo del giorno. Il riassunto scritto da Claude su una giornata finta ha segnalato
+    con calma la paura di Bowser e il numero di telefono bloccato; con 350 token si troncava, ora ne ha
+    800.
+- **Ricordi** (`ba099f1`): colonne `profile`, `source` ed `expires` con migrazione (`PRAGMA table_info`).
+  - Profilo attivo nel prompt; ricordi comuni; ricordi dei genitori che non scadono.
+  - Riassunto in background oltre 20 ricordi del modello, con `replace_memories` in una transazione.
+  - Claude ha ridotto 21 ricordi realistici a 10 in 2,1 s: doppioni uniti, età aggiornata da 6 a 7,
+    "non ha più paura dei Boo" tenuto.
+- Test: da 166 a 194 (`test_assistant_evo`, 26). Clip di Mario come comportamento: resta bloccato.
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -763,9 +830,9 @@ Richiesta dell'utente: collegare il modulo della voce alla sessione LLM ("aggiun
 | `mario/env.py` | caricamento di `.env` (chiave API) senza dipendenze |
 | `mario/syscheck.py` | controllo del PC per il Bluetooth (`doctor`, pagina Scansione, `/api/system/checks`): adattatore, rfkill, servizio, autosospensione, banda del Wi-Fi, hub LEGO associati |
 | `mario/rar20.py` | estrazione RAR 2.0 in Python (Unpack20 con modalità audio, CRC32) per i moduli `.mdr` dell'archivio dei suoni |
-| `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`) (vedi README, sezione Assistente) |
+| `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`), `stt.py` e `stt_worker.py` (ingresso vocale, faster-whisper in `.venv-stt`), `worker.py` (ciclo di vita comune dei processi con i modelli), `safety.py` (temi da evitare), `report.py` (riepilogo del giorno) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py`; esempi in `mario/data/adventures/` |
-| `tests/` | 166 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
+| `tests/` | 194 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario`; test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -799,7 +866,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (166); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (194); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

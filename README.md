@@ -126,6 +126,9 @@ indicazione "occupato").
 ./run.sh assistant                 # con Mario connesso: sensori -> modello -> voce
 ./run.sh assistant --no-mario      # solo tastiera, modello e voce (prova senza Bluetooth)
 ./run.sh assistant --backend demo  # risposte locali a regole, senza rete
+./run.sh assistant --voice         # si parla a Mario tenendo premuto il suo pulsante (./tools/setup_stt.sh)
+./run.sh assistant --profile Leo   # ricordi del bambino che gioca (più quelli comuni)
+./run.sh listen                    # prova del riconoscimento vocale: 5 s dal microfono (o --file)
 ./run.sh web                       # pagina "Assistente" della dashboard
 ```
 
@@ -135,7 +138,7 @@ modificabili dalla dashboard: salto, caduta e rotazione diventano frasi come
 carattere corrispondente (Mario Fuoco è energico, Mario Gatto giocoso, …); una basetta
 letta dallo scanner dice se è un nemico, un premio, la partenza o il traguardo; il colore
 del terreno aggiunge "scotta, è lava" e simili; il pulsante sulla schiena attiva o sospende
-l'ascolto; la scossa ripete l'ultima risposta; la batteria sotto il 15 % fa dire a Mario che
+l'ascolto (con l'ingresso vocale acceso diventa "tieni premuto e parla"); la scossa ripete l'ultima risposta; la batteria sotto il 15 % fa dire a Mario che
 è stanco. Lo stato del corpo (pantaloni, terreno, ultima basetta, gesto, batteria) va nel
 prompt di sistema e, quando cambia, in testa al messaggio. Ogni regola ha una pausa minima
 tra due attivazioni (i gesti arrivano a raffica); l'urto è spento di default.
@@ -150,6 +153,15 @@ Ai modelli Claude 5 non va inviato `temperature` (HTTP 400 "deprecated for this 
 il parametro resta solo per gli endpoint OpenAI-compatibili. Il modello è istruito a parlare come Mario, in italiano,
 frasi brevi per bambini, e a iniziare ogni frase con un tag emozione tra `[gioia]`
 `[sorpresa]` `[pensieroso]` `[allarme]` `[tristezza]` `[sonno]` `[calma]`.
+
+I turni dei sensori usano un modello a parte (`sensor_model`, impostazione "Modello per i sensori",
+`--sensor-model`): con `auto` è `claude-haiku-5-5` quando il backend è Claude, lo stesso modello con
+gli altri backend; vuoto vuol dire sempre lo stesso. La cronologia è unica. I modelli Claude 5
+possono iniziare a ragionare ("thinking") da soli e consumare tutti i token massimi prima del testo:
+il 16/10 una richiesta di storia dava una risposta vuota. Il backend spegne il ragionamento dove si
+può (haiku `disabled`, sonnet `between_tools`) e su opus e fable chiede `adaptive` con impegno basso
+e 1024 token di margine. Un modello che rifiuta questi parametri riceve la richiesta senza, e una
+risposta vuota per esaurimento dei token diventa un errore ("Ops, adesso non riesco a rispondere").
 
 **Uscita.** `emotions.py` separa i tag dal testo mentre arriva e spezza il testo in frasi;
 `tts.py` le pronuncia una alla volta con `spd-say` (speech-dispatcher + espeak-ng, voci
@@ -176,7 +188,9 @@ comportamenti, i pulsanti per simulare i sensori senza il Mario fisico, le impos
 (backend, modello, chiave, voce, comportamenti) e la tabella delle regole. Gli eventi
 viaggiano sullo stesso flusso SSE del monitor (`type` = `ASSISTANT`, campo `kind`:
 `user`, `start`, `emotion`, `delta`, `sentence`, `speaking`, `done`, `error`, `intent`,
-`context`, `behaviour`, `listening`, `memory`, `memory_forgotten`, `blocked`, `time_up`). La
+`context`, `behaviour`, `listening`, `memory`, `memory_forgotten`, `memory_summarized`, `profile`,
+`blocked`, `blocked_output`, `time_up`, `challenge`, `challenge_done`, `challenge_missed`,
+`challenge_timeout`, `voice_listening`, `voice_processing`, `voice_text`, `voice_empty`, `voice_error`). La
 conversazione è salvata nella tabella `assistant_messages`; le impostazioni nella tabella
 `settings` (chiavi `assistant.*`).
 
@@ -187,6 +201,17 @@ aggiungono e si cancellano dalla pagina (sezione Ricordi), dalle API `/api/assis
 dalla CLI (`/ricordi`, `/ricorda TESTO`, `/dimentica [N|tutto]`); la CLI usa lo stesso database
 della dashboard (`data/mario.sqlite3`, `--no-db` per evitarlo), dove salva anche il diario.
 
+- **Profili.** Ogni ricordo appartiene a un bambino o è comune a tutti. Il profilo attivo ("Chi gioca"
+  nella pagina, `--profile`, `/profilo NOME`) vede i suoi ricordi e quelli comuni, e i ricordi nuovi del
+  modello vanno a lui. Il prompt dice a Mario con chi sta giocando.
+- **Ricordi dei genitori.** Quelli scritti dalla pagina o con `/ricorda` non scadono e il riassunto non li
+  tocca.
+- **Scadenza.** Con "scadono dopo N giorni" (`--memory-days`) i ricordi del modello scadono.
+- **Riassunto automatico.** Oltre 20 ricordi del modello per profilo, il modello dei sensori li riassume
+  in background in al massimo 10 frasi. Provato con Claude: da 21 a 10 in 2,1 s, con i doppioni uniti e
+  l'età aggiornata.
+- I database esistenti ricevono le nuove colonne da soli; i vecchi ricordi diventano comuni.
+
 **Sicurezza per i bambini.** Dalle impostazioni: minuti di gioco per sessione (allo scadere Mario
 saluta, smette di ascoltare i sensori e rifiuta nuovi messaggi finché non si preme "Nuova"), parole
 bloccate (un messaggio che le contiene non va al modello: Mario cambia discorso; nelle risposte
@@ -194,15 +219,79 @@ vengono sostituite con "…"), memoria attivabile o no. La sezione "Diario per i
 tutto ciò che è stato detto, con filtro per data ed esportazione CSV (`/api/assistant/history.csv`).
 Da CLI: `--minutes`, `--block`, `--no-memory`.
 
+- **Temi da evitare** (`mario/assistant/safety.py`). Sono violenza vera, contenuti per adulti e dati
+  personali, compresi i numeri di telefono riconosciuti dalle cifre; c'è anche "paura", spento di default.
+  - I temi entrano nel prompt. Un messaggio del bambino che li tocca non parte.
+  - Una frase del modello che li tocca non viene detta: la risposta si interrompe, non entra nella
+    cronologia e Mario propone un altro gioco.
+  - Le parole sono scelte per lasciare libero il mondo di Mario: "spara palle di fuoco", i Boo, i nemici.
+  - Ogni blocco entra nel diario come riga "sicurezza", con il testo, per controllare anche i falsi
+    allarmi.
+- **Messaggi per sessione** (`--max-turns`): un secondo limite, accanto ai minuti.
+- **Riepilogo del giorno** (diario, `/api/assistant/summary?day=`). Calcolato in locale: tempo di gioco
+  stimato, partite, messaggi a voce e scritti, sensori, emozioni di Mario, blocchi, ricordi nuovi.
+- **Riassunto scritto dal modello**, su richiesta (pulsante, POST con `ai=1`). Manda la conversazione
+  del giorno al modello dei sensori, che l'aveva già ricevuta durante il gioco.
+
 **Gesti di controllo.** La scossa a riposo ripete l'ultima risposta; la scossa mentre Mario parla
 la interrompe. La rotazione vale solo se lo scanner vede qualcosa sotto i piedi (colore o
 basetta): girato in mano, Mario non reagisce (prima la rotazione scattava di continuo).
 
+**Storia interattiva.** Il modello può chiedere un'azione e aspettarla dai sensori, scrivendo alla fine
+della risposta `[aspetta: salto]`. Le azioni possibili sono `giro`, `pantaloni Fuoco`, `basetta nemico`
+(anche amico, premio, partenza, traguardo o un nome), `terreno blu`, `scossa` e `pulsante`; sono
+ammesse solo quelle con la regola dei sensori attiva, e mai far cadere Mario.
+- L'attesa (20 s di default, impostazione e `--wait-seconds`) parte quando Mario ha finito di dire la
+  richiesta. La pagina mostra "⏳ Mario aspetta: …".
+- **Azione giusta**: arriva al modello come `[sensore: sfida riuscita: …]` e la storia continua con il
+  modello della conversazione, in due o tre frasi.
+- **Stesso tipo ma sbagliata** (un'altra basetta): arriva come "sfida sbagliata", con quello che è
+  arrivato.
+- **Altri sensori durante l'attesa**: vengono ignorati. Cadute, pulsante e scossa funzionano come sempre.
+- **Tempo scaduto**: il modello incoraggia o cambia gioco. Alla seconda scadenza di fila Mario smette di
+  chiedere.
+- Chi scrive o parla annulla l'attesa. `--no-challenges` disattiva tutto; senza Mario le sfide sono
+  sempre spente.
+
+Provato con Claude: storia con `[aspetta: salto]` per aprire un cancello, salto simulato e storia
+continuata; poi `[aspetta: pantaloni Fuoco]`, tempo scaduto e nuova proposta (un salto).
+
+**Ingresso vocale.** Il bambino parla a Mario tenendo premuto il pulsante sulla sua schiena e lo lascia
+alla fine. In alternativa: il pulsante "🎤 Tieni premuto e parla" della pagina, `/parla` nella CLI.
+- **Riconoscimento** offline con [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT), in
+  `.venv-stt` con i modelli in `third_party/whisper-models` (`./tools/setup_stt.sh`, circa 650 MB). Un
+  processo tiene il modello caricato (`stt_worker.py`, protocollo comune in `worker.py`, lo stesso
+  della voce IA).
+- **Registrazione** con `pw-record` (o `parecord`, `arecord`) a 16 kHz. Il file viene cancellato dopo
+  la trascrizione: nulla esce dal PC tranne il testo, che arriva al modello come "(a voce) …" e ha la
+  precedenza sulla risposta in corso.
+- Durante la registrazione la voce di Mario si ferma. Le pressioni troppo brevi vengono scartate, e
+  anche le frasi che Whisper "sente" nel silenzio ("Sottotitoli a cura di…"). Se non ha capito, Mario
+  chiede di ripetere senza interrogare il modello.
+- Misure del 16/10 su questo PC (i7-5557U, 2 core) con frasi sintetiche, anche con voce da bambino
+  (piper alzato di 5 semitoni):
+
+  | Modello | Tempo per frase | Parole sbagliate |
+  |---|---|---|
+  | `small` (default) | circa 3 s | 12–18 % |
+  | `base` | circa 1 s | 25–50 % |
+
+  Con 2 thread va meglio che con 4. whisper.cpp con contesto ridotto non era più veloce. Dal rilascio
+  del pulsante alla prima frase di Mario con Claude passano 4,2–4,3 s.
+- Impostazioni nella pagina: ingresso vocale, pulsante di Mario per parlare, modello. Da CLI: `--voice`,
+  `--stt-model`, `--no-voice-button`. Prova: `./run.sh listen` (5 s dal microfono) o
+  `./run.sh listen --file voce.wav`.
+- Il microfono vero non è ancora stato provato: va fatto dall'utente.
+
 **Latenza.** Misurata il 13/10/2026 con l'API (tre prompt per modello, rete di casa): tempo alla
 prima frase pronunciabile 0,7–1,6 s con `claude-haiku-5-5` (risposta completa 0,9–1,9 s) e
-1,1–1,5 s con `claude-sonnet-5-5` (una richiesta a freddo ha impiegato 8,8 s). Entrambi
-rispettano i tag emozione; haiku è una buona scelta per i turni dei sensori. L'evento `done`
-riporta `first_sentence` (la CLI lo stampa come "prima frase dopo N s").
+1,1–1,5 s con `claude-sonnet-5-5` (una richiesta a freddo ha impiegato 8,8 s). Il 16/10, con il
+ragionamento spento:
+- tre turni dei sensori: prima frase 1,2–1,5 s con haiku e 1,2–2,1 s con sonnet;
+- prima parola di sonnet: 1,0 s, contro 6–11 s quando ragionava.
+
+Nei momenti di carico dell'API i tempi salgono fino a 3–10 s. L'evento `done` riporta
+`first_sentence` (la CLI lo stampa come "prima frase dopo N s").
 
 **Voce.** Motori in ordine di preferenza: voce IA (OpenVoice, sotto), piper, `spd-say`, `espeak-ng`.
 Con piper (campo "Modello piper" nelle impostazioni, o `--piper-model`) le frasi sono sintetizzate da
@@ -743,7 +832,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centosessantasei test senza Bluetooth né rete esterna, raggruppati per file:
+Centonovantaquattro test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -754,10 +843,11 @@ Centosessantasei test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_syscheck` (5) | `doctor` su un sysfs finto: adattatore Apple, rfkill, servizio, autosospensione (subito e ai prossimi avvii), banda del Wi-Fi (nmcli e `iw`), hub LEGO associati, sandbox Flatpak |
 | `test_db` (6) | database della dashboard |
 | `test_assistant` (30), `test_assistant_ext` (15) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
+| `test_assistant_evo` (26) | evoluzioni del 16/10. Modello per i sensori. Storia interattiva: tag, salto, basette per famiglia, scadenze, attesa della fine della voce. Ingresso vocale con processo e registratore finti: pulsante di Mario, pressioni brevi, silenzio. Temi, risposte interrotte, limite di messaggi, riepilogo del giorno. Ricordi: migrazione, profili, scadenza, riassunto |
 | `test_openvoice` (21) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni (MIDI con il volume alzato e il taglio, dove c'è fluidsynth), lettura del catalogo del sito |
 | `test_rar20` (3) | estrazione RAR 2.0 in Python su un archivio costruito bit per bit (tabelle, letterali, copie corte e sovrapposte, ripetizione, CRC, errori) e da `fetch-sounds` |
 | `test_sounds_web` (3) | pagina Suoni: catalogo, file per l'anteprima e percorsi vietati, assegnazioni, stile, caricamento e cancellazione |
-| `test_llm_http` (4) | backend Claude e OpenAI contro un server SSE locale (intestazioni, errori HTTP, taglio, Stop) |
+| `test_llm_http` (6) | backend Claude e OpenAI contro un server SSE locale: intestazioni, errori HTTP, taglio, Stop, ragionamento spento per modello con nuovo tentativo, risposta vuota |
 | `test_service` (3), `test_tts` (5) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
 | `test_adventures` (7), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
 | `test_web_pages` (7), `test_web_static` (5) | pagina Eventi, esportazioni, grafici, token, controllo del PC nella pagina Scansione; sintassi del JavaScript e coerenza id/azioni con i template |
@@ -781,7 +871,8 @@ mario/cli.py            comandi scan/info/monitor/shell/decode/doctor/assistant/
 mario/web/              dashboard: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
 mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, memory, session, service,
                         openvoice (client della voce IA), openvoice_worker (processo piper + OpenVoice),
-                        soundpack (suoni veri dei giochi per gli effetti)
+                        soundpack (suoni veri dei giochi per gli effetti), stt e stt_worker (ingresso vocale),
+                        worker (processi con i modelli caricati), safety (temi da evitare), report (riepilogo)
 mario/adventures/       designer di avventure: model, engine, library, service
 mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
@@ -789,13 +880,14 @@ mario/syscheck.py       controllo del PC per il Bluetooth (`doctor`, pagina Scan
 mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'archivio dei suoni
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
-                        setup_openvoice.sh (voce IA), fetch_mario_sounds.py (suoni dei giochi)
-tests/                  test offline (166)
+                        setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale), fetch_mario_sounds.py
+tests/                  test offline (194)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
-                        convertitore V2, voci piper italiane; ignorati da git
+                        convertitore V2, voci piper italiane, modelli Whisper (whisper-models/); ignorati da git
 .venv-openvoice/        ambiente della voce IA (torch, OpenVoice, piper), creato da tools/setup_openvoice.sh
+.venv-stt/              ambiente dell'ingresso vocale (faster-whisper), creato da tools/setup_stt.sh
 data/                   database SQLite della dashboard, voices/ (registrazioni di riferimento), openvoice-cache/
                         (impronte vocali), sounds/ (tmk/ archivio dei suoni, custom/ suoni propri, cache/
                         conversioni, assegnazioni.json); ignorato da git

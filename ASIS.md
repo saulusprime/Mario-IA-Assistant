@@ -166,7 +166,18 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   delle disponibili nel prompt, massimo due per risposta, testo salvato senza graffe). Provato con
   `claude-sonnet-5-5`: risposta aperta da `{herewego}`, esclamazione suonata prima delle frasi, prima
   frase dopo 1,8 s, log pulito.
-- **Test**: 166 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Evoluzioni dell'assistente (16/10)**, provate senza Mario e senza microfono. Tutte le prove con
+  Claude erano vere.
+  - Modello rapido per i sensori: haiku, prima frase 1,2–1,5 s.
+  - Ragionamento di Claude 5 spento: le risposte non sono più vuote e sonnet scrive la prima parola in
+    1,0 s invece di 6–11 s.
+  - Storia interattiva con `[aspetta: ...]`: sfida riuscita, sbagliata o scaduta.
+  - Ingresso vocale offline con il pulsante di Mario come push-to-talk: small circa 3 s per frase, 4,2 s
+    dal rilascio alla prima frase.
+  - Temi da evitare nelle domande e nelle risposte, limite di messaggi, riepilogo del giorno con
+    riassunto scritto dal modello.
+  - Ricordi per bambino, con scadenza e riassunto automatico.
+- **Test**: 194 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).

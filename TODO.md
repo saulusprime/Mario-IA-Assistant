@@ -292,20 +292,32 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 
 ### Evoluzioni dell'assistente
 
-- [ ] **Ingresso vocale**: microfono del PC → riconoscimento (whisper.cpp / vosk, offline)
-      così il bambino parla a Mario; il pulsante o la scossa avviano l'ascolto del microfono.
-- [ ] **Storia interattiva**: il modello propone azioni fisiche ("salta!", "trova la basetta
-      rossa") e la sessione le verifica con i sensori prima di continuare: il motore delle avventure
-      (sezione 6) è il ponte; serve uno schema di uscita strutturato (JSON) oltre ai tag, o un tag
-      `[aspetta: salto]` sul modello di `[ricorda: …]`.
-- [ ] **Modello per i sensori**: usare `claude-haiku-5-5` per i turni dei sensori (prima frase in
-      circa 1 s) e sonnet per la conversazione; oggi il modello è unico.
-- [ ] **Sicurezza, seconda tappa**: filtro anche sui contenuti del modello oltre alle parole esatte
-      (lista di temi), riepilogo giornaliero per i genitori, limite di messaggi oltre che di minuti.
-- [ ] **Ricordi**: riassunto automatico quando superano i venti, data di scadenza, ricordi per
-      bambino (più profili).
-- [ ] **Clip di Mario come comportamento**: se una pista della sezione precedente funziona,
-      collegare emozione → clip in `behaviours.py`.
+Fatte il 16/10 (dettagli nel README, sezione Assistente); da provare dal vivo:
+
+- [x] **Ingresso vocale** (faster-whisper offline, `./tools/setup_stt.sh`; pulsante di Mario come
+      "tieni premuto e parla", pulsante della pagina, `/parla`). Provato con frasi sintetiche: small
+      circa 3 s per frase, 4,2 s dal rilascio alla prima frase di Mario.
+  - [ ] **Prova con il microfono vero e un bambino vero**: precisione di `small` con la voce del
+        bambino e il rumore di casa, distanza dal microfono del MacBook, pressioni lunghe (20 s al
+        massimo). `./run.sh listen` per una prima prova, poi `assistant --voice` con Mario.
+  - [ ] Se 3 s sono troppi: `base` (1 s, sbaglia di più), oppure un PC più veloce. Una trascrizione a
+        pezzi durante la registrazione richiederebbe un altro motore.
+- [x] **Storia interattiva** con `[aspetta: salto | giro | pantaloni X | basetta X | terreno X | scossa |
+      pulsante]`. Provata con Claude e sensori simulati.
+  - [ ] **Prova con Mario**: salti veri durante una storia, basette giuste e sbagliate, tempo scaduto,
+        cadute durante l'attesa.
+- [x] **Modello per i sensori**: `sensor_model` "auto" usa haiku con Claude. Prima frase 1,2–1,5 s
+      contro 1,2–2,1 s di sonnet.
+  - [x] Trovato e corretto: il ragionamento automatico di Claude 5 svuotava le risposte lunghe.
+- [x] **Sicurezza, seconda tappa**: temi da evitare (nel testo del bambino e nelle risposte), limite di
+      messaggi, riepilogo del giorno con riassunto scritto dal modello su richiesta.
+  - [ ] Rivedere con i genitori la lista delle parole (`safety.py`) e i falsi allarmi nel diario dopo
+        qualche giornata di gioco.
+- [x] **Ricordi**: profili per bambino, ricordi comuni, scadenza per quelli del modello, riassunto
+      automatico oltre i 20.
+  - [ ] Scegliere i profili e i giorni di scadenza.
+- [ ] **Clip di Mario come comportamento**: resta bloccato finché una pista della sezione precedente
+      non fa suonare Mario via Bluetooth.
 
 ## 8. Idee
 
