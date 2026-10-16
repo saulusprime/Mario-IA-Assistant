@@ -796,6 +796,7 @@ def handle_assistant_command(session, speaker, line: str) -> tuple[bool, str]:
 async def cmd_assistant(args) -> int:
     from .assistant import AssistantBusy, AssistantSession, LLMConfig, Speaker, event_from_message, make_backend
     from .assistant.behaviours import BehaviourEngine, NullActions
+    from .assistant.safety import parse_themes
 
     loop = asyncio.get_running_loop()
     dev: Optional[MarioDevice] = None
@@ -922,6 +923,7 @@ async def cmd_assistant(args) -> int:
                                memory=memory, memory_enabled=not args.no_memory, on_message=on_message,
                                session_limit=max(0.0, float(args.minutes or 0)) * 60,
                                blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()],
+                               themes=parse_themes(args.themes), session_turns=args.max_turns,
                                exclamations=not args.no_exclamations,
                                voice_input=voice_input, voice_button=dev is not None and not args.no_voice_button)
     if dev is not None:
@@ -1536,6 +1538,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backend", default="auto", choices=["auto", "anthropic", "openai", "demo"],
                    help="auto = Claude se c'è ANTHROPIC_API_KEY, altrimenti demo")
     p.add_argument("--model", help="nome del modello (default claude-sonnet-5-5 per Claude)")
+    p.add_argument("--themes", default="violenza,adulti,dati_personali",
+                   help="temi da evitare (nel testo del bambino e nelle risposte): violenza, adulti, dati_personali, "
+                        "paura; '' per nessuno")
+    p.add_argument("--max-turns", type=int, default=0, help="messaggi al modello per sessione (0 = nessun limite)")
     p.add_argument("--voice", action="store_true",
                    help="ingresso vocale dal microfono del PC (offline, faster-whisper; serve ./tools/setup_stt.sh): "
                         "si parla tenendo premuto il pulsante di Mario, oppure con /parla")

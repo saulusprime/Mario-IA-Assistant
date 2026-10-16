@@ -262,6 +262,7 @@
         case "voice_empty": case "voice_error": $("#as-talk").classList.remove("on"); flash(msg, ev.text, true); break;
         case "challenge_done": case "challenge_missed": case "challenge_timeout": case "challenge_invalid": showChallenge(null); flash(msg, ev.text); break;
         case "blocked": bubble("error", esc(ev.text)); break;
+        case "blocked_output": if (current) { current.classList.remove("typing"); current.textContent = `(${ev.text})`; current = null; } flash(msg, ev.text, true); break;
         case "error": bubble("error", esc(ev.text)); current = null; $("#face").classList.remove("busy"); $("#face-sub").textContent = "errore"; break;
         case "stopped": if (current) { current.classList.remove("typing"); current = null; } $("#face").classList.remove("busy"); showChallenge(null); break;
         case "reset": chat.innerHTML = ""; current = null; showChallenge(null); break;
@@ -287,7 +288,8 @@
       $("#set-ovref").value = s.openvoice_reference || ""; $("#set-ovtau").value = s.openvoice_tau || 0.3; $("#set-ovwm").checked = !!s.openvoice_watermark;
       const ovs = speaker && speaker.openvoice;
       $("#set-ovstate").textContent = !ovs ? "" : ovs.problem ? `non disponibile: ${ovs.problem}` : ovs.state === "spento" ? "" : `${ovs.mode === "piper" ? "processo piper" : "voce IA"}: ${ovs.state}` + (ovs.load_s ? `, caricata in ${ovs.load_s} s` : "") + (ovs.avg_s ? `, ${ovs.avg_s} s per frase` : "") + (ovs.last_error ? ` (${ovs.last_error})` : "");
-      $("#set-piper").value = s.piper_model || ""; $("#set-minutes").value = s.session_minutes || 0; $("#set-blocked").value = s.blocked_words || ""; $("#set-memory").checked = !!s.memory;
+      $("#set-piper").value = s.piper_model || ""; $("#set-minutes").value = s.session_minutes || 0; $("#set-blocked").value = s.blocked_words || ""; $("#set-memory").checked = !!s.memory; $("#set-turns").value = s.session_turns || 0;
+      const themes = (s.safety_themes || "").split(","); $$(".set-theme").forEach((cb) => { cb.checked = themes.includes(cb.value); });
       $("#set-challenges").checked = !!s.challenges; $("#set-wait").value = s.wait_seconds || 20;
       $("#set-voicein").checked = !!s.voice_input; $("#set-voicebtn").checked = !!s.voice_button; $("#set-sttmodel").value = s.stt_model || "small"; $("#as-talk").hidden = !s.voice_input;
     }
@@ -301,7 +303,7 @@
     function diaryQuery(extra) { const q = new URLSearchParams({ limit: $("#diary-limit").value }); const f = isoToTs($("#diary-from").value), t = isoToTs($("#diary-to").value); if (f) q.set("from", f); if (t) q.set("to", t); Object.entries(extra || {}).forEach(([k, v]) => q.set(k, v)); return q; }
     async function loadDiary() {
       try { const r = await api("/api/assistant/history?" + diaryQuery()); const tb = $("#diary-table tbody"); tb.innerHTML = "";
-        r.messages.forEach((m) => tb.appendChild(eventRow(m, [fmtDate(m.ts), m.role === "assistant" ? "Mario" : (m.source && m.source !== "utente" ? "sensore" : "bambino"), esc(m.source || ""), esc(m.emotion || ""), esc(m.content)])));
+        r.messages.forEach((m) => tb.appendChild(eventRow(m, [fmtDate(m.ts), m.role === "assistant" ? "Mario" : m.role === "system" ? "⚠ sicurezza" : (["utente", "voce", "", null, undefined].includes(m.source) ? "bambino" : "sensore"), esc(m.source || ""), esc(m.emotion || ""), esc(m.content)])));
         flash($("#diary-msg"), `${r.messages.length} messaggi mostrati, ${r.stats.total} in archivio`); } catch (e) { flash($("#diary-msg"), e.message, true); }
     }
     function renderRules(rules) {
@@ -341,6 +343,22 @@
     $("#memory-add").addEventListener("click", async () => { const t = $("#memory-text").value.trim(); if (!t) return; try { await api("/api/assistant/memory", "POST", { text: t }); $("#memory-text").value = ""; } catch (e) { flash(msg, e.message, true); } });
     $("#memory-clear").addEventListener("click", async () => { if (confirm("Dimenticare tutti i ricordi?")) { try { await api("/api/assistant/memory", "DELETE"); } catch (e) { flash(msg, e.message, true); } } });
     $("#diary-load").addEventListener("click", loadDiary);
+    $("#sum-day").value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    async function loadSummary(ai) {
+      const out = $("#sum-out"); out.hidden = false; out.textContent = ai ? "il modello sta scrivendo il riassunto…" : "…";
+      try {
+        const r = ai ? await api("/api/assistant/summary", "POST", { day: $("#sum-day").value, ai: 1 }) : await api("/api/assistant/summary?day=" + $("#sum-day").value);
+        const s = r.summary, list = (o) => Object.entries(o).map(([k, v]) => `${k} ${v}`).join(", ") || "-";
+        out.innerHTML = s.messages ? `<p><b>${esc(r.day)}</b>: circa ${s.minutes} minuti di gioco in ${s.sessions} partite (${fmtDate(s.first)} – ${fmtDate(s.last)}).</p>`
+          + `<p>Messaggi del bambino: ${s.child} (${s.voice} a voce, ${s.typed} scritti) · risposte di Mario: ${s.answers} · eventi dei sensori: ${s.sensors} (${esc(list(s.sensor_kinds))})</p>`
+          + `<p>Emozioni di Mario: ${esc(list(s.emotions))}</p>`
+          + `<p>Ricordi nuovi: ${s.memories.length ? esc(s.memories.join("; ")) : "nessuno"}</p>`
+          + `<p>${s.blocked.length ? "⚠ Bloccati: " + s.blocked.map((b) => esc(b.text)).join(" · ") : "Nessun messaggio bloccato."}</p>`
+          + (r.text ? `<blockquote>${esc(r.text)}</blockquote>` : "") : `<p>Nessuna conversazione il ${esc(r.day)}.</p>`;
+      } catch (e) { out.textContent = e.message; }
+    }
+    $("#sum-load").addEventListener("click", () => loadSummary(false));
+    $("#sum-ai").addEventListener("click", () => loadSummary(true));
     $("#diary-csv").addEventListener("click", () => { location.href = "/api/assistant/history.csv?" + diaryQuery({ limit: 5000 }); });
     document.addEventListener("click", async (ev) => {
       const b = ev.target.closest("button"); if (!b) return;
@@ -351,7 +369,7 @@
     $("#set-save").addEventListener("click", async () => {
       let payloads = {};
       try { payloads = $("#set-payloads").value.trim() ? JSON.parse($("#set-payloads").value) : {}; } catch (e) { flash($("#set-msg"), "JSON dei payload non valido", true); return; }
-      const data = { backend: $("#set-backend").value, model: $("#set-model").value, sensor_model: $("#set-smodel").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads, piper_model: $("#set-piper").value, openvoice_reference: $("#set-ovref").value, openvoice_tau: $("#set-ovtau").value, openvoice_watermark: $("#set-ovwm").checked ? 1 : 0, sound_style: $("#set-soundstyle").value, voice_effect: $("#set-veffect").value, exclamations: $("#set-exclam").checked ? 1 : 0, session_minutes: $("#set-minutes").value, blocked_words: $("#set-blocked").value, memory: $("#set-memory").checked ? 1 : 0, challenges: $("#set-challenges").checked ? 1 : 0, wait_seconds: $("#set-wait").value, voice_input: $("#set-voicein").checked ? 1 : 0, voice_button: $("#set-voicebtn").checked ? 1 : 0, stt_model: $("#set-sttmodel").value };
+      const data = { backend: $("#set-backend").value, model: $("#set-model").value, sensor_model: $("#set-smodel").value, api_key: $("#set-key").value, clear_api_key: $("#set-key-clear").checked ? 1 : 0, base_url: $("#set-base").value, max_tokens: $("#set-max").value, temperature: $("#set-temp").value, persona: $("#set-persona").value, tts: $("#set-tts").checked ? 1 : 0, sounds: $("#set-sounds").checked ? 1 : 0, voice: $("#set-voice").value, rate: $("#set-rate").value, pitch: $("#set-pitch").value, behaviours: $("#set-beh").checked ? 1 : 0, volume_effects: $("#set-vol").checked ? 1 : 0, busy_indication: $("#set-busy").checked ? 1 : 0, port_writes: $("#set-ports").checked ? 1 : 0, port_payloads: payloads, piper_model: $("#set-piper").value, openvoice_reference: $("#set-ovref").value, openvoice_tau: $("#set-ovtau").value, openvoice_watermark: $("#set-ovwm").checked ? 1 : 0, sound_style: $("#set-soundstyle").value, voice_effect: $("#set-veffect").value, exclamations: $("#set-exclam").checked ? 1 : 0, session_minutes: $("#set-minutes").value, blocked_words: $("#set-blocked").value, memory: $("#set-memory").checked ? 1 : 0, challenges: $("#set-challenges").checked ? 1 : 0, wait_seconds: $("#set-wait").value, voice_input: $("#set-voicein").checked ? 1 : 0, session_turns: $("#set-turns").value, safety_themes: $$(".set-theme").filter((cb) => cb.checked).map((cb) => cb.value).join(","), voice_button: $("#set-voicebtn").checked ? 1 : 0, stt_model: $("#set-sttmodel").value };
       try { const r = await api("/api/assistant/settings", "POST", data); $("#set-key").value = ""; $("#set-key-clear").checked = false; renderSettings(r.settings, null, null); const st = (await api("/api/assistant/status")).status; renderSettings(st.settings, st.speaker, st.llm); flash($("#set-msg"), "impostazioni salvate"); } catch (e) { flash($("#set-msg"), e.message, true); }
     });
     $("#set-ovfile").addEventListener("change", async (ev) => {

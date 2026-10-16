@@ -46,6 +46,8 @@ tr.owned td.name { font-weight:600; }
 .chat { display:flex; flex-direction:column; gap:.5rem; max-height:460px; overflow:auto; padding:.4rem; background:#fafbfc; border:1px solid var(--line); border-radius:8px; }
 button.talk { user-select:none; -webkit-user-select:none; touch-action:none; }
 button.talk.on { background:#d23c3c; border-color:#d23c3c; color:#fff; }
+.summary { margin:.5rem 0; padding:.5rem .8rem; border:1px solid var(--line); border-radius:8px; background:#fafbfc; }
+.summary p { margin:.25rem 0; } .summary blockquote { margin:.5rem 0 0; padding-left:.7rem; border-left:3px solid var(--green); white-space:pre-wrap; }
 .challenge { margin:.4rem 0; padding:.4rem .7rem; border-radius:8px; background:#fff1c2; color:#8a6d00; font-weight:600; }
 .bubble { max-width:85%; padding:.5rem .8rem; border-radius:12px; line-height:1.4; white-space:pre-wrap; }
 .bubble.user { align-self:flex-end; background:#dde8fb; }

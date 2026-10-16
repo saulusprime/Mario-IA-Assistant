@@ -407,5 +407,113 @@ class VoiceInputTests(unittest.TestCase):
         self.assertEqual(client.post("/api/assistant/talk", json={"on": 1}).status_code, 409)
         self.assertTrue(client.post("/api/assistant/talk", json={"on": 0}).get_json()["ok"])
 
+
+class SafetyTests(unittest.TestCase):
+    def test_theme_filter(self):
+        from mario.assistant.safety import THEMES, ThemeFilter, parse_themes
+        f = ThemeFilter()
+        for ok in ("Mario spara palle di fuoco contro Bowser!", "Un Boo fantasma ci spaventa!", "un abito a righe",
+                   "ho 7 anni e il mio numero preferito è 3", "Il Goomba è un nemico"):
+            self.assertIsNone(f.check(ok), ok)  # il mondo di Mario resta libero
+        self.assertEqual(f.check("Voglio una pistola vera"), ("violenza", "pistol"))
+        self.assertEqual(f.check("abito in via Roma 12")[0], "dati_personali")
+        self.assertEqual(f.check("chiamami al 347 123 4567"), ("dati_personali", "numero di telefono"))
+        self.assertEqual(f.check("la mamma beve la birra")[0], "adulti")
+        self.assertIsNone(f.check("il cattivo è morto"))  # "paura" è spento di default
+        self.assertEqual(parse_themes("paura, violenza, inventato"), ["violenza", "paura"])
+        f.configure(["paura"])
+        self.assertEqual(f.check("il cattivo è morto")[0], "paura")
+        self.assertIn(THEMES["paura"].label, f.prompt())
+        f.configure([])
+        self.assertEqual((f.check("pistola"), f.prompt()), (None, ""))
+
+    def make(self, *texts, **kw):
+        self.events, self.diary = [], []
+        self.backend = SequenceBackend(*texts)
+        return AssistantSession(lambda: self.backend, quiet_speaker(), BehaviourEngine(NullActions()),
+                                emit=self.events.append, on_message=self.diary.append, **kw)
+
+    def test_blocked_input_and_output(self):
+        session = self.make("[gioia] Ciao! Poi prendo la pistola vera e sparo. [gioia] E giochiamo.")
+        self.assertIn("Argomenti da evitare sempre", session.build_system_prompt())
+        self.assertEqual(session.ask("dimmi dove trovo una pistola"), 0)
+        self.assertEqual(self.backend.calls, [])  # non è partito
+        self.assertEqual(self.diary[-1]["role"], "system")
+        self.assertIn("messaggio bloccato (tema violenza vera, armi e sangue): dimmi dove trovo", self.diary[-1]["content"])
+        session.ask("raccontami una storia")
+        self.assertTrue(wait_idle(session))
+        kinds = [e["kind"] for e in self.events]
+        self.assertIn("blocked_output", kinds)
+        spoken = [e["text"] for e in self.events if e["kind"] == "sentence"]
+        self.assertEqual(spoken, ["Ciao!"])  # la frase con la pistola non è stata detta, né quelle dopo
+        self.assertEqual(session.history, [])  # la risposta interrotta non entra nella cronologia
+        self.assertIn("risposta di Mario interrotta", self.diary[-1]["content"])
+        self.assertIn("pistola", self.diary[-1]["content"])  # i genitori vedono cosa è stato fermato
+        self.assertEqual(session.emotion, "pensieroso")
+
+    def test_turn_limit(self):
+        from mario.assistant import AssistantBusy
+        session = self.make("[gioia] Ciao!", session_turns=2)
+        for text in ("uno", "due"):
+            session.ask(text)
+            self.assertTrue(wait_idle(session))
+        with self.assertRaises(AssistantBusy):
+            session.ask("tre")
+        self.assertIn("messaggi finiti (2 per sessione)", [e["text"] for e in self.events if e["kind"] == "time_up"][0])
+        self.assertFalse(session.listening)
+        self.assertEqual(session.status()["turns_used"], 2)
+        session.reset()  # "Nuova": si ricomincia da capo
+        self.assertEqual(session.turns_used, 0)
+        session.ask("di nuovo")
+        self.assertTrue(wait_idle(session))
+
+    def test_day_summary(self):
+        from mario.assistant import report
+        t0 = time.mktime((2026, 10, 16, 16, 0, 0, 0, 0, -1))
+        msgs = [{"ts": t0, "role": "user", "content": "Ciao Mario", "source": "utente", "emotion": None},
+                {"ts": t0 + 5, "role": "assistant", "content": "Ciao!", "source": "anthropic", "emotion": "gioia"},
+                {"ts": t0 + 60, "role": "user", "content": "Ho appena fatto un salto!", "source": "gesto: salto"},
+                {"ts": t0 + 65, "role": "assistant", "content": "Yahoo!", "source": "anthropic", "emotion": "gioia"},
+                {"ts": t0 + 3600, "role": "user", "content": "Facciamo una storia", "source": "voce"},
+                {"ts": t0 + 3604, "role": "system", "content": "messaggio bloccato (tema x): ...", "source": "sicurezza"},
+                {"ts": t0 + 3610, "role": "assistant", "content": "C'era una volta", "source": "anthropic",
+                 "emotion": "calma"}]
+        s = report.day_summary(msgs, [{"text": "si chiama Leo"}])
+        self.assertEqual((s["child"], s["voice"], s["typed"], s["sensors"], s["answers"]), (2, 1, 1, 1, 3))
+        self.assertEqual((s["sessions"], s["minutes"]), (2, 1))  # un'ora di pausa: due partite
+        self.assertEqual(s["emotions"], {"gioia": 2, "calma": 1})
+        self.assertEqual((len(s["blocked"]), s["memories"], s["sensor_kinds"]), (1, ["si chiama Leo"], {"gesto": 1}))
+        text = report.transcript(msgs)
+        self.assertIn("16:00 Bambino: Ciao Mario", text)
+        self.assertIn("Bambino (a voce): Facciamo una storia", text)
+        self.assertIn("Sensore (gesto: salto)", text)
+        self.assertIn("Tempo di gioco stimato: 1 minuti in 2 partite", report.summary_request(msgs, s, "2026-10-16")[0]["content"])
+        self.assertEqual(report.day_summary([])["first"], None)
+
+    @unittest.skipUnless(HAVE_WEB, "servono flask e bleak (venv dell'host)")
+    def test_summary_api_and_settings(self):
+        from mario.web import create_app
+        with tempfile.TemporaryDirectory() as tmp:
+            app = create_app(db_path=Path(tmp) / "t.sqlite3", start_worker=False, quiet_assistant=True)
+            client, db = app.test_client(), app.extensions["db"]
+            client.post("/api/assistant/settings", json={"backend": "demo", "safety_themes": "violenza,paura",
+                                                         "session_turns": "30"})
+            session = app.extensions["assistant"].session
+            self.assertEqual((session.themes.themes, session.session_turns), (["violenza", "paura"], 30))
+            now = time.time()
+            db.add_assistant_message("user", "Ciao Mario", source="voce", ts=now)
+            db.add_assistant_message("assistant", "Ciao!", emotion="gioia", source="demo", ts=now + 2)
+            db.add_assistant_message("system", "messaggio bloccato (tema x): pistola", source="sicurezza", ts=now + 3)
+            day = time.strftime("%Y-%m-%d")
+            r = client.get(f"/api/assistant/summary?day={day}").get_json()
+            self.assertEqual((r["summary"]["child"], r["summary"]["voice"], len(r["summary"]["blocked"])), (1, 1, 1))
+            self.assertEqual(r["text"], "")
+            r = client.post("/api/assistant/summary", json={"day": day, "ai": 1}).get_json()
+            self.assertTrue(r["text"])  # il backend demo risponde qualcosa
+            self.assertEqual(client.get("/api/assistant/summary?day=2001-01-01").get_json()["summary"]["messages"], 0)
+            csv_text = client.get("/api/assistant/history.csv").get_data(as_text=True)
+            self.assertIn(";sicurezza;sicurezza;", csv_text)
+            self.assertIn(";bambino;voce;", csv_text)
+
 if __name__ == "__main__":
     unittest.main()

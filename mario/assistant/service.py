@@ -17,6 +17,7 @@ from .behaviours import BehaviourEngine
 from .intents import IntentMapper
 from .llm import LLMConfig, make_backend
 from .memory import DatabaseMemory
+from .safety import parse_themes
 from .session import AssistantSession
 from .tts import Speaker
 
@@ -35,6 +36,7 @@ DEFAULTS: dict[str, str] = {
     "assistant.sound_style": "giochi", "assistant.voice_effect": "", "assistant.exclamations": "1",
     "assistant.challenges": "1", "assistant.wait_seconds": "20",
     "assistant.voice_input": "0", "assistant.voice_button": "1", "assistant.stt_model": "small",
+    "assistant.safety_themes": "violenza,adulti,dati_personali", "assistant.session_turns": "0",
 }
 BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
              "openvoice_watermark", "exclamations", "challenges", "voice_input", "voice_button"}
@@ -48,6 +50,13 @@ def as_bool(value: Any) -> bool:
 def as_float(value: Any, default: float) -> float:
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def as_int(value: Any, default: int = 0) -> int:
+    try:
+        return max(0, int(float(value)))
     except (TypeError, ValueError):
         return default
 
@@ -112,6 +121,8 @@ class AssistantService:
                                         memory=DatabaseMemory(db), memory_enabled=as_bool(s["memory"]),
                                         session_limit=minutes_to_seconds(s["session_minutes"]),
                                         blocked_words=split_words(s["blocked_words"]),
+                                        themes=parse_themes(s["safety_themes"]),
+                                        session_turns=as_int(s["session_turns"]),
                                         exclamations=as_bool(s["exclamations"]),
                                         sensor_backend_factory=self._make_sensor_backend,
                                         challenges=as_bool(s["challenges"]),
@@ -181,7 +192,8 @@ class AssistantService:
                                openvoice_tau=as_float(s["openvoice_tau"], 0.3),
                                openvoice_watermark=as_bool(s["openvoice_watermark"]), sound_style=s["sound_style"])
         self.session.configure_safety(session_limit=minutes_to_seconds(s["session_minutes"]),
-                                      blocked_words=split_words(s["blocked_words"]), memory_enabled=as_bool(s["memory"]))
+                                      blocked_words=split_words(s["blocked_words"]), memory_enabled=as_bool(s["memory"]),
+                                      themes=parse_themes(s["safety_themes"]), session_turns=as_int(s["session_turns"]))
         self.behaviours.configure(enabled=as_bool(s["behaviours"]) and not self.quiet,
                                   volume_effects=as_bool(s["volume_effects"]),
                                   busy_indication=as_bool(s["busy_indication"]), port_writes=as_bool(s["port_writes"]),

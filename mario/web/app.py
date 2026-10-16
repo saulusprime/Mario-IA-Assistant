@@ -298,8 +298,9 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
 
     @app.get("/assistant")
     def page_assistant():
+        from ..assistant.safety import THEMES
         return render_template("assistant.html", page="assistant", emotions=[e.to_dict() for e in EMOTIONS.values()],
-                               models=ANTHROPIC_MODELS)
+                               models=ANTHROPIC_MODELS, themes=THEMES.values())
 
     @app.get("/adventures")
     def page_adventures():
@@ -783,11 +784,34 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
         writer = csv.writer(buf, delimiter=";")
         writer.writerow(["id", "data_ora", "turno", "chi", "origine", "emozione", "testo"])
         for m in db.list_assistant_messages(int(request.args.get("limit", 5000)), 0, **diary_range()):
-            who = "Mario" if m["role"] == "assistant" else ("sensore" if m["source"] and m["source"] != "utente" else "bambino")
+            who = ("Mario" if m["role"] == "assistant" else "sicurezza" if m["role"] == "system"
+                   else "bambino" if (m["source"] or "utente") in ("utente", "voce") else "sensore")
             writer.writerow([m["id"], fmt_time(m["ts"]), m["turn"], who, m["source"], m["emotion"], m["content"]])
         name = f"mario-diario-{time.strftime('%Y%m%d-%H%M%S')}.csv"
         return Response("\ufeff" + buf.getvalue(), mimetype="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f"attachment; filename={name}"})
+
+    def day_bounds() -> tuple[str, float, float]:
+        day = request.args.get("day") or body().get("day") or time.strftime("%Y-%m-%d")
+        start = time.mktime(time.strptime(str(day)[:10], "%Y-%m-%d"))
+        end = time.mktime(time.localtime(start + 26 * 3600)[:3] + (0, 0, 0, 0, 0, -1))  # mezzanotte dopo (ora legale)
+        return str(day)[:10], start, end
+
+    @app.route("/api/assistant/summary", methods=["GET", "POST"])
+    @api
+    def api_assistant_summary():
+        """Riepilogo del giorno per i genitori; con ai=1 (POST) anche un riassunto scritto dal modello."""
+        from ..assistant import report
+        day, start, end = day_bounds()
+        messages = db.assistant_messages_between(start, end)
+        summary = report.day_summary(messages, db.memories_between(start, end))
+        text = ""
+        if request.method == "POST" and str(body().get("ai", "")) in ("1", "true") and messages:
+            from dataclasses import replace
+            from ..assistant.llm import make_backend
+            backend = make_backend(replace(assistant.config().for_sensors(), max_tokens=report.SUMMARY_TOKENS))
+            text = "".join(backend.stream(report.SUMMARY_SYSTEM, report.summary_request(messages, summary, day))).strip()
+        return ok(day=day, summary=summary, text=text)
 
     @app.get("/api/assistant/memory")
     @api

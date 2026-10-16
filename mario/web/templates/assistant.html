@@ -94,7 +94,10 @@
       <p class="hint">Serve <code>tools/setup_openvoice.sh</code> (circa 1,5 GB). Bastano 10–30 secondi di voce pulita, senza musica. Usa la tua voce o quella di qualcuno che è d'accordo, non registrazioni di altre persone.</p>
       <h2>Sicurezza per i bambini</h2>
       <div class="actions"><label>Minuti di gioco per sessione <input type="number" id="set-minutes" min="0" max="240" style="width:5em"> <span class="muted">(0 = nessun limite; allo scadere Mario saluta e smette di ascoltare, "Nuova" ricomincia)</span></label></div>
+      <div class="actions"><label>Messaggi per sessione <input type="number" id="set-turns" min="0" max="500" style="width:5em"></label> <span class="muted">(0 = nessun limite; contano anche le reazioni ai sensori)</span></div>
       <div class="actions"><label>Parole bloccate <input type="text" id="set-blocked" placeholder="separate da virgola" style="width:22em"></label> <span class="muted">non vengono inviate al modello e vengono sostituite nelle risposte</span></div>
+      <div class="actions"><span>Temi da evitare:</span>{% for t in themes %} <label title="{{ t.stems | join(', ') }}"><input type="checkbox" class="set-theme" value="{{ t.key }}"> {{ t.label }}</label>{% endfor %}</div>
+      <p class="hint">Un messaggio su questi temi non parte; una frase del modello che li tocca non viene detta e Mario cambia gioco. Tutto finisce nel diario (righe "sicurezza").</p>
       <div class="actions"><label><input type="checkbox" id="set-memory"> memoria tra le sessioni (il modello può salvare ricordi con [ricorda: …])</label></div>
       <h2>Ingresso vocale</h2>
       <div class="actions"><label title="Microfono del PC, riconoscimento offline con faster-whisper (./tools/setup_stt.sh): l'audio non esce dal PC e viene cancellato dopo la trascrizione"><input type="checkbox" id="set-voicein"> parlare a Mario con il microfono del PC</label>
@@ -122,6 +125,12 @@
     <button id="diary-csv" class="ghost">Esporta CSV</button>
     <span id="diary-msg" class="muted"></span>
   </div>
+  <div class="actions">
+    <label>Riepilogo del giorno <input type="date" id="sum-day"></label>
+    <button id="sum-load">Riepilogo</button>
+    <button id="sum-ai" class="ghost" title="Manda la conversazione del giorno al modello (lo stesso del gioco, che l'aveva già ricevuta) e chiede un riassunto per i genitori">Riassunto scritto dal modello</button>
+  </div>
+  <div id="sum-out" class="summary" hidden></div>
   <table class="compact" id="diary-table"><thead><tr><th>Data</th><th>Chi</th><th>Origine</th><th>Emozione</th><th>Testo</th></tr></thead><tbody></tbody></table>
 </section>
 

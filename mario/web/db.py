@@ -445,6 +445,12 @@ class Database:
     def clear_memories(self) -> int:
         return self._exec("DELETE FROM assistant_memory")
 
+    def assistant_messages_between(self, since_ts: float, until_ts: float) -> list[dict]:
+        return self._all("SELECT * FROM assistant_messages WHERE ts>=? AND ts<? ORDER BY ts, id", (since_ts, until_ts))
+
+    def memories_between(self, since_ts: float, until_ts: float) -> list[dict]:
+        return self._all("SELECT * FROM assistant_memory WHERE ts>=? AND ts<? ORDER BY ts", (since_ts, until_ts))
+
     def clear_assistant_messages(self) -> int:
         return self._exec("DELETE FROM assistant_messages")
 
