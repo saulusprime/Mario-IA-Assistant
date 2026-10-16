@@ -688,9 +688,10 @@ ASSISTANT_HELP = """Comandi: una riga di testo = messaggio per il modello.
   /ricordi         ricordi salvati                    /ricorda TESTO  aggiunge un ricordo
   /dimentica [N|tutto]  cancella un ricordo o tutti   /regole        regole sensori -> intenti
   /parla           parla nel microfono (con --voice), Invio per finire
+  /profilo [NOME]  bambino che gioca (i suoi ricordi più quelli comuni)
   /aiuto           questo elenco                      /esci"""
 ASSISTANT_COMMANDS = ["/stop", "/ripeti", "/nuova", "/ascolto", "/emozione", "/di", "/stato", "/ricordi", "/ricorda",
-                      "/dimentica", "/regole", "/parla", "/aiuto", "/esci"]
+                      "/dimentica", "/regole", "/parla", "/profilo", "/aiuto", "/esci"]
 
 
 class AssistantPrinter:
@@ -776,12 +777,20 @@ def handle_assistant_command(session, speaker, line: str) -> tuple[bool, str]:
         items = session.memory.list()
         if not items:
             return False, "nessun ricordo" + ("" if session.memory_enabled else " (memoria disattivata)")
-        return False, "\n".join(f"  {m['id']:>3}  {time.strftime('%d/%m %H:%M', time.localtime(m['ts']))}  {m['text']}" for m in items)
+        return False, "\n".join(f"  {m['id']:>3}  {time.strftime('%d/%m %H:%M', time.localtime(m['ts']))}  "
+                                f"{('[' + m['profile'] + '] ') if m.get('profile') else ''}{m['text']}"
+                                + (f"  ({m['source']})" if m.get("source") else "")
+                                + (f"  scade il {time.strftime('%d/%m', time.localtime(m['expires']))}" if m.get("expires") else "")
+                                for m in items)
     if cmd == "ricorda":
         if not rest.strip():
             return False, "uso: /ricorda TESTO"
-        mid = session.memory.add(rest)
+        mid = session.remember(rest)
         return False, f"ricordo {mid} salvato" if mid else "ricordo non salvato"
+    if cmd == "profilo":
+        if rest.strip():
+            session.set_profile(rest)
+        return False, f"profilo: {session.profile or 'nessuno (solo ricordi comuni)'}"
     if cmd == "dimentica":
         arg = rest.strip().lower()
         if arg in ("", "tutto", "tutti"):
@@ -870,7 +879,7 @@ async def cmd_assistant(args) -> int:
         elif kind in ("intent", "intent_dropped", "listening", "stopped", "reset", "repeat", "time_up", "blocked",
                       "memory_forgotten", "challenge", "challenge_done", "challenge_missed", "challenge_timeout",
                       "challenge_invalid", "voice_listening", "voice_processing", "voice_text", "voice_empty",
-                      "voice_error"):
+                      "voice_error", "blocked_output", "profile", "memory_summarized"):
             out.line(f"[{ts()}] · {ev['text']}")
             session_log.write(ev["text"])
         elif kind == "memory":
@@ -907,7 +916,8 @@ async def cmd_assistant(args) -> int:
             from .assistant.memory import DatabaseMemory
             from .web.db import Database
             db = Database(Path(__file__).resolve().parent.parent / "data" / "mario.sqlite3")
-            memory = DatabaseMemory(db)
+            memory = DatabaseMemory(db, args.profile or "", args.memory_days)
+            db.purge_memories()
 
             def on_message(msg: dict, _db=db) -> None:
                 try:
@@ -1538,6 +1548,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backend", default="auto", choices=["auto", "anthropic", "openai", "demo"],
                    help="auto = Claude se c'è ANTHROPIC_API_KEY, altrimenti demo")
     p.add_argument("--model", help="nome del modello (default claude-sonnet-5-5 per Claude)")
+    p.add_argument("--profile", help="bambino che gioca: i suoi ricordi più quelli comuni (default nessuno)")
+    p.add_argument("--memory-days", type=float, default=0.0,
+                   help="i ricordi scritti dal modello scadono dopo tanti giorni (0 = mai; quelli dei genitori mai)")
     p.add_argument("--themes", default="violenza,adulti,dati_personali",
                    help="temi da evitare (nel testo del bambino e nelle risposte): violenza, adulti, dati_personali, "
                         "paura; '' per nessuno")

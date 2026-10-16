@@ -515,5 +515,120 @@ class SafetyTests(unittest.TestCase):
             self.assertIn(";sicurezza;sicurezza;", csv_text)
             self.assertIn(";bambino;voce;", csv_text)
 
+
+class MemoryEvoTests(unittest.TestCase):
+    def setUp(self):
+        from mario.web.db import Database
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "t.sqlite3"
+        self.Database = Database
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_migration_of_old_database(self):
+        import sqlite3
+        conn = sqlite3.connect(self.path)
+        conn.execute("CREATE TABLE assistant_memory (id INTEGER PRIMARY KEY, ts REAL NOT NULL, text TEXT NOT NULL)")
+        conn.execute("INSERT INTO assistant_memory (ts, text) VALUES (?, ?)", (time.time(), "si chiama Leo"))
+        conn.commit()
+        conn.close()
+        db = self.Database(self.path)
+        self.assertEqual([(m["text"], m["profile"], m["source"], m["expires"]) for m in db.list_memories()],
+                         [("si chiama Leo", "", "", None)])  # vecchio ricordo: comune, senza scadenza
+
+    def test_profiles_expiry_and_purge(self):
+        from mario.assistant.memory import PARENT, DatabaseMemory, ListMemory
+        db = self.Database(self.path)
+        for store in (DatabaseMemory(db, "Leo", days=1), ListMemory(profile="Leo", days=1)):
+            store.add("ama Yoshi")                       # del modello: scade tra un giorno
+            store.add("va a letto alle nove", PARENT)    # del genitore: non scade
+            store.profile = ""
+            store.add("in casa c'è un gatto", PARENT)    # comune
+            store.profile = "Anna"
+            store.add("ha paura dei Boo")
+            self.assertEqual(sorted(m["text"] for m in store.list()), ["ha paura dei Boo", "in casa c'è un gatto"])
+            store.profile = "Leo"
+            texts = {m["text"]: m for m in store.list()}
+            self.assertEqual(sorted(texts), ["ama Yoshi", "in casa c'è un gatto", "va a letto alle nove"])
+            self.assertIsNotNone(texts["ama Yoshi"]["expires"])
+            self.assertIsNone(texts["va a letto alle nove"]["expires"])
+            self.assertEqual(store.clear(), 2)  # solo i ricordi di Leo
+            store.profile = "Anna"
+            self.assertEqual(len(store.list()), 2)
+        later = time.time() + 2 * 86400
+        self.assertEqual([m["text"] for m in db.list_memories(profile="Anna", now=later)], ["in casa c'è un gatto"])
+        self.assertEqual(db.purge_memories(later), 1)  # "ha paura dei Boo" era del modello
+
+    def test_parse_summary(self):
+        from mario.assistant.memory import parse_summary, summary_candidates
+        text = "1. Il bambino si chiama Leo.\n- Ama Yoshi [gioia]\n• ama yoshi\n\n  ok\n2) Ha sette anni"
+        self.assertEqual(parse_summary(text), ["Il bambino si chiama Leo", "Ama Yoshi", "Ha sette anni"])
+        self.assertEqual(len(parse_summary("\n".join(f"frase {i}" for i in range(30)))), 10)
+        items = [{"text": "a", "profile": "Leo", "source": "modello"}, {"text": "b", "profile": "Leo", "source": "genitore"},
+                 {"text": "c", "profile": "", "source": "modello"}]
+        self.assertEqual([i["text"] for i in summary_candidates(items, "Leo")], ["a"])
+
+    def test_automatic_summary(self):
+        from mario.assistant.memory import PARENT, ListMemory
+        memory = ListMemory(profile="Leo")
+        memory.add("va a letto alle nove", PARENT)
+        for i in range(20):
+            memory.add(f"ricordo numero {i}")
+        events = []
+        backend = SequenceBackend("[gioia] Che bello! [ricorda: ama i Goomba]",
+                                  "Si chiama Leo\nAma i Goomba\nHa sette anni")
+        session = AssistantSession(lambda: backend, quiet_speaker(), BehaviourEngine(NullActions()),
+                                   emit=events.append, memory=memory)
+        self.assertIn("Adesso stai giocando con Leo", session.build_system_prompt())
+        session.ask("ciao")
+        self.assertTrue(wait_idle(session))
+        deadline = time.time() + 5
+        while not any(e["kind"] == "memory_summarized" for e in events) and time.time() < deadline:
+            time.sleep(0.02)
+        done = [e for e in events if e["kind"] == "memory_summarized"]
+        self.assertEqual((done[0]["before"], done[0]["after"]), (21, 3))
+        self.assertEqual(sorted((m["text"], m["source"]) for m in memory.list()),
+                         [("Ama i Goomba", "riassunto"), ("Ha sette anni", "riassunto"), ("Si chiama Leo", "riassunto"),
+                          ("va a letto alle nove", "genitore")])
+        self.assertIn("Ricordi, dal più vecchio", backend.calls[-1])
+        session.set_profile("Anna, 6 anni")  # le virgole non servono nei nomi
+        self.assertEqual((session.profile, memory.profile), ("Anna 6 anni", "Anna 6 anni"))
+        self.assertEqual([m["text"] for m in memory.list()], [])
+
+    def test_bad_summary_keeps_memories(self):
+        from mario.assistant.memory import ListMemory
+        memory = ListMemory()
+        for i in range(21):
+            memory.add(f"ricordo {i}")
+        events = []
+        session = AssistantSession(lambda: SequenceBackend("ok"), quiet_speaker(), BehaviourEngine(NullActions()),
+                                   emit=events.append, memory=memory)
+        session._maybe_summarize()
+        deadline = time.time() + 5
+        while session._summarizing and time.time() < deadline:
+            time.sleep(0.02)
+        self.assertEqual(len(memory.list(100)), 21)
+        self.assertIn("riassunto dei ricordi non riuscito", events[-1]["text"])
+
+    @unittest.skipUnless(HAVE_WEB, "servono flask e bleak (venv dell'host)")
+    def test_profile_api(self):
+        from mario.web import create_app
+        app = create_app(db_path=self.path, start_worker=False, quiet_assistant=True)
+        client = app.test_client()
+        r = client.post("/api/assistant/profile", json={"profile": "Leo"}).get_json()
+        self.assertEqual((r["profile"], r["profiles"]), ("Leo", ["Leo"]))
+        client.post("/api/assistant/memory", json={"text": "ama Yoshi"})
+        client.post("/api/assistant/memory", json={"text": "in casa c'è un gatto", "profile": ""})
+        client.post("/api/assistant/profile", json={"profile": "Anna"})
+        r = client.get("/api/assistant/memory").get_json()
+        self.assertEqual(([m["text"] for m in r["memory"]], r["profiles"]), (["in casa c'è un gatto"], ["Leo", "Anna"]))
+        everything = client.get("/api/assistant/memory?all=1").get_json()["memory"]
+        self.assertEqual(sorted((m["text"], m["profile"], m["source"]) for m in everything),
+                         [("ama Yoshi", "Leo", "genitore"), ("in casa c'è un gatto", "", "genitore")])
+        s = client.post("/api/assistant/settings", json={"memory_days": "30"}).get_json()["settings"]
+        self.assertEqual((s["memory_days"], s["profile"]), ("30", "Anna"))
+        self.assertEqual(app.extensions["assistant"].session.memory.days, 30.0)
+
 if __name__ == "__main__":
     unittest.main()

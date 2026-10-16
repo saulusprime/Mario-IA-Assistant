@@ -84,9 +84,12 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
     turn       INTEGER
 );
 CREATE TABLE IF NOT EXISTS assistant_memory (
-    id   INTEGER PRIMARY KEY,
-    ts   REAL NOT NULL,
-    text TEXT NOT NULL
+    id      INTEGER PRIMARY KEY,
+    ts      REAL NOT NULL,
+    text    TEXT NOT NULL,
+    profile TEXT NOT NULL DEFAULT '',
+    source  TEXT NOT NULL DEFAULT '',
+    expires REAL
 );
 CREATE TABLE IF NOT EXISTS adventures (
     id          INTEGER PRIMARY KEY,
@@ -125,6 +128,16 @@ class Database:
         self._inserts = 0
         with self._conn() as c:
             c.executescript(SCHEMA)
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c: sqlite3.Connection) -> None:
+        """Colonne aggiunte dopo la prima versione (database già esistenti)."""
+        have = {row[1] for row in c.execute("PRAGMA table_info(assistant_memory)")}
+        for column, ddl in (("profile", "TEXT NOT NULL DEFAULT ''"), ("source", "TEXT NOT NULL DEFAULT ''"),
+                            ("expires", "REAL")):
+            if column not in have:
+                c.execute(f"ALTER TABLE assistant_memory ADD COLUMN {column} {ddl}")
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -426,24 +439,45 @@ class Database:
 
     # ----- memoria dell'assistente -----------------------------------------------------
 
-    def add_memory(self, text: str) -> int:
+    def add_memory(self, text: str, profile: str = "", source: str = "", expires: Optional[float] = None) -> int:
         text = " ".join(str(text).split())
         if not text:
             return 0
-        row = self._one("SELECT id FROM assistant_memory WHERE lower(text)=lower(?)", (text,))
+        row = self._one("SELECT id FROM assistant_memory WHERE lower(text)=lower(?) AND profile=?", (text, profile))
         if row:
             return int(row["id"])
-        return self._insert("INSERT INTO assistant_memory (ts, text) VALUES (?, ?)", (time.time(), text))
+        return self._insert("INSERT INTO assistant_memory (ts, text, profile, source, expires) VALUES (?, ?, ?, ?, ?)",
+                            (time.time(), text, profile, source, expires))
 
-    def list_memories(self, limit: int = 50) -> list[dict]:
-        rows = self._all("SELECT * FROM assistant_memory ORDER BY id DESC LIMIT ?", (max(1, min(int(limit), 500)),))
+    def list_memories(self, limit: int = 50, profile: Optional[str] = None, now: Optional[float] = None) -> list[dict]:
+        """Ricordi validi (non scaduti); con `profile` solo quelli di quel bambino e quelli comuni (profilo '')."""
+        sql, params = "SELECT * FROM assistant_memory WHERE (expires IS NULL OR expires>?)", [now or time.time()]
+        if profile is not None:
+            sql += " AND profile IN ('', ?)"
+            params.append(profile)
+        rows = self._all(sql + " ORDER BY id DESC LIMIT ?", params + [max(1, min(int(limit), 500))])
         return list(reversed(rows))
 
     def delete_memory(self, memory_id: int) -> int:
         return self._exec("DELETE FROM assistant_memory WHERE id=?", (memory_id,))
 
-    def clear_memories(self) -> int:
-        return self._exec("DELETE FROM assistant_memory")
+    def clear_memories(self, profile: Optional[str] = None) -> int:
+        if profile is None:
+            return self._exec("DELETE FROM assistant_memory")
+        return self._exec("DELETE FROM assistant_memory WHERE profile=?", (profile,))
+
+    def purge_memories(self, now: Optional[float] = None) -> int:
+        return self._exec("DELETE FROM assistant_memory WHERE expires IS NOT NULL AND expires<=?", (now or time.time(),))
+
+    def replace_memories(self, ids: list[int], texts: list[str], profile: str = "", source: str = "riassunto",
+                         expires: Optional[float] = None) -> int:
+        """Sostituisce dei ricordi con il loro riassunto, in una sola transazione."""
+        now = time.time()
+        with self._conn() as c:
+            c.executemany("DELETE FROM assistant_memory WHERE id=?", [(i,) for i in ids])
+            c.executemany("INSERT INTO assistant_memory (ts, text, profile, source, expires) VALUES (?, ?, ?, ?, ?)",
+                          [(now, " ".join(t.split()), profile, source, expires) for t in texts if t.strip()])
+        return len(texts)
 
     def assistant_messages_between(self, since_ts: float, until_ts: float) -> list[dict]:
         return self._all("SELECT * FROM assistant_messages WHERE ts>=? AND ts<? ORDER BY ts, id", (since_ts, until_ts))

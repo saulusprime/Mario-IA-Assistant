@@ -53,12 +53,19 @@
   <h2>Comportamenti su Mario <small class="muted">(volume, indicazione occupato, porte sperimentali)</small></h2>
   <pre class="log small" id="beh-log"></pre>
   <h2>Ricordi <small class="muted">(memoria tra le sessioni: il modello li scrive con [ricorda: …])</small></h2>
+  <div class="actions">
+    <label title="Chi gioca adesso: Mario usa i suoi ricordi e quelli comuni, e salva lì quelli nuovi">Chi gioca <select id="memory-profile"></select></label>
+    <input type="text" id="memory-newprofile" placeholder="nuovo profilo, es. Leo" style="width:9em"> <button id="memory-addprofile" class="small">Aggiungi</button>
+    <label><input type="checkbox" id="memory-all"> mostra i ricordi di tutti</label>
+  </div>
   <ul id="memory-list" class="menu-list"><li class="muted">nessuno</li></ul>
   <div class="actions">
     <input type="text" id="memory-text" placeholder="Aggiungi un ricordo, es. 'Il bambino si chiama Leo e ama Yoshi'" style="flex:1; min-width:12em">
+    <label title="I ricordi comuni valgono per tutti i bambini"><input type="checkbox" id="memory-common"> comune</label>
     <button id="memory-add">Ricorda</button>
-    <button id="memory-clear" class="ghost danger">Dimentica tutto</button>
+    <button id="memory-clear" class="ghost danger" title="Cancella i ricordi del profilo attivo (tutti, se non c'è un profilo)">Dimentica tutto</button>
   </div>
+  <p class="hint">I ricordi scritti qui sono dei genitori: non scadono e il riassunto automatico (oltre 20 ricordi del modello) non li tocca.</p>
 </section>
 </div>
 
@@ -98,7 +105,7 @@
       <div class="actions"><label>Parole bloccate <input type="text" id="set-blocked" placeholder="separate da virgola" style="width:22em"></label> <span class="muted">non vengono inviate al modello e vengono sostituite nelle risposte</span></div>
       <div class="actions"><span>Temi da evitare:</span>{% for t in themes %} <label title="{{ t.stems | join(', ') }}"><input type="checkbox" class="set-theme" value="{{ t.key }}"> {{ t.label }}</label>{% endfor %}</div>
       <p class="hint">Un messaggio su questi temi non parte; una frase del modello che li tocca non viene detta e Mario cambia gioco. Tutto finisce nel diario (righe "sicurezza").</p>
-      <div class="actions"><label><input type="checkbox" id="set-memory"> memoria tra le sessioni (il modello può salvare ricordi con [ricorda: …])</label></div>
+      <div class="actions"><label><input type="checkbox" id="set-memory"> memoria tra le sessioni (il modello può salvare ricordi con [ricorda: …])</label> <label title="Solo i ricordi scritti dal modello; quelli dei genitori restano">scadono dopo <input type="number" id="set-memdays" min="0" max="3650" style="width:5em"> giorni (0 = mai)</label></div>
       <h2>Ingresso vocale</h2>
       <div class="actions"><label title="Microfono del PC, riconoscimento offline con faster-whisper (./tools/setup_stt.sh): l'audio non esce dal PC e viene cancellato dopo la trascrizione"><input type="checkbox" id="set-voicein"> parlare a Mario con il microfono del PC</label>
         <label title="Mentre il pulsante sulla schiena di Mario è premuto si registra; lasciandolo, Mario risponde. Il pulsante non attiva più l'ascolto dei sensori."><input type="checkbox" id="set-voicebtn"> tieni premuto il pulsante di Mario per parlare</label>

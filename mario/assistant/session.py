@@ -21,7 +21,8 @@ from .behaviours import BehaviourEngine
 from .emotions import DEFAULT_EMOTION, EMOTIONS, MODEL_EMOTIONS, EmotionStream, SentenceBuffer, strip_tags
 from .intents import Intent, IntentMapper, tile_family
 from .llm import Backend, LLMError
-from .memory import ListMemory, MemoryStore, memory_prompt
+from .memory import (PARENT, SUMMARY_AT, SUMMARY_SYSTEM, SUMMARY_TARGET, ListMemory, MemoryStore, memory_prompt,
+                     parse_summary, summary_candidates, summary_messages)
 from .safety import DEFAULT_THEMES, THEMES, ThemeFilter
 from .tts import Speaker
 
@@ -35,6 +36,7 @@ Le righe "(Stato del corpo: ...)" descrivono come sei in questo momento: tienine
 {sound_rule}
 {safety_rule}
 {persona}
+{profile}
 {memory}
 Stato del corpo adesso: {context}."""
 
@@ -46,6 +48,14 @@ SOUND_RULE = ("Puoi far sentire la tua vera voce del videogioco con un'esclamazi
               "graffe all'inizio della risposta o tra due frasi, al massimo una per risposta e non in tutte. "
               "Non la ripetere a parole. Esclamazioni: {items}.")
 SOUNDS_PER_TURN = 2
+
+PROFILE_LINE = "Adesso stai giocando con {name}: i ricordi qui sotto sono suoi o di tutta la famiglia."
+
+
+def clean_profile(name: str) -> str:
+    """Nome di un profilo (un bambino): una parola o due, senza virgole."""
+    return " ".join(str(name or "").replace(",", " ").split())[:40]
+
 
 WAIT_RULE = ("Nelle storie e nei giochi puoi chiedere a chi gioca di fare un'azione con te e aspettarla: scrivi alla "
              "fine della risposta [aspetta: azione], con azione tra: {targets}. Puoi precisare pantaloni, basetta o "
@@ -128,6 +138,8 @@ class AssistantSession:
         self.on_message = on_message or (lambda msg: None)
         self.memory: MemoryStore = memory if memory is not None else ListMemory()
         self.memory_enabled = memory_enabled
+        self.profile = clean_profile(getattr(self.memory, "profile", ""))
+        self._summarizing = False
         self.session_limit = float(session_limit or 0.0)   # secondi di gioco per sessione (0 = nessun limite)
         self.blocked_words: list[str] = [w for w in (blocked_words or []) if w]
         self.themes = ThemeFilter(themes)           # temi da evitare, nel testo del bambino e nelle risposte
@@ -201,6 +213,7 @@ class AssistantSession:
                 "speaking": not self.speaker.idle, "elapsed": round(time.time() - self.started),
                 "session_limit": self.session_limit, "time_up": self.time_up,
                 "memory": self.memory.list() if self.memory_enabled else [], "memory_enabled": self.memory_enabled,
+                "profile": self.profile,
                 "blocked_words": list(self.blocked_words), "themes": self.themes.labels(),
                 "session_turns": self.session_turns, "turns_used": self.turns_used,
                 "emotion": {"key": self.emotion, "emoji": emo.emoji, "color": emo.color, "label": emo.label},
@@ -240,7 +253,8 @@ class AssistantSession:
                                   memory_rule=MEMORY_RULE if self.memory_enabled else "", memory=memories,
                                   wait_rule=wait_rule, sound_rule=sound_rule, context=self.mapper.context_text(),
                                   voice_rule=VOICE_RULE if self.voice_input is not None else "",
-                                  safety_rule=self.themes.prompt())
+                                  safety_rule=self.themes.prompt(),
+                                  profile=PROFILE_LINE.format(name=self.profile) if self.profile else "")
         return "\n".join(line for line in text.splitlines() if line.strip()).strip()
 
     # ----- sicurezza: parole bloccate e limite di tempo --------------------------------------------
@@ -623,6 +637,8 @@ class AssistantSession:
                             self.emit("error", turn=turn, text=f"memoria non salvata: {exc}")
                         if mid:
                             self.emit("memory", turn=turn, text=memory, id=mid)
+                    if parser.memories:
+                        self._maybe_summarize()
                 first = self._first_sentence_at
                 self.emit("done", turn=turn, text=plain, emotions=parser.seen, elapsed=round(time.time() - started, 2),
                           first_sentence=round(first - started, 2) if first else None,
@@ -751,6 +767,48 @@ class AssistantSession:
             self.time_up = False
             self.listening = True
         self.emit("reset", text="nuova conversazione")
+
+    # ----- ricordi: profili e riassunto ------------------------------------------------------------
+
+    def set_profile(self, name: str) -> str:
+        """Bambino che gioca adesso: i suoi ricordi (più quelli comuni) e quelli nuovi del modello."""
+        self.profile = clean_profile(name)
+        if hasattr(self.memory, "profile"):
+            self.memory.profile = self.profile
+        self.emit("profile", profile=self.profile, text=f"profilo: {self.profile or 'nessuno (solo ricordi comuni)'}")
+        return self.profile
+
+    def _maybe_summarize(self) -> None:
+        """Oltre SUMMARY_AT ricordi del modello per questo profilo, li fa riassumere in background."""
+        if not self.memory_enabled or self._summarizing:
+            return
+        items = summary_candidates(self.memory.list(500), self.profile)
+        if len(items) <= SUMMARY_AT:
+            return
+        self._summarizing = True
+        threading.Thread(target=self._summarize_memories, args=(items,), name="memory-summary", daemon=True).start()
+
+    def _summarize_memories(self, items: list[dict]) -> None:
+        try:
+            backend = (self.sensor_backend_factory or self.backend_factory)()
+            text = "".join(backend.stream(SUMMARY_SYSTEM.format(n=SUMMARY_TARGET), summary_messages(items)))
+            lines = parse_summary(text)
+            if len(lines) < 2:
+                raise ValueError("il modello non ha restituito un riassunto")
+            self.memory.replace([i["id"] for i in items], lines)
+            self.emit("memory_summarized", before=len(items), after=len(lines),
+                      text=f"{len(items)} ricordi riassunti in {len(lines)}")
+        except Exception as exc:  # i ricordi restano come erano
+            self.emit("error", text=f"riassunto dei ricordi non riuscito: {exc}")
+        finally:
+            self._summarizing = False
+
+    def remember(self, text: str) -> int:
+        """Ricordo scritto da un genitore (pagina o CLI): non scade e il riassunto non lo tocca."""
+        mid = self.memory.add(text, PARENT)
+        if mid:
+            self.emit("memory", text=text, id=mid, source=PARENT)
+        return mid
 
     def forget(self, memory_id: Optional[int] = None) -> int:
         """Cancella un ricordo (o tutti) e lo comunica."""

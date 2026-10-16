@@ -816,17 +816,34 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @app.get("/api/assistant/memory")
     @api
     def api_assistant_memory():
-        return ok(memory=assistant.session.memory.list(), enabled=assistant.session.memory_enabled)
+        """Ricordi del profilo attivo (con quelli comuni); con all=1 quelli di tutti i profili, per i genitori."""
+        session = assistant.session
+        everything = db.list_memories(500) if request.args.get("all") else session.memory.list()
+        return ok(memory=everything, enabled=session.memory_enabled, profile=session.profile,
+                  profiles=assistant.profiles())
 
     @app.post("/api/assistant/memory")
     @api
     def api_assistant_memory_add():
-        text = str(body().get("text", "")).strip()
+        """Ricordo scritto da un genitore: non scade; `profile` ('' = comune a tutti) se diverso da quello attivo."""
+        from ..assistant.memory import PARENT, clean
+        d = body()
+        text = str(d.get("text", "")).strip()
         if not text:
             raise ValueError("testo vuoto")
-        mid = assistant.session.memory.add(text)
-        assistant.session.emit("memory", text=text, id=mid, source="utente")
-        return ok(id=mid, memory=assistant.session.memory.list())
+        session = assistant.session
+        if "profile" in d and str(d["profile"]) != session.profile:
+            mid = db.add_memory(clean(text), str(d["profile"]), PARENT)
+            session.emit("memory", text=text, id=mid, source=PARENT)
+        else:
+            mid = session.remember(text)
+        return ok(id=mid, memory=session.memory.list())
+
+    @app.post("/api/assistant/profile")
+    @api
+    def api_assistant_profile():
+        profile = assistant.set_profile(str(body().get("profile", "")))
+        return ok(profile=profile, profiles=assistant.profiles(), memory=assistant.session.memory.list())
 
     @app.delete("/api/assistant/memory")
     @api

@@ -37,6 +37,7 @@ DEFAULTS: dict[str, str] = {
     "assistant.challenges": "1", "assistant.wait_seconds": "20",
     "assistant.voice_input": "0", "assistant.voice_button": "1", "assistant.stt_model": "small",
     "assistant.safety_themes": "violenza,adulti,dati_personali", "assistant.session_turns": "0",
+    "assistant.profiles": "", "assistant.profile": "", "assistant.memory_days": "0",
 }
 BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
              "openvoice_watermark", "exclamations", "challenges", "voice_input", "voice_button"}
@@ -118,7 +119,8 @@ class AssistantService:
                                           port_payloads=self._json(s["port_payloads"]))
         self.session = AssistantSession(self._make_backend, self.speaker, self.behaviours, emit=self._emit,
                                         mapper=IntentMapper(), persona=s["persona"], on_message=self._store,
-                                        memory=DatabaseMemory(db), memory_enabled=as_bool(s["memory"]),
+                                        memory=DatabaseMemory(db, s["profile"], as_float(s["memory_days"], 0.0)),
+                                        memory_enabled=as_bool(s["memory"]),
                                         session_limit=minutes_to_seconds(s["session_minutes"]),
                                         blocked_words=split_words(s["blocked_words"]),
                                         themes=parse_themes(s["safety_themes"]),
@@ -128,6 +130,10 @@ class AssistantService:
                                         challenges=as_bool(s["challenges"]),
                                         wait_seconds=as_float(s["wait_seconds"], 20.0))
         self.session.listening = as_bool(s["listening"])
+        try:
+            db.purge_memories()  # ricordi del modello scaduti
+        except Exception as exc:
+            log.debug("pulizia dei ricordi scaduti fallita: %s", exc)
         self._voice = None
         self._configure_voice(s)
         self._apply_rules(self._json(s["rules"]))
@@ -202,6 +208,9 @@ class AssistantService:
         self.session.exclamations_enabled = as_bool(s["exclamations"])
         self.session.challenges_enabled = as_bool(s["challenges"])
         self._configure_voice(s)
+        self.session.memory.days = as_float(s["memory_days"], 0.0)
+        if s["profile"] != self.session.profile:
+            self.session.set_profile(s["profile"])
         self.session.wait_seconds = min(120.0, max(5.0, as_float(s["wait_seconds"], 20.0)))
         if "listening" in data and as_bool(data["listening"]) != self.session.listening:
             self.session.set_listening(as_bool(data["listening"]))
@@ -222,6 +231,19 @@ class AssistantService:
             self._voice.warmup()
         self.session.voice_input = self._voice
         self.session.voice_button = as_bool(s["voice_button"])
+
+    def profiles(self) -> list[str]:
+        return split_words(self.settings()["profiles"])
+
+    def set_profile(self, name: str) -> str:
+        """Profilo attivo (un bambino); un nome nuovo si aggiunge all'elenco dei profili."""
+        from .session import clean_profile
+        name = clean_profile(name)
+        names = self.profiles()
+        if name and name not in names:
+            self.db.set_setting("assistant.profiles", ", ".join(names + [name]))
+        self.db.set_setting("assistant.profile", name)
+        return self.session.set_profile(name)
 
     def _apply_rules(self, overrides: dict) -> None:
         for name, opts in overrides.items():
