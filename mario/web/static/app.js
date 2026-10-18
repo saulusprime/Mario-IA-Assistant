@@ -518,6 +518,8 @@
     const params = new URLSearchParams(location.search); if (params.get("id")) loadAdventure(params.get("id"));
   }
 
+  const FAMILY_ICONS = { start: "🟢", goal: "🏁", enemy: "👾", prize: "🎁", friend: "🙂", unknown: "❔" };  // come adventures/library.py
+
   if (page === "adventures" && $("#stage")) {
     const msg = $("#play-msg"), stage = $("#stage"), log = $("#pl-log");
     const addLog = (text) => { log.textContent += `[${hhmmss()}] ${text}\n`; log.scrollTop = log.scrollHeight; };
@@ -530,7 +532,7 @@
         const fill = $("#pl-timebar"); if (r.step.timeout) { const pct = Math.max(0, Math.min(100, 100 * r.step.remaining / r.step.timeout)); fill.style.width = pct + "%"; fill.style.background = pct < 25 ? "#d7262c" : pct < 50 ? "#f5c400" : "#2e9e44"; } else fill.style.width = "0"; }
       else { $("#pl-step-title").textContent = ""; $("#pl-text").textContent = r.state === "finished" ? `Finita: ${r.outcome} · ${r.score} punti` : "…"; $("#pl-trigger").textContent = ""; $("#pl-progress").textContent = ""; $("#pl-timebar").style.width = "0"; }
       const c = r.context || {}; $("#pl-context").textContent = `👖 ${c.pants || "—"} · 🎨 ${c.color || "—"} · 🔲 ${c.tile || "—"}${c.lifted ? " · ✋ in mano" : ""}`;
-      $("#pl-path").innerHTML = (r.path || []).map((p) => `<span>${esc(p.name)}</span>`).join("") || '<span class="muted">nessuna basetta ancora</span>';
+      $("#pl-path").innerHTML = (r.path || []).map((p) => `<span class="tile ${esc(p.family || "")}">${FAMILY_ICONS[p.family] || "🔲"} ${esc(p.name)}</span>`).join('<span class="arrow">→</span>') || '<span class="muted">nessuna basetta ancora</span>';
       $("#pl-results").innerHTML = (r.results || []).map((x) => `<li class="${x.outcome === "ok" ? "ok" : "ko"}">${esc(x.title)} · ${x.outcome} · ${x.points} punti</li>`).join("");
     }
     async function refresh() { try { render((await api("/api/adventure/status")).status); } catch (e) { flash(msg, e.message, true); } }
@@ -538,6 +540,8 @@
     $("#play-start").addEventListener("click", async () => { try { render((await api("/api/adventure/start", "POST", { id: $("#play-select").value })).status); flash(msg, ""); } catch (e) { flash(msg, e.message, true); } });
     $("#play-stop").addEventListener("click", async () => { try { render((await api("/api/adventure/stop", "POST", {})).status); } catch (e) { flash(msg, e.message, true); } });
     $("#play-big").addEventListener("change", () => stage.classList.toggle("big", $("#play-big").checked));
+    $("#play-full").addEventListener("click", () => { if (document.fullscreenElement) document.exitFullscreen(); else stage.requestFullscreen().catch((e) => flash(msg, "tutto schermo non disponibile: " + e.message, true)); });
+    document.addEventListener("fullscreenchange", () => { const full = document.fullscreenElement === stage; stage.classList.toggle("big", full || $("#play-big").checked); $("#play-full").textContent = full ? "Esci dal tutto schermo" : "Tutto schermo"; });
     document.addEventListener("click", async (ev) => { const b = ev.target.closest("button[data-advsim]"); if (!b) return; try { const r = await api("/api/adventure/simulate", "POST", { what: b.dataset.advsim }); flash(msg, r.progressed ? "evento riconosciuto!" : "evento ricevuto, nessun progresso"); render(r.status); } catch (e) { flash(msg, e.message, true); } });
     refresh(); setInterval(refresh, 1000); startStream();
   }
@@ -558,7 +562,7 @@
         if (ev.kind === "start") total = ev.steps || 0;
         if (ev.kind === "step") { step = ev; progress = ""; }
         if (ev.kind === "progress") progress = ev.progress || "";
-        if (ev.kind === "tile") path.push(ev.name || ev.text);
+        if (ev.kind === "tile") path.push(ev);
         if (["success", "timeout", "fail"].includes(ev.kind)) results.push({ ok: ev.kind === "success", text: `${(step && step.title) || ev.step} · ${ev.kind === "success" ? `${ev.points} punti` : ev.kind === "fail" ? "perso" : "tempo scaduto"}` });
         if (ev.kind === "finish") finished = ev;
         if (rows[i]) rows[i].classList.toggle("owned", ev.ts - t0 <= t + 1e-6 && (i + 1 >= log.length || log[i + 1].ts - t0 > t + 1e-6));
@@ -568,7 +572,7 @@
       $("#rp-text").textContent = finished ? `Finita: ${finished.outcome} · ${finished.score} punti` : step ? step.text || step.title : t ? "…" : "Premi ▶ per rivedere la partita";
       $("#rp-trigger").textContent = step && !finished ? "aspettava: " + (step.trigger || "") : "";
       $("#rp-last").textContent = progress || lastText;
-      $("#rp-path").innerHTML = path.map((x) => `<span>${esc(x)}</span>`).join("") || '<span class="muted">nessuna basetta</span>';
+      $("#rp-path").innerHTML = path.map((x) => `<span class="tile">${FAMILY_ICONS[x.family] || "🔲"} ${esc(x.name || x.text)}</span>`).join('<span class="arrow">→</span>') || '<span class="muted">nessuna basetta</span>';
       $("#rp-results").innerHTML = results.map((x) => `<li class="${x.ok ? "ok" : "ko"}">${esc(x.text)}</li>`).join("");
       $("#replay").classList.toggle("finished", !!finished);
     }

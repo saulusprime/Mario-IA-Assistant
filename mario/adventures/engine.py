@@ -281,7 +281,7 @@ class AdventureRunner:
                 if barcode != self._last_tile and self.state == "running":
                     self.path.append({"ts": self.clock(), "code": barcode, "name": name, "family": tile_family(barcode)})
                     del self.path[:-50]
-                    self.emit("tile", text=f"basetta {name}", name=name, code=f"0x{barcode:04X}")
+                    self.emit("tile", text=f"basetta {name}", name=name, code=f"0x{barcode:04X}", family=tile_family(barcode))
             self._last_tile = barcode if barcode != 0xFFFF else None
 
     # ----- trigger -------------------------------------------------------------------------------

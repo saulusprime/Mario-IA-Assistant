@@ -88,7 +88,11 @@ svg.chart.zoomable { cursor:crosshair; touch-action:none; }
 .timebar-fill { height:100%; width:0; background:var(--green); transition:width .5s linear; }
 .stage-bottom { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; align-items:start; }
 @media (max-width:900px) { .stage-bottom { grid-template-columns:1fr; } }
-.path { display:flex; flex-wrap:wrap; gap:.3rem; } .path span { padding:.15rem .5rem; border-radius:999px; background:#eef; font-size:.85rem; }
+.path { display:flex; flex-wrap:wrap; gap:.3rem; align-items:center; } .path span.tile, .path > span.muted { padding:.15rem .5rem; border-radius:999px; background:#eef; font-size:.85rem; }
+.path span.arrow { color:var(--muted, #6b6f7a); font-size:.85rem; }
+.path span.tile.enemy { background:#fde8e8; } .path span.tile.prize { background:#fff6d6; } .path span.tile.start, .path span.tile.goal { background:#e6f5ea; }
+.stage:fullscreen { overflow:auto; padding:2rem; background:linear-gradient(180deg, #e9f3ff, #fff); }
+.stage:fullscreen .path span.tile { font-size:1.3rem; }
 .results { margin:0; padding-left:1.2rem; font-size:.9rem; } .results li.ok { color:var(--green); } .results li.ko { color:var(--red); }
 .stage.big .mission-text { font-size:2.6rem; } .stage.big .mission { padding:2.5rem; } .stage.big .stage-top { font-size:1.8rem; }
 .stage.finished .mission { border-color:var(--yellow); background:#fffbe6; }
