@@ -1,5 +1,5 @@
 {
- "_descrizione": "Tabelle di LEGO Mario (fw 6.5.01). Chiavi esadecimali. 'fonte': community (bricklife, legomario.py, pyLegoMario, node-poweredup) o 'dal vivo' (questo progetto); 'verificato': confermato con il Mario dell'utente, con la data; 'strisce': colori delle strisce del barcode secondo pyLegoMario (ALL_RGB_CODES.json); 'nota': discordanze fra le fonti. 'barcodes_unnamed': codici che pyLegoMario conosce senza nome, tenuti a parte perché non diventino basette nemico.",
+ "_descrizione": "Tabelle di LEGO Mario (fw 6.5.01). Chiavi esadecimali. 'fonte': community (bricklife, legomario.py, pyLegoMario, node-poweredup), 'dal vivo' (questo progetto) o 'app ufficiale (cattura)' (traffico dell'app registrato sul telefono); 'verificato': confermato con il Mario dell'utente, con la data; 'strisce': colori delle strisce del barcode secondo pyLegoMario (ALL_RGB_CODES.json); 'nota': discordanze fra le fonti. 'barcodes_unnamed': codici che pyLegoMario conosce senza nome, tenuti a parte perché non diventino basette nemico.",
  "pants": {
   "0x00": {
    "name": "nessun pantalone",
@@ -1110,6 +1110,54 @@
    "name": "0 quando i pantaloni vengono sfilati e 1 quando tornano infilati (14/10 19:01:48 e 19:01:50, durante un livello, insieme ai valori 0x00 e 0x21 della porta 2): pantaloni presenti?",
    "source": "dal vivo",
    "verified": "14/10/2026",
+   "hypothesis": true
+  },
+  "0x4001": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 0",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
+   "hypothesis": true
+  },
+  "0x4002": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 0",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
+   "hypothesis": true
+  },
+  "0x3001": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 0",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
+   "hypothesis": true
+  },
+  "0x1901": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 0",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
+   "hypothesis": true
+  },
+  "0x1902": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 168 alla prima richiesta, 0 dopo la richiesta 0x0A dell'app sulla porta 4 (contatore azzerato dalla sincronizzazione?)",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
+   "hypothesis": true
+  },
+  "0x1910": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 7 alla prima richiesta, poi 0 come 0x1902",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
+   "hypothesis": true
+  },
+  "0x1911": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 68 alla prima richiesta, poi 0 come 0x1902",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
+   "hypothesis": true
+  },
+  "0x0180": {
+   "name": "istantanea chiesta scrivendo 01 f0 sulla porta 3 (modo 2), come fa l'app ufficiale alla connessione (cattura del 18/10/2026): 0, ultimo evento della prima istantanea",
+   "source": "app ufficiale (cattura)",
+   "verified": "18/10/2026",
    "hypothesis": true
   }
  }

@@ -83,7 +83,25 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   in codice del firmware) e `Game identifier: LEAFGAMEFILE`, poi record periodici `0a 02 TT TT ff ff ff ff
   VV 01 00` (57, con `TT` che cresce di circa 200 a ogni record e `VV` tra 94 e 96) mescolati ad altri
   (`01 06 …`, `01 07 …`, `05 09 …`). `decode --summary` ricompone il flusso e ne estrae il testo.
-- **Porta 4 (`Events`)**: non ha mai trasmesso, nemmeno sottoscritta per tutto il livello del 14/10. Scritture (39 prove, fuori e dentro un livello):
+- **Protocollo dell'app ufficiale (cattura HCI snoop del 18/10, `docs/sessioni/app-ufficiale-20261018.txt`)**:
+  appena collegata, l'app attiva le notifiche delle porte 3 (modi 1 e 2), 4 e 7 e poi:
+  - **porta 3**: scrive `01 f0` nel modo 2 (WriteDirectModeData; la porta dichiara solo ingressi ma accetta) e
+    Mario risponde con un'istantanea di contatori come eventi della porta 3 (`0x4001`, `0x4002`, `0x3001`,
+    `0x1901`, `0x1902` = 168, `0x1910` = 7, `0x1911` = 68, `0x0180`); alla seconda richiesta, dopo il comando
+    0x0A della porta 4, gli stessi codici valgono 0;
+  - **porta 4 = canale richiesta/risposta** `[comando LE16][valore LE16]`, risposte sulla porta 4 stessa:
+    0x05 con `0x00FE` → risposta 0x01 con `0x00FE`; 0x09 → risposta 0x0B con `0xFFFF`; 0x0A con un valore
+    scelto dall'app (`0xCAEC`) → risposta 0x0B con lo stesso valore (segno di sincronizzazione? ipotesi);
+  - **porta 7 = archivio delle partite**: scrivendo un solo byte `01` Mario manda un record da 16 byte per
+    notifica: partita (numero progressivo, 402–409 nella cattura; quanti record la compongono; due valori
+    grezzi simili alla tensione della porta 6; pantaloni), basette lette con quante volte (quelle vere
+    dell'utente), contatori `numero → valore` di due tipi (significato ignoto), record finale con i totali
+    (61 record, 8 partite, coerenti). Poi l'app scrive `02` (probabile cancellazione dell'archivio).
+    Le scritture del 12/10 non funzionavano perché mandavano 16 byte invece di uno;
+  - durante il gioco l'app ha mandato solo il volume: nessun comando che faccia suonare o animare Mario.
+  `decode` e il monitor descrivono queste scritture e risposte; `decode --summary` raggruppa l'archivio per
+  partita e controlla i totali (`mario/history.py`).
+- **Porta 4 (`Events`)**, prove a scatola nera del 12/10: con le notifiche attive non ha trasmesso nemmeno per tutto il livello del 14/10. Scritture (39 prove, fuori e dentro un livello):
   solo WriteDirectModeData (0x51) è accettato, con feedback "completato", ma il valore non viene
   conservato (rilettura `00 00 00 00`), nessun eco, contatore monete fermo, nessuna reazione.
   WriteDirect (0x50) → `INVALID_USE`; sottocomando 0x00 → `COMMAND_NOT_RECOGNIZED`.
@@ -92,12 +110,12 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   payload, con un byte zero e con la forma dello standard, su porta 4 e porta 7 → sempre
   `COMMAND_NOT_RECOGNIZED`, nessun valore spontaneo delle porte 3, 4 e 7, nessuna reazione visibile. A differenza di WriteDirectModeData,
   la porta 7 risponde con un errore: le scritture 0x51 le ignora, i sottocomandi sconosciuti li rifiuta.
-- **Porta 7 (`Telemetry`)**: non ha mai trasmesso, nemmeno nel livello del 14/10; 70 scritture (zeri, 255, un byte alla volta,
+- **Porta 7 (`Telemetry`)**, prove a scatola nera del 12/10 (prima di conoscere la richiesta `01`): non ha trasmesso nemmeno nel livello del 14/10; 70 scritture (zeri, 255, un byte alla volta,
   rampe, ripetizioni) ignorate in silenzio: nessun feedback, nessun errore, rilettura zero. Un
   sospetto di reazione del display si è rivelato un falso positivo.
 - **Conclusione sulla voce diretta**: con i comandi standard LWP3 non esiste una via per far
-  suonare o animare Mario; le piste rimaste sono nel TODO (carta stampata, e-ink, luce colorata,
-  cattura dell'app ufficiale, firmware).
+  suonare o animare Mario, e nemmeno l'app ufficiale ne usa una durante il gioco (cattura del 18/10); le
+  piste rimaste sono nel TODO (carta stampata, e-ink, luce colorata, collegamento Mario–Luigi).
 - **Ricognizione del firmware (18/10, sola lettura, `./run.sh firmware-recon`)**: dall'app ufficiale per
   Android (versione 2.11.8, copiata dal telefono dell'utente) risulta che "LEAF" è il nome in codice del
   prodotto (il firmware si chiama `LEAF_FW_…`, come la riga della traccia DEBUG) e che le definizioni delle
@@ -285,7 +303,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   due volte (`monitor` e `shell` dopo la riconnessione, dashboard dopo "Connetti", `live-checks` e
   `re-checks`). Ora `MarioDevice` chiude sempre il client; lo provano un BleakClient finto che imita
   BlueZ e il worker della dashboard. La conferma con Mario è nel TODO.
-- **Test**: 249 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Test**: 256 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, broker MQTT finto, controlli statici del JavaScript), verdi nel venv
   dell'host; workflow GitHub Actions su Python 3.11 e 3.13. Dal 18/10 le pagine della dashboard si provano
   anche in un **Firefox headless vero** (`tests/test_browser.py`): client WebDriver BiDi con la sola libreria

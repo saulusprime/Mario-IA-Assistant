@@ -12,6 +12,11 @@ dentro ogni gruppo le prime sono le più utili.
       `./run.sh info` per salvare `capabilities-fw-6.5.03.json` e confrontarlo con quello della 6.5.01 (porte,
       modi, proprietà); ripetere le prove principali (gesti, basette, eventi della porta 3) per vedere se è
       cambiato qualcosa.
+- [ ] **Richieste dell'app dal nostro programma** (solo lettura): con le notifiche delle porte 3, 4 e 7 attive,
+      scrivere `01 f0` sulla porta 3 (modo 2), le richieste 0x05 e 0x09 sulla porta 4 e `01` sulla porta 7, e
+      verificare che arrivino istantanea, risposte e archivio delle partite (dopo lo scarico dell'app del 18/10
+      l'archivio potrebbe contenere solo le partite successive). Niente `02` sulla porta 7 né 0x0A sulla porta 4
+      senza il consenso dell'utente: modificano dati salvati in Mario.
 - [ ] **Riconnessione senza messaggi doppi** (correzione del 18/10, vedi ASIS sezione 4): `./run.sh monitor`,
       spegnere e riaccendere Mario a metà sessione: dopo "riconnesso" ogni messaggio deve comparire una
       volta sola. Stessa prova dalla dashboard (Mario spento, poi "Connetti").
@@ -88,14 +93,17 @@ GATT) è in ASIS, sezione 2; la cattura dal telefono ha la sua guida in `docs/ca
       batteria, la temperatura?) e gli altri tipi (`01 06`, `01 07`, `05 09`, `05 02`, `03 02`), forse gesti,
       basette e stati. Serve una registrazione più lunga in modo DEBUG con azioni annotate (salto, basetta,
       pantaloni), senza tenere premuto il pulsante; `decode --summary` ricompone già il flusso.
-- [ ] **Porta 4 (0x55, `Events`)**: capire cosa vi scrive l'app ufficiale o Luigi (cattura dal telefono,
-      sotto): con i comandi standard è inerte e non trasmette.
-- [ ] **Porta 7 (0x60, `Telemetry`)**: stessa situazione; resta la cattura dell'app ufficiale.
-- [ ] **Cattura del traffico dell'app ufficiale**: procedura in `docs/cattura-app-ufficiale.md`
-      (Android con HCI snoop log e `adb bugreport`, iPhone con il profilo Bluetooth logging e
-      PacketLogger, copione di gioco, comandi di analisi). I lettori di `decode` per i formati dei telefoni
-      sono stati provati solo su file sintetici: la prima cattura vera va controllata con `--json`. È il modo
-      più rapido per capire le porte 4 e 7 e il significato degli eventi.
+- [ ] **Archivio delle partite (porta 7)**, struttura in ASIS: significato dei contatori dei record di tipo 3 e 5
+      (confrontare un archivio scaricato subito dopo una partita annotata: salti, nemici, monete, giri, colori),
+      dei 3 byte ignoti del record della partita e dei due valori grezzi (batteria all'inizio e alla fine?).
+- [ ] **Porta 4 (richiesta/risposta)**: significato delle richieste 0x05, 0x09 e 0x0A e degli altri comandi
+      possibili; la 0x0A modifica uno stato di Mario (dopo, i contatori dell'istantanea della porta 3 sono a zero),
+      quindi va provata solo con il consenso dell'utente.
+- [ ] **Istantanea della porta 3** (`01 f0`): significato di `0x1902`, `0x1910`, `0x1911` (contatori dall'ultima
+      sincronizzazione?) e degli altri codici; vedere se il secondo byte (`f0`) è una maschera.
+- [ ] **Altre catture dell'app**: questa (18/10) contiene connessione, gioco e volume; mancano il collegamento
+      Mario–Luigi, le funzioni dell'app che mostrano le statistiche e un aggiornamento firmware (log HCI attivo
+      prima di aggiornare). Procedura in `docs/cattura-app-ufficiale.md`.
 - [ ] **System type con Luigi e Peach**: Mario risponde `0x40` alla proprietà 0x0B e dichiara `0x43`
       nell'advertisement; verificare se Luigi (0x44) e Peach (0x45) fanno lo stesso quando ci saranno.
 - [ ] **Mario come "central"**: l'advertisement dichiara capacità 0x03 (central e
@@ -286,9 +294,9 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
       nome e `reset` (operazione 0x04) sulle proprietà scrivibili, per vedere se producono un
       feedback sonoro (improbabile ma gratis).
 - [ ] **Porta virtuale** (0x61) fra 4 e 7: improbabile, a costo zero.
-- [ ] **Cattura dell'app ufficiale** (vedi sezione 2): se nella cattura un Port Output verso la
-      4 o la 7 è seguito da un suono di Mario, il comando si copia pari pari. Vale anche per il
-      collegamento Mario–Luigi: lì Mario parla e suona a comando dell'altro personaggio.
+- [ ] **Collegamento Mario–Luigi**: la cattura dell'app del 18/10 non contiene comandi che facciano suonare
+      Mario (solo richieste di stato e archivio, vedi ASIS); resta il collegamento fra due personaggi, dove Mario
+      reagisce all'altro: serve un Luigi e un ricevitore che intercetti il traffico fra i due.
 - [ ] **Reverse engineering del firmware**: la ricognizione in sola lettura del 18/10 si è fermata al
       criterio di stop (vedi ASIS, sezione 2): l'app attuale non contiene l'immagine, che arriva da Google Play
       nella memoria privata dell'app. Si riprende solo se l'immagine diventa disponibile in modo lecito senza

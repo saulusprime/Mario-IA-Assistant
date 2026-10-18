@@ -18,7 +18,9 @@ pomeriggio, ancora senza Mario: avventure con fasi del livello, alternative, mus
 ponte MQTT/WebSocket; pagina delle tabelle dei codici; sessioni revocabili e HTTPS per la dashboard; `decode`
 corretto sulle catture vere e con i livelli ricostruiti; pacchetto installabile; CI di nuovo verde; pagine
 provate in un Firefox headless. In serata, con Mario (ora firmware 6.5.03): i sottocomandi dei motori di Port
-Output non sono riconosciuti né dalla porta 4 né dalla 7; 249 test.
+Output non sono riconosciuti né dalla porta 4 né dalla 7. Poi la ricognizione del firmware (chiusa: l'immagine
+non è nell'app) e la cattura del traffico dell'app ufficiale, che ha spiegato le porte 4 (richiesta/risposta) e 7
+(archivio delle partite); 256 test.
 Il resto, al 16/10:
 connessione e pairing stabili; sensori decodificati (gesti,
 scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); dashboard con pagine
@@ -1043,6 +1045,25 @@ fare e provare senza il giocattolo.
   (`docs/cattura-app-ufficiale.md`), avviata subito dopo.
 - Test: da 249 a 251 (`test_firmware_recon`).
 
+### 18/10 sera — Cattura del traffico dell'app ufficiale: porte 4 e 7 capite
+
+- Telefono dell'utente (Android 12) via Debug wireless, log HCI snoop attivato dalle Opzioni sviluppatore
+  (verificato con `dumpsys bluetooth_manager`: `mSnoopLogSettingAtEnable = full`), copione di
+  `docs/cattura-app-ufficiale.md`. `adb bugreport` (32 MB) → tenuto solo `FS/data/log/bt/btsnoop_hci.log`
+  (percorso Samsung, 200 kB), il resto cancellato subito (dati personali). Primo file vero per i lettori di
+  `decode`: letto senza correzioni.
+- Alla connessione l'app attiva le notifiche delle porte 3, 4 e 7, poi scrive `01 f0` sulla porta 3 (istantanea
+  di contatori come eventi nuovi), dialoga con la porta 4 (richiesta/risposta: 0x05, 0x09, 0x0A con un valore
+  suo) e scrive un byte `01` sulla porta 7: Mario manda l'**archivio delle partite** (61 record da 16 byte, 8
+  partite numerate 402–409, basette lette con quante volte, contatori, record finale con i totali). Dopo lo
+  scarico l'app scrive `02`. Durante il gioco solo cambi di volume: nessun comando per suoni o animazioni.
+- `mario/history.py` (record, raggruppamento per partita, controllo dei totali), descrizioni nel monitor e in
+  `decode` (anche delle scritture note dell'app, con `codes.describe_write`), sezioni nuove in
+  `decode --summary`, 8 eventi nuovi nella tabella (fonte "app ufficiale (cattura)"). Le prove del 12/10 sulla
+  porta 7 fallivano perché scrivevano 16 byte; sulla porta 4 perché usavano i codici della porta 3.
+- Prossimo passo dal vivo (TODO sezione 1): ripetere le sole richieste di lettura dal nostro programma.
+- Test: da 251 a 256 (`test_history`).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -1061,7 +1082,7 @@ fare e provare senza il giocattolo.
 | `mario/rar20.py` | estrazione RAR 2.0 in Python (Unpack20 con modalità audio, CRC32) per i moduli `.mdr` dell'archivio dei suoni |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`), `stt.py` e `stt_worker.py` (ingresso vocale, faster-whisper in `.venv-stt`), `wake_worker.py` (ascolto continuo di «Ehi Mario» con Vosk, client `WakeListener` in `stt.py`), `worker.py` (ciclo di vita comune dei processi con i modelli), `safety.py` (temi da evitare), `report.py` (riepilogo del giorno) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py` (anche modalità registra ed esempi offerti una volta); esempi in `mario/data/adventures/` |
-| `tests/` | 251 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI; `browser.py` comanda un Firefox headless via WebDriver BiDi |
+| `tests/` | 256 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI; `browser.py` comanda un Firefox headless via WebDriver BiDi |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario` (installabile anche non modificabile); test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -1096,7 +1117,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (251, con Firefox headless se c'è); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (256, con Firefox headless se c'è); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva mario/data/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

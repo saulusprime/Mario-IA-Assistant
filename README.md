@@ -509,7 +509,9 @@ la voce esce dal PC. L'indicazione "occupato" dell'hub (azioni 0x05/0x06) su Mar
 scritture solo con WriteDirectModeData (0x51), con feedback "completato", ma non conserva il
 valore e non reagisce; la porta 7 ignora le scritture in silenzio (`tools/probe_port4.py`,
 prove del 12/10/2026, dettagli in HANDOFF e TODO sezione 7). I sottocomandi dei motori (0x01, 0x02,
-0x05–0x08) non sono riconosciuti su nessuna delle due porte (`probe_port4.py --scan`, 18/10/2026). Provato con il backend demo, con Claude (`claude-sonnet-5-5`: risposte
+0x05–0x08) non sono riconosciuti su nessuna delle due porte (`probe_port4.py --scan`, 18/10/2026). La cattura
+dell'app ufficiale (18/10/2026) ha poi mostrato a cosa servono: la 4 è un canale richiesta/risposta e la 7
+l'archivio delle partite; nemmeno l'app manda comandi per far suonare Mario durante il gioco. Provato con il backend demo, con Claude (`claude-sonnet-5-5`: risposte
 in italiano nel personaggio, con i tag emozione, 3–4 s a risposta completa) e con la voce
 del PC e, alle 18:50, con Mario connesso da terminale: salto, rotazione, basette (Start,
 Goomba) e colori del terreno hanno prodotto risposte coerenti nel personaggio; il volume
@@ -670,9 +672,9 @@ prodotto da `./run.sh info --json` l'11 ottobre 2026.
 | 1 | 0x49 | 0 `TAG` (2 × int16), 1 `RGB` (3 × int8); combinabili (verificato) | `[barcode LE16][colore LE16]`, `FFFF` = nulla; in modo RGB combinato si muove solo il primo canale (0..189) |
 | 2 | 0x4A | 0 `PANT` (1 × int8, 0..63) | codice pantaloni a 6 bit; codici transitori durante il cambio |
 | 3 | 0x46 | 0 `CHAL` (2 × int16), 1 `VERS` (4 × int32), 2 `EVENTS` (2 × int16), 3 `DEBUG` (4 × int32) | eventi di gioco: basetta letta, monete, nemici, giri, stato del livello (sotto); CHAL = `c0 00 00 00` e VERS = `e2 00 01 b5` ×3 + `32 00 32 00` (14/10, significato ignoto); DEBUG = traccia del firmware a pezzi di 16 byte, con il testo `LEAF 0x65010000 May 27 2025 08:44:31` |
-| 4 | 0x55 | 0 `Events` (2 × int16), ingresso **e uscita** | mai trasmesso; accetta solo WriteDirectModeData (0x51) con feedback "completato", ma non conserva il valore e non reagisce |
+| 4 | 0x55 | 0 `Events` (2 × int16), ingresso **e uscita** | canale richiesta/risposta `[comando][valore]` usato dall'app ufficiale (0x05, 0x09, 0x0A; risposte 0x01 e 0x0B sulla porta stessa); solo con WriteDirectModeData (0x51) |
 | 6 | 0x14 | 0 `VLT L`, 1 `VLT S` (1 × int16, raw 0..2705 = 0..3300 mV) | tensione batteria |
-| 7 | 0x60 | 0 `Telemetry` (16 × int8), ingresso **e uscita** | nuova dal firmware 6.x; mai trasmesso; ignora le scritture in silenzio |
+| 7 | 0x60 | 0 `Telemetry` (16 × int8), ingresso **e uscita** | archivio delle partite: scrivendo il byte `01` Mario manda record da 16 byte (partite, basette lette, contatori, totali; `mario/history.py`); l'app poi scrive `02` |
 
 Modalità combinata: la maschera dei dataset nel messaggio 0x46 arriva con il byte alto per primo
 (`00 1f` = dataset 0..4) e con multi-update Mario manda solo i dataset cambiati; `mario/hubstate.py`
@@ -942,7 +944,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-251 test senza Bluetooth né rete esterna, raggruppati per file:
+256 test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -965,6 +967,7 @@ python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bi
 | `test_browser` (5) | la dashboard in un Firefox headless vero via WebDriver BiDi (client in `tests/browser.py`, solo libreria standard): errori JavaScript di ogni pagina, editor e registrazione di un percorso, partita e replay, filtri delle tabelle, zoom con un trascinamento del mouse; saltati senza Firefox |
 | `test_bridge` (7) | ponte: traduzione degli eventi in fatti, lettori di righe JSON e SSE, broker MQTT finto (anche credenziali e rifiuto), WebSocket con il client dei test, flusso vero della dashboard |
 | `test_probe_port4` (6) | scansione dei sottocomandi di Port Output: piano delle prove, esiti (errore, feedback, silenzio, valori spontanei), mappa compressa di `--sweep`, prove con un Mario finto che risponde come quello vero |
+| `test_history` (5) | archivio delle partite della porta 7 con i record veri della cattura dell'app (partita, basette, contatori, fine, controllo dei totali), risposte della porta 4, scritture note dell'app, riepilogo di `decode` |
 | `test_firmware_recon` (2) | ricognizione del firmware: estrazione da APK annidati, intestazione OAD con CRC, tabella dei vettori, entropia, versione dal nome |
 | `test_cli` (11), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, completamento e cronologia della shell, cartelle dal sorgente e con `MARIO_HOME`, `decode`; importazione senza Bluetooth |
 
@@ -998,7 +1001,7 @@ mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'arch
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, firmware_recon.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale e «Ehi Mario»), fetch_mario_sounds.py
-tests/                  test offline (251), browser.py (Firefox headless via WebDriver BiDi)
+tests/                  test offline (256), browser.py (Firefox headless via WebDriver BiDi)
 docs/                   monitor-json.md (righe JSON e ponte MQTT/WebSocket), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il

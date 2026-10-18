@@ -94,7 +94,14 @@ class Decoder:
     def describe(self, frame: Frame) -> str:
         if frame.direction == "->":
             self.state.note_sent(frame.msg.raw)
-            return lwp3.describe_downstream(frame.msg)
+            text = lwp3.describe_downstream(frame.msg)
+            p = frame.msg.payload
+            if frame.msg.msg_type == lwp3.MessageType.PORT_OUTPUT_COMMAND and len(p) >= 3:
+                from . import codes
+                meaning = codes.describe_write(p[0], p[2], p[3:])
+                if meaning:
+                    text += f" → {meaning}"
+            return text
         self.state.update(frame.msg)
         return self.state.describe(frame.msg)
 
@@ -653,6 +660,16 @@ def summarize(records: list[dict]) -> str:
             debug += chunk
             debug_chunks += 1
             last_chunk = chunk
+    from .history import Collector
+    archive = Collector()
+    port4: list[str] = []
+    for r in records:
+        if r.get("io_type") == 0x60 and r["type"] == "PORT_VALUE_SINGLE" and r.get("data"):
+            archive.feed(bytes.fromhex(r["data"]))
+        elif r.get("io_type") == 0x55 and r["type"] == "PORT_VALUE_SINGLE" and r.get("data"):
+            port4.append(f"  {r['when'] + ' ' if r['when'] else ''}<- {r['text'].split('-> ', 1)[-1]}")
+        elif r["direction"] == "->" and r["type"] == "PORT_OUTPUT_COMMAND" and "→" in r["text"]:
+            port4.append(f"  {r['when'] + ' ' if r['when'] else ''}-> {r['text'].split('→', 1)[1].strip()}")
     lines = ["=== Riepilogo ===", f"messaggi: {len(records)}"]
     lines += [f"  {k:<32} {v}" for k, v in sorted(by_type.items())]
     if by_port:
@@ -673,6 +690,10 @@ def summarize(records: list[dict]) -> str:
     found = levels(records)
     if found:
         lines += format_levels(found)
+    if port4:
+        lines.append("scritture note dell'app ufficiale e risposte della porta 4:")
+        lines += port4
+    lines += archive.summary()
     if errors:
         lines.append(f"errori generici: {len(errors)}")
         lines += [f"  {e}" for e in errors[:10]]

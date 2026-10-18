@@ -131,12 +131,46 @@ PORT_HINTS = {
     IO_MARIO_SCANNER: "modo 0 TAG = [barcode LE16][colore LE16], 0xFFFF = niente; modo 1 RGB = r,g,b grezzi; combinabili",
     IO_MARIO_PANTS: "modo 0 PANT = codice pantaloni a 6 bit (tabella PANTS)",
     IO_MARIO_EVENTS: "modo 0 CHAL, 1 VERS (4 x int32), 2 EVENTS (2 x int16: eventi di gioco), 3 DEBUG (4 x int32)",
-    IO_MARIO_ALT_EVENTS: "modo 'Events' (2 x int16) in ingresso E uscita: accetta Port Output 0x81 solo con WriteDirectModeData (0x51), "
-                         "feedback 'completato' (provato 12/10/2026, nessun eco); 0x50 INVALID_USE, 0x00 non riconosciuto; significato ignoto",
-    IO_MARIO_TELEMETRY: "modo 'Telemetry' (16 x int8) in ingresso E uscita, presente dal firmware 6.x; significato non documentato. "
-                        "Provato il 12/10/2026: 37 scritture WriteDirectModeData senza feedback, senza errore e senza effetto (rilettura sempre zero)",
+    IO_MARIO_ALT_EVENTS: "modo 'Events' (2 x int16) in ingresso E uscita: canale richiesta/risposta [comando LE16][valore LE16] "
+                         "(app ufficiale, 18/10/2026): 0x05 -> risposta 0x01, 0x09 e 0x0A -> risposta 0x0B; solo con "
+                         "WriteDirectModeData (0x51) e notifiche della porta 4 attive",
+    IO_MARIO_TELEMETRY: "modo 'Telemetry' (16 x int8) in ingresso E uscita: archivio delle partite. Scrivendo un solo byte 01 "
+                        "(WriteDirectModeData, modo 0) Mario manda un record da 16 byte per notifica (partite, basette, "
+                        "contatori, fine); l'app poi scrive 02 (probabile cancellazione). Vedi mario/history.py",
     IO_VOLTAGE: "tensione batteria: raw 0..2705 corrisponde a 0..3300 mV (modi VLT L e VLT S)",
 }
+
+
+# Porta 4 come canale richiesta/risposta, dalla cattura dell'app ufficiale del 18/10/2026 (ipotesi sui significati)
+PORT4_REQUESTS = {
+    0x05: "l'app manda 0x00FE alla connessione; Mario risponde 0x01 con lo stesso valore",
+    0x09: "lettura: Mario risponde 0x0B con il valore registrato (0xFFFF prima della richiesta 0x0A)",
+    0x0A: "l'app registra un valore suo (0xCAEC il 18/10), Mario lo ripete nella risposta 0x0B; dopo, i contatori "
+          "dell'istantanea della porta 3 tornano a zero",
+}
+PORT4_REPLIES = {0x01: "risposta alla richiesta 0x05", 0x0B: "risposta alle richieste 0x09 e 0x0A"}
+PORT3_SNAPSHOT_REQUEST = b"\x01\xf0"  # porta 3, modo 2: Mario risponde con un'istantanea di contatori (eventi 0x19xx, ...)
+
+
+def describe_write(port: int, subcommand: int, payload: bytes) -> Optional[str]:
+    """Significato delle scritture di Mario note dalla cattura dell'app ufficiale (Port Output Command)."""
+    payload = bytes(payload)
+    if subcommand != 0x51 or not payload:
+        return None
+    mode, data = payload[0], payload[1:]
+    if port == 3 and mode == 2 and data == PORT3_SNAPSHOT_REQUEST:
+        return "richiesta dell'istantanea dei contatori (risposta come eventi della porta 3)"
+    if port == 4 and mode == 0 and len(data) >= 4:
+        cmd, value = le16(data[0:2]), le16(data[2:4])
+        meaning = PORT4_REQUESTS.get(cmd)
+        return f"porta 4: richiesta 0x{cmd:02X} con 0x{value:04X}" + (f" ({meaning})" if meaning else "")
+    if port == 7 and mode == 0:
+        from . import history
+        if data == history.REQUEST:
+            return "richiesta dell'archivio delle partite (risposta: record da 16 byte sulla porta 7)"
+        if data == history.RELEASE:
+            return "fine dello scarico dell'archivio (probabile cancellazione: l'app la manda dopo lo scarico)"
+    return None
 
 
 def port_hint(io_type: int) -> Optional[str]:
@@ -188,7 +222,13 @@ def decode_value(io_type: int, mode: Optional[int], data: bytes, values: list) -
         return f"batteria circa {raw * 3300 / 2705:.0f} mV (raw {raw})"
 
     if io_type == IO_MARIO_TELEMETRY:
-        return f"telemetria (grezza) {data.hex(' ')}"
+        from . import history
+        return history.describe(data) or f"telemetria (grezza) {data.hex(' ')}"
+
+    if io_type == IO_MARIO_ALT_EVENTS and len(data) >= 4:
+        reply, value = le16(data[0:2]), le16(data[2:4])
+        meaning = PORT4_REPLIES.get(reply)
+        return f"porta 4: risposta 0x{reply:02X} valore 0x{value:04X}" + (f" ({meaning})" if meaning else "")
 
     if io_type == IO_MARIO_EVENTS and mode == 2 and len(data) >= 4:
         # Osservato dal vivo (fw 6.5): 2 x int16 LE = [codice evento][valore].

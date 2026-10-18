@@ -53,7 +53,8 @@ Bluetooth (anche delle cuffie).
    `decode` riconosce il formato PacketLogger (big o little endian) dal contenuto. In alternativa, con un
    Mac e Xcode, PacketLogger (Additional Tools) cattura in diretta dall'iPhone collegato via USB.
 
-Il lettore PacketLogger e quello btsnooz sono stati provati solo su file sintetici: la prima cattura
+Il lettore PacketLogger e quello btsnooz sono stati provati solo su file sintetici (il btsnoop completo di
+Android invece su una cattura vera, il 18/10/2026): la prima cattura
 vera va confrontata con `--json` e, in caso di dubbi, con Wireshark.
 
 ## Copione di gioco (da annotare con gli orari)
@@ -86,3 +87,18 @@ con quale delta; se e cosa scrive sulle porte 4 e 7 (sottocomando, payload, mome
 porta 3 arrivano in corrispondenza di monete, nemici, cambi di pantaloni e fine livello; se usa messaggi
 LWP3 fuori standard. Il risultato va riportato in `mario/data/mario_codes.json` (eventi), in `ASIS.md` e,
 se emergono scritture utili, in `tools/probe_port4.py`.
+
+## La prima cattura (18/10/2026): cosa ha funzionato
+
+- **Telefono Samsung con Android 12.** Il Debug USB cadeva una volta al secondo ("Protocol error" nel log di
+  `adb`) anche dopo aver rifatto l'autorizzazione; il **Debug wireless** ha funzionato: Opzioni sviluppatore →
+  Debug wireless → "Associa dispositivo con codice di associazione", poi dal PC
+  `adb pair <ip>:<porta del riquadro> <codice>` e `adb connect <ip>:<porta della schermata principale>`.
+- **Controllo che il log sia attivo** prima di giocare: `adb shell dumpsys bluetooth_manager | grep -i snoop` deve
+  dire `mSnoopLogSettingAtEnable = full` (le proprietà `persist.bluetooth.*` su quel telefono restavano vuote).
+- **Il file**: nel bugreport il log completo era in `FS/data/log/bt/btsnoop_hci.log` (percorso Samsung); `decode`
+  lo trova da solo. Tenuto solo quel file, cancellato il resto del bugreport.
+- **Cosa ha mostrato**: le richieste che l'app fa alla connessione (istantanea della porta 3, porta 4 come canale
+  richiesta/risposta, archivio delle partite della porta 7) e nessun comando di suono durante il gioco. Dettagli
+  in `ASIS.md` (sezione 2) e testo decodificato in `docs/sessioni/app-ufficiale-20261018.txt`.
+- Alla fine vanno spenti sul telefono il log HCI snoop (altrimenti registra tutto il Bluetooth) e il Debug wireless.
