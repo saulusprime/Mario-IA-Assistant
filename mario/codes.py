@@ -51,7 +51,7 @@ MARIO_SYSTEM_TYPES = {0x43: "Mario", 0x44: "Luigi", 0x45: "Peach"}
 #   12/10 (Mario sollevato dopo Start, ~45 s): 0x3004=601, 0x1803=3, 0x3812=2, 0x3852=0, 0x386E=0, 0x3803=100;
 #   poi (uscita dal livello): 0x1801=0, 0x1803=0, 0x3812=1, 0x3862=0.
 
-DATA_FILE = Path(__file__).resolve().parent / "data" / "mario_codes.json"
+DATA_FILE = Path(__file__).resolve().parent / "data" / "mario_codes.json"  # distribuito con il pacchetto
 
 
 def load_raw_tables(path: Path = DATA_FILE) -> dict:

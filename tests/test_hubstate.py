@@ -6,7 +6,7 @@ from pathlib import Path
 from mario import lwp3
 from mario.hubstate import HubState
 
-CAPS = Path(__file__).resolve().parent.parent / "docs" / "capabilities-fw-6.5.01.json"
+CAPS = Path(__file__).resolve().parent.parent / "mario" / "data" / "capabilities-fw-6.5.01.json"
 
 
 def msg(hex_text):

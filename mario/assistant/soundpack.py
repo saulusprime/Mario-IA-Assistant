@@ -40,8 +40,9 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-PROJECT_DIR = Path(__file__).resolve().parents[2]
-SOUNDS_ROOT = PROJECT_DIR / "data" / "sounds"
+from ..paths import DATA_DIR
+
+SOUNDS_ROOT = DATA_DIR / "sounds"
 PACK_DIR = SOUNDS_ROOT / "tmk"
 STYLES = ("sintetici", "giochi", "voce")
 EDIT_STYLES = ("giochi", "voce")

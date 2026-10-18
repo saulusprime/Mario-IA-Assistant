@@ -91,8 +91,9 @@ class SensorModelTests(unittest.TestCase):
             client = app.test_client()
             s = client.get("/api/assistant/settings").get_json()["settings"]
             self.assertEqual(s["sensor_model"], "auto")
+            # chiave finta: senza .env (per esempio nella CI) il backend anthropic non si crea
             client.post("/api/assistant/settings", json={"backend": "anthropic", "model": "claude-sonnet-5-5",
-                                                         "sensor_model": "claude-haiku-5-5"})
+                                                         "sensor_model": "claude-haiku-5-5", "api_key": "sk-ant-prova"})
             service = app.extensions["assistant"]
             self.assertEqual(service._make_sensor_backend().model, "claude-haiku-5-5")
             self.assertEqual(service._make_backend().model, "claude-sonnet-5-5")

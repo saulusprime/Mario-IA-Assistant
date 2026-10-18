@@ -28,9 +28,9 @@ import wave
 from pathlib import Path
 from typing import Callable, Optional
 
+from ..paths import PROJECT_DIR
 from .worker import WorkerError, WorkerProcess
 
-PROJECT_DIR = Path(__file__).resolve().parents[2]
 VENV_DIR = PROJECT_DIR / ".venv-stt"
 DEFAULT_PYTHON = VENV_DIR / "bin" / "python"
 MODELS_DIR = PROJECT_DIR / "third_party" / "whisper-models"

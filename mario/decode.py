@@ -15,8 +15,8 @@ Sorgenti accettate:
     in coda alla riga), l'uscita di `btmon -r` e le righe `TX ..`/`RX ..` dell'opzione -d;
   - righe o argomenti esadecimali.
 
-Lo stato iniziale delle porte (IO type, modi, formati) viene da `docs/capabilities-fw-*.json`,
-poi evolve con i messaggi letti (sottoscrizioni, modalità combinata), come dal vivo.
+Lo stato iniziale delle porte (IO type, modi, formati) viene dalla mappa delle funzioni
+(`mario/data/capabilities-fw-6.5.01.json`, oppure `--caps`), poi evolve con i messaggi letti (sottoscrizioni, modalità combinata), come dal vivo.
 """
 from __future__ import annotations
 
@@ -36,9 +36,11 @@ from typing import Iterator, Optional
 from . import lwp3
 from .hubstate import HubState
 from .lwp3 import Message, MessageType
+from .paths import DOCS_DIR, PACKAGE_DATA
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_CAPS = PROJECT_DIR / "docs" / "capabilities-fw-6.5.01.json"
+# mappa delle funzioni del firmware 6.5.01; una lettura più recente fatta con `info` (docs/) ha la precedenza
+DEFAULT_CAPS = next((p for p in (DOCS_DIR / "capabilities-fw-6.5.01.json", PACKAGE_DATA / "capabilities-fw-6.5.01.json")
+                     if p.is_file()), PACKAGE_DATA / "capabilities-fw-6.5.01.json")
 
 ATT_NOTIFY, ATT_INDICATE, ATT_WRITE_REQ, ATT_WRITE_CMD, ATT_READ_RSP = 0x1B, 0x1D, 0x12, 0x52, 0x0B
 MONITOR_ACL_TX, MONITOR_ACL_RX = 4, 5

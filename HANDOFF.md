@@ -971,7 +971,7 @@ partita nate dalla rilettura del mattino.
 | `tools/re_checks.py` | reverse engineering dal vivo guidato a voce (sezione 2 del TODO): annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG (`--port3-modes`), porte 4 e 7 nel gioco; eseguito con Mario il 14/10 (log in `docs/sessioni/`), passo `porta3` da ripetere |
 | `tools/gatt_notify_test.sh` | test notifiche con il solo bluetoothctl (mai servito, la cattura 3 ha chiarito prima) |
 | `tools/99-mario-btusb.rules` | regola udev contro l'autosospensione dell'adattatore Broadcom (da installare con sudo, istruzioni nel file) |
-| `docs/capabilities-fw-6.5.01.json` | mappa completa delle funzioni letta dal dispositivo (dal 13/10 `info` vi aggiunge la tabella GATT) |
+| `mario/data/capabilities-fw-6.5.01.json` | mappa completa delle funzioni letta dal dispositivo (dal 13/10 `info` vi aggiunge la tabella GATT) |
 | `docs/cattura-app-ufficiale.md` | guida alla cattura del traffico dell'app ufficiale dal telefono (Android, iPhone), copione di gioco, analisi con `decode` |
 | `docs/sessioni/` | copie anonimizzate dei log delle prove dal vivo (11, 12 e 14/10) con indice |
 | `third_party/` | cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), ignorati da git |
@@ -990,7 +990,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 ```sh
 cd ~/Sviluppo/Mario
 .venv/bin/python -m unittest discover -s tests   # test offline (215); nel sandbox: python3 -m unittest discover -s tests
-./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva docs/capabilities-fw-*.json
+./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva mario/data/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/
 ./run.sh decode docs/sessioni/tiles-20261012-182334.txt --summary   # rilettura offline di un log

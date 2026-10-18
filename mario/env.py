@@ -12,7 +12,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+from .paths import PROJECT_DIR
+
 DEFAULT_ENV_FILE = PROJECT_DIR / ".env"
 
 _LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$")

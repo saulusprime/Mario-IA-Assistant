@@ -25,11 +25,11 @@ from ..adventures.service import AdventureService
 from ..device import LWPError
 from ..env import load_dotenv
 from ..lwp3 import HubAction, HubAlertOperation, HubAlertType, HubProperty, parse_hub_property, parse_int
+from ..paths import DATA_DIR, PROJECT_DIR
 from .ble_worker import BleWorker
 from .db import ACCESSORY_KINDS, KIND_LABELS, Database
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
-DEFAULT_DB = PROJECT_DIR / "data" / "mario.sqlite3"
+DEFAULT_DB = DATA_DIR / "mario.sqlite3"
 VOICE_MAX_BYTES = 20_000_000
 VOICE_MIN_SECONDS = 3.0
 

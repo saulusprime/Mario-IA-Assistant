@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "data" / "adventures"
+from ..paths import PACKAGE_DATA
+
+EXAMPLES_DIR = PACKAGE_DATA / "adventures"
 
 TRIGGER_KINDS = {
     "barcode": "basetta letta dallo scanner (codice preciso, famiglia o qualsiasi)",

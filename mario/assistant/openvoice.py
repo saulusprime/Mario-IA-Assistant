@@ -17,9 +17,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from ..paths import PROJECT_DIR
 from .worker import WorkerError, WorkerProcess
 
-PROJECT_DIR = Path(__file__).resolve().parents[2]
 VENV_DIR = PROJECT_DIR / ".venv-openvoice"
 DEFAULT_PYTHON = VENV_DIR / "bin" / "python"
 DEFAULT_CONVERTER = PROJECT_DIR / "third_party" / "OpenVoice" / "checkpoints_v2" / "converter"

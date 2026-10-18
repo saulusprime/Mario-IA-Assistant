@@ -65,6 +65,20 @@ class CliTests(unittest.TestCase):
             self.assertIn("seconda", (Path(tmp) / "b.txt").read_text(encoding="utf-8"))
             log.close()
 
+    def test_paths_source_tree_and_mario_home(self):
+        import subprocess
+        import sys
+        from mario import paths
+        root = Path(__file__).resolve().parent.parent
+        self.assertTrue(paths.IN_SOURCE_TREE)
+        self.assertEqual((paths.PROJECT_DIR, paths.DATA_DIR), (root, root / "data"))
+        self.assertTrue((paths.PACKAGE_DATA / "capabilities-fw-6.5.01.json").is_file())
+        code = "from mario import paths; print(paths.DATA_DIR, paths.LOGS_DIR)"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=root,
+                                 env={**__import__("os").environ, "MARIO_HOME": tmp}).stdout.split()
+            self.assertEqual(out, [f"{tmp}/data", f"{tmp}/logs"])
+
     def test_shell_completions(self):
         c = self.cli.shell_completions
         ports = {0: [0, 1, 2], 1: [0, 1], 3: [0, 1, 2, 3], 6: [0]}

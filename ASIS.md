@@ -55,7 +55,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 
 ## 2. Reverse engineering acquisito
 
-- **Mappa delle funzioni** letta dal dispositivo (`docs/capabilities-fw-6.5.01.json`): porte 0
+- **Mappa delle funzioni** letta dal dispositivo (`mario/data/capabilities-fw-6.5.01.json`): porte 0
   (0x47), 1 (0x49), 2 (0x4A), 3 (0x46), 4 (0x55), 6 (0x14), 7 (0x60); la porta 7 "Telemetry"
   (16 byte, ingresso e uscita) è nuova dal firmware 6.x e non documentata altrove.
 - **Eventi di gioco (porta 3 modo 2)**, `[codice LE16][valore LE16]`, ipotesi solide dalle sessioni
@@ -141,7 +141,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   `mario/data/mario_codes.json` con fonte e data di verifica; `MarioDevice` con scansione,
   connessione con tentativi, agente di pairing, richieste con attesa, scoperta, modalità combinata
   con delta per modo, report (con stato del bond) e JSON.
-- **CLI** `./run.sh`: `scan`, `info` (salva `docs/capabilities-fw-<versione>.json`), `monitor`
+- **CLI** `./run.sh`: `scan`, `info` (salva `mario/data/capabilities-fw-<versione>.json`), `monitor`
   (`--combined`, `--json`, `--duration`, `--no-battery`, riconnessione automatica), `shell`
   (readline, `help <comando>`, `log`, riconnessione), `decode` (catture btsnoop, bugreport Android con
   sezioni btsnooz, PacketLogger di Apple, gzip, log, byte; i formati dei telefoni provati su file sintetici),

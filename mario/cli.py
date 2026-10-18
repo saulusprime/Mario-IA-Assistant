@@ -33,7 +33,7 @@ from typing import Optional
 
 from bleak.exc import BleakError
 
-from . import codes, lwp3
+from . import codes, lwp3, paths
 from .device import LWPError, MarioDevice, describe_advertisement
 from .lwp3 import (
     HubAction, HubAlertOperation, HubAlertType, HubProperty, MessageType, enum_name,
@@ -54,7 +54,7 @@ def ts() -> str:
 class SessionLog:
     """Scrive su file (logs/<nome>-<data>.txt) ogni riga mostrata, con i byte grezzi: comodo da rileggere dopo."""
 
-    LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
+    LOGS_DIR = paths.LOGS_DIR
 
     def __init__(self, kind: str, path: Optional[str | Path] = None):
         self.path: Optional[Path] = None
@@ -126,9 +126,10 @@ async def cmd_scan(args) -> int:
 
 
 def save_capabilities(data: dict, docs_dir: Optional[Path] = None) -> Path:
-    """Scrive la mappa delle funzioni in docs/capabilities-fw-<versione>.json (il nome Bluetooth,
-    che è personale, non viene salvato: la cartella docs/ è pubblicata)."""
-    docs_dir = docs_dir or Path(__file__).resolve().parent.parent / "docs"
+    """Scrive la mappa delle funzioni in capabilities-fw-<versione>.json: dal sorgente in mario/data/ (dove
+    `decode` la cerca e da dove viene pubblicata, quindi senza il nome Bluetooth, che è personale),
+    da un pacchetto installato nella cartella docs/ dei dati del programma."""
+    docs_dir = docs_dir or (paths.PACKAGE_DATA if paths.IN_SOURCE_TREE else paths.DOCS_DIR)
     fw = str((data.get("properties") or {}).get("FW_VERSION", {}).get("value") or "sconosciuta")
     short = fw.rsplit(".", 1)[0] if fw.count(".") == 3 else fw
     clean = json.loads(json.dumps(data))
@@ -1034,7 +1035,7 @@ async def cmd_assistant(args) -> int:
         try:
             from .assistant.memory import DatabaseMemory
             from .web.db import Database
-            db = Database(Path(__file__).resolve().parent.parent / "data" / "mario.sqlite3")
+            db = Database(paths.DATA_DIR / "mario.sqlite3")
             memory = DatabaseMemory(db, args.profile or "", args.memory_days)
             db.purge_memories()
 
@@ -1393,6 +1394,9 @@ def run_tool(name: str, argv: list[str]) -> int:
     """Esegue uno script di tools/ come se fosse lanciato dal venv (`./run.sh live-checks --steps gesti`)."""
     import runpy
     script = Path(__file__).resolve().parent.parent / "tools" / TOOLS[name][0]
+    if not script.is_file():
+        print(f"{name}: gli strumenti di tools/ ci sono solo nel sorgente (git clone del progetto)", file=sys.stderr)
+        return 2
     sys.argv = [str(script)] + list(argv)
     try:
         runpy.run_path(str(script), run_name="__main__")
@@ -1479,7 +1483,7 @@ async def cmd_adventure(args) -> int:
     if not args.no_db:
         try:
             from .web.db import Database
-            db = Database(Path(__file__).resolve().parent.parent / "data" / "mario.sqlite3")
+            db = Database(paths.DATA_DIR / "mario.sqlite3")
             from .adventures.service import seed_examples
             seed_examples(db)
         except Exception as exc:
@@ -1669,7 +1673,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="output in JSON")
     p.add_argument("--quick", action="store_true", help="solo nomi e formati delle modalità (più veloce)")
     p.add_argument("--no-save", action="store_true",
-                   help="non aggiornare docs/capabilities-fw-<versione>.json (salvato dopo la scoperta completa)")
+                   help="non aggiornare capabilities-fw-<versione>.json in mario/data (salvato dopo la scoperta completa)")
     p.set_defaults(func=cmd_info)
 
     p = sub.add_parser("monitor", help="mostra in tempo reale gli eventi dei sensori")
@@ -1695,7 +1699,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("decode", help="decodifica catture btsnoop, bugreport Android (zip/btsnooz), PacketLogger di iOS, log di testo o byte esadecimali (senza Bluetooth)")
     p.add_argument("inputs", nargs="*", metavar="FILE|HEX",
                    help="file btsnoop (btmon -w, HCI snoop Android) o log di testo; '-' = stdin; oppure byte, es. '05 00 45 02 21'")
-    p.add_argument("--caps", help="JSON delle funzioni per lo stato iniziale (default docs/capabilities-fw-6.5.01.json)")
+    p.add_argument("--caps", help="JSON delle funzioni per lo stato iniziale (default mario/data/capabilities-fw-6.5.01.json)")
     p.add_argument("--json", action="store_true", help="una riga JSON per messaggio")
     p.add_argument("--type", help="solo questi tipi di messaggio: numeri esadecimali o nomi, es. 45,46 oppure hub_properties")
     p.add_argument("--port", type=int, help="solo i valori di questa porta")

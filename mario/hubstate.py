@@ -141,7 +141,7 @@ class HubState:
 
     @classmethod
     def from_capabilities(cls, caps: dict) -> "HubState":
-        """Ricostruisce porte, modi e formati dal JSON di `info --json` (docs/capabilities-fw-*.json)."""
+        """Ricostruisce porte, modi e formati dal JSON di `info --json` (mario/data/capabilities-fw-*.json)."""
         st = cls()
         for port_text, pd in (caps.get("ports") or {}).items():
             port = int(port_text)

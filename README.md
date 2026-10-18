@@ -58,7 +58,7 @@ modalità combinata), `--json` (una riga JSON per evento, per collegare Mario ad
 e `shell` aspettano che torni visibile e lo riagganciano (`--no-reconnect` per uscire subito). Fino
 al 18/10 dopo una riconnessione ogni messaggio arrivava due volte: il client Bluetooth precedente
 restava aperto e BlueZ gli rimandava le notifiche; ora viene sempre chiuso.
-`info` salva la mappa delle funzioni in `docs/capabilities-fw-<versione>.json` (`--no-save` per
+`info` salva la mappa delle funzioni in `mario/data/capabilities-fw-<versione>.json` (`--no-save` per
 evitarlo; il nome Bluetooth non viene scritto).
 
 **Pairing.** Mario pretende un pairing Bluetooth "Just Works" (lo stesso che fanno i
@@ -562,7 +562,7 @@ log attivo contengono solo dati ACL troncati: `decode` lo segnala); i file Packe
 (`.pklg`, big o little endian); file gzip; i log di testo del progetto (byte tra parentesi quadre in
 coda alla riga, righe `TX`/`RX` dell'opzione `-d`, uscita di `btmon -r`) e byte esadecimali. Il
 formato viene riconosciuto dal contenuto. Lo stato delle porte parte da
-`docs/capabilities-fw-6.5.01.json` (ogni porta nel modo che `monitor` attiva di default,
+`mario/data/capabilities-fw-6.5.01.json` (ogni porta nel modo che `monitor` attiva di default,
 `--no-default-modes` per non presumerlo) ed evolve con le sottoscrizioni e le modalità combinate
 viste nel file. `--summary` conta i messaggi per tipo e porta ed elenca gli eventi della porta 3
 con i valori osservati; se la porta 3 è stata in modo DEBUG, ricompone la traccia del firmware dai
@@ -614,7 +614,7 @@ connessione, le richieste con attesa della risposta e lo stato dell'hub.
 
 ### Funzioni di Mario (verificate dal vivo, firmware 6.5.01)
 
-Report completo in [docs/capabilities-fw-6.5.01.json](docs/capabilities-fw-6.5.01.json),
+Report completo in [mario/data/capabilities-fw-6.5.01.json](mario/data/capabilities-fw-6.5.01.json),
 prodotto da `./run.sh info --json` l'11 ottobre 2026.
 
 | Porta | IO type | Modalità (formato) | Contenuto |
@@ -946,7 +946,7 @@ tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale e «Ehi Mario»), fetch_mario_sounds.py
 tests/                  test offline (215)
-docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
+docs/                   monitor-json.md (righe JSON e ponte MQTT/WebSocket), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
                         convertitore V2, voci piper italiane, modelli Whisper (whisper-models/), modello
