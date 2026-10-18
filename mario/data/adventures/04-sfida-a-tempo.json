@@ -1,0 +1,14 @@
+{
+ "name": "Sfida a tempo nel livello",
+ "description": "Usa il livello vero di Mario (un minuto dalla basetta Start): nemici, salti veloci e la corsa fino alla fine del tempo.",
+ "author": "progetto Mario BLE",
+ "version": 1,
+ "intro_text": "Sfida a tempo! Prepara la basetta Start e qualche nemico.",
+ "time_limit": 240,
+ "steps": [
+  {"id": "via", "title": "Si parte", "text": "Fai leggere a Mario la basetta Start: il livello dura un minuto!", "trigger": {"kind": "level", "name": "inizio"}, "points": 5, "success_text": "Via! Il tempo corre!", "timeout": 120, "timeout_text": "Niente Start? Peccato, la sfida finisce qui.", "on_timeout": [{"kind": "end", "value": "tempo scaduto"}]},
+  {"id": "nemici", "title": "Due nemici", "text": "Salta sopra due nemici prima degli ultimi quindici secondi!", "trigger": {"kind": "count", "of": {"kind": "barcode", "family": "enemy"}, "times": 2, "seconds": 1.0}, "fail": {"kind": "level", "name": "ultimi_secondi"}, "points": 20, "success_text": "Ottimo, avanti!", "timeout": 50, "timeout_text": "Tempo! Niente nemici, non importa: continua!"},
+  {"id": "scatto", "title": "Scatto", "text": "Tre salti in cinque secondi, veloce!", "trigger": {"kind": "count", "of": {"kind": "gesture", "name": "salto"}, "times": 3, "seconds": 0.5, "window": 5}, "points": 15, "success_text": "Che molle!", "sound": "powerup", "timeout": 20, "timeout_text": "Troppo lento, ma non mollare!"},
+  {"id": "traguardo", "title": "Fino in fondo", "text": "Aspetta la fine del livello, oppure premi il pulsante sulla schiena.", "trigger": {"kind": "any_of", "steps": [{"kind": "level", "name": "fine"}, {"kind": "button"}]}, "points": 10, "success_text": "Livello finito! Che corsa!", "timeout": 90}
+ ]
+}

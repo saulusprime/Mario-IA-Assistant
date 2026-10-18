@@ -116,6 +116,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.cli.adventure_sim_event("salto")["data"], bytes.fromhex("0080"))
         self.assertEqual(self.cli.adventure_sim_event("evento 0x386B 7")["data"], bytes.fromhex("6b380700"))
         self.assertEqual(self.cli.adventure_sim_event("pulsante")["prop"], "BUTTON")
+        self.assertEqual(self.cli.adventure_sim_event("livello ultimi")["data"], bytes.fromhex("03180400"))
+        self.assertIsNone(self.cli.adventure_sim_event("livello metà"))
         self.assertIsNone(self.cli.adventure_sim_event("boh"))
         args = self.cli.build_parser().parse_args(["adventure", "--play", "quiz", "--no-mario", "--no-tts"])
         self.assertEqual((args.play, args.no_mario, args.webhooks), ("quiz", True, False))

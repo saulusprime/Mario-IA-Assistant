@@ -67,6 +67,35 @@ class SpeakerCommandTests(unittest.TestCase):
         self.assertTrue(sp.idle)
         self.assertFalse(sp.play("coin"))  # senza lettore o disabilitato: False, nessun errore
 
+    def test_background_music_loops_until_stopped(self):
+        import tempfile
+        import time
+        from pathlib import Path
+        sp = Speaker(enabled=True, engine=None, sound_style="sintetici")
+        sp.player = ["paplay"]
+        self.assertEqual(sp.music_command(Path("x.wav"), 25), ["paplay", "--volume=16384", "x.wav"])
+        sp.player = ["pw-play"]
+        self.assertEqual(sp.music_command(Path("x.wav"), 250)[1], "--volume=1.00")
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "giri"
+            sp.player = ["sh", "-c", 'echo "$1" >> "$0"; sleep 0.2', str(log)]   # lettore finto: un giro = 0,2 s
+            self.assertFalse(sp.music("tmk/non/esiste.nsf"))
+            self.assertFalse(sp.music("effetto-inesistente"))
+            self.assertTrue(sp.music("coin", 20))
+            self.assertEqual(sp.status()["music"], "coin")
+            deadline = time.time() + 5
+            while time.time() < deadline and (not log.exists() or len(log.read_text().splitlines()) < 2):
+                time.sleep(0.05)
+            self.assertGreaterEqual(len(log.read_text().splitlines()), 2)   # ricomincia da capo
+            self.assertTrue(log.read_text().splitlines()[0].endswith("coin.wav"))
+            sp.music_stop()
+            self.assertIsNone(sp.music_playing)
+            count = len(log.read_text().splitlines())
+            time.sleep(0.7)
+            self.assertEqual(len(log.read_text().splitlines()), count)       # fermata davvero
+            sp.configure(sounds=False)
+            self.assertFalse(sp.music("coin"))
+
     def test_sounds_are_valid_wav(self):
         for name in SOUND_RECIPES:
             path = ensure_sound(name)

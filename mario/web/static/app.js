@@ -401,10 +401,11 @@
 
   if (page === "adventures" && $("#editor")) {
     const msg = $("#adv-msg"), edMsg = $("#ed-msg"), editor = $("#editor");
-    let current = { name: "", steps: [] }, LIB = null, selectedRow = null;
-    const TRIGGER_PARAM = { barcode: ["code", "family"], color: ["code"], pants: ["code"], gesture: ["name"], game_event: ["code"], timer: ["seconds"], button: [], sequence: [], count: [] };
-    function paramOf(t) { if (!t) return ""; if (t.kind === "barcode") return t.code || t.family || ""; if (["color", "pants", "game_event"].includes(t.kind)) return t.code || ""; if (t.kind === "gesture") return t.name || ""; if (t.kind === "timer") return t.seconds || ""; return "(vedi JSON)"; }
-    function applyParam(t, v) { v = String(v).trim(); if (t.kind === "barcode") { if (/^0x/i.test(v)) { t.code = v; delete t.family; } else { t.family = v || "any"; delete t.code; } } else if (["color", "pants", "game_event"].includes(t.kind)) t.code = v; else if (t.kind === "gesture") t.name = v; else if (t.kind === "timer") t.seconds = Number(v) || 0; return t; }
+    let current = { name: "", steps: [] }, LIB = null, selectedRow = null, recTimer = null;
+    async function recRefresh() { try { const r = await api("/api/adventure/record", "POST", { action: "status" }); $("#rec-tiles").textContent = r.tiles.length ? r.tiles.map((t) => t.name).join(" → ") : "nessuna basetta ancora"; } catch (e) { flash(msg, e.message, true); } }
+    const TRIGGER_PARAM = { barcode: ["code", "family"], color: ["code"], pants: ["code"], gesture: ["name"], level: ["name"], game_event: ["code"], timer: ["seconds"], button: [], sequence: [], count: [], any_of: [] };
+    function paramOf(t) { if (!t) return ""; if (t.kind === "barcode") return t.code || t.family || ""; if (["color", "pants", "game_event"].includes(t.kind)) return t.code || ""; if (["gesture", "level"].includes(t.kind)) return t.name || ""; if (t.kind === "timer") return t.seconds || ""; return "(vedi JSON)"; }
+    function applyParam(t, v) { v = String(v).trim(); if (t.kind === "barcode") { if (/^0x/i.test(v)) { t.code = v; delete t.family; } else { t.family = v || "any"; delete t.code; } } else if (["color", "pants", "game_event"].includes(t.kind)) t.code = v; else if (["gesture", "level"].includes(t.kind)) t.name = v; else if (t.kind === "timer") t.seconds = Number(v) || 0; return t; }
     function formToModel() {
       current.name = $("#ed-name").value; current.author = $("#ed-author").value; current.version = Number($("#ed-version").value) || 1; current.description = $("#ed-description").value;
       current.intro_text = $("#ed-intro").value; current.end_text = $("#ed-end").value; current.time_limit = Number($("#ed-time").value) || 0; current.kid_mode = $("#ed-kid").checked;
@@ -434,7 +435,7 @@
     }
     async function loadRuns() {
       try { const r = await api("/api/adventure/runs?limit=15"); const tb = $("#runs-table tbody"); tb.innerHTML = "";
-        r.runs.forEach((x) => tb.appendChild(eventRow(x, [fmtDate(x.started), esc(x.name), esc(x.outcome), x.score, x.ended && x.started ? Math.round(x.ended - x.started) + " s" : ""]))); } catch (e) { flash(msg, e.message, true); }
+        r.runs.forEach((x) => tb.appendChild(eventRow(x, [`<a href="/adventures/runs/${x.id}">${fmtDate(x.started)}</a>`, esc(x.name), esc(x.outcome), x.score, x.ended && x.started ? Math.round(x.ended - x.started) + " s" : ""]))); } catch (e) { flash(msg, e.message, true); }
     }
     function renderLibrary() {
       if (!LIB) return; const box = $("#library"); box.innerHTML = ""; const onlyOwned = $("#lib-owned").checked;
@@ -443,6 +444,7 @@
       LIB.colors.forEach((c) => add(c, c.name, { kind: "color", code: c.hex }));
       LIB.pants.forEach((p) => add(p, p.name, { kind: "pants", code: p.hex }));
       LIB.gestures.forEach((g) => add(g, g.label, { kind: "gesture", name: g.name }));
+      (LIB.levels || []).forEach((l) => add(l, l.label, { kind: "level", name: l.name }));
       Object.entries(LIB.families).forEach(([k, v]) => { if (k !== "unknown") add({ icon: "🔲" }, "basetta " + v, { kind: "barcode", family: k }); });
     }
     function useTrigger(trig) { if (!selectedRow) { flash(edMsg, "seleziona prima un passo nella tabella", true); return; } selectedRow._step.trigger = trig; $(".st-kind", selectedRow).value = trig.kind; $(".st-param", selectedRow).value = paramOf(trig); flash(edMsg, `trigger impostato: ${trig.kind} ${paramOf(trig)}`); }
@@ -456,6 +458,15 @@
       if (b.classList.contains("adv-edit")) loadAdventure(b.dataset.id);
       if (b.classList.contains("adv-del")) { if (confirm("Eliminare questa avventura?")) { await api("/api/adventures/" + b.dataset.id, "DELETE"); location.reload(); } }
       if (b.id === "adv-new") { current = { name: "Nuova avventura", author: "", version: 1, description: "", intro_text: "", end_text: "Avventura finita! Hai fatto {score} punti.", time_limit: 0, kid_mode: true, steps: [{ id: "passo1", title: "Primo passo", text: "Fai saltare Mario!", trigger: { kind: "gesture", name: "salto" }, points: 10, timeout: 60, success_text: "Bravo!" }] }; editor.dataset.adventureId = ""; modelToForm(); editor.scrollIntoView({ behavior: "smooth" }); }
+      if (b.id === "adv-record") {
+        try {
+          if (!recTimer) { await api("/api/adventure/record", "POST", { action: "start" }); b.textContent = "Fine registrazione"; b.classList.add("primary"); $("#rec-box").classList.remove("hidden"); recTimer = setInterval(recRefresh, 1000); recRefresh(); }
+          else { clearInterval(recTimer); recTimer = null; const r = await api("/api/adventure/record", "POST", { action: "stop" }); b.textContent = "Registra un percorso"; b.classList.remove("primary"); $("#rec-box").classList.add("hidden");
+            if (!r.tiles.length) { flash(msg, "nessuna basetta letta: niente da salvare", true); return; }
+            current = r.draft; editor.dataset.adventureId = ""; modelToForm(); flash(msg, `percorso di ${r.tiles.length} basette nell'editor: controlla e salva`); editor.scrollIntoView({ behavior: "smooth" }); }
+        } catch (e) { flash(msg, e.message, true); }
+      }
+      if (b.dataset.recsim) { try { await api("/api/adventure/simulate", "POST", { what: b.dataset.recsim }); recRefresh(); } catch (e) { flash(msg, e.message, true); } }
       if (b.id === "adv-import") { const ta = $("#adv-import-text"); if (ta.classList.contains("hidden")) { ta.classList.remove("hidden"); b.textContent = "Importa questo JSON"; return; } try { const r = await api("/api/adventures/import", "POST", { json: ta.value }); flash(msg, `importata: ${r.adventure.name}`); location.reload(); } catch (e) { flash(msg, e.message, true); } }
       if (b.id === "step-add") { formToModel(); current.steps.push({ id: "passo" + (current.steps.length + 1), title: "", text: "", trigger: { kind: "button" }, points: 10, timeout: 0 }); modelToForm(); }
       if (b.classList.contains("st-del") || b.classList.contains("st-up") || b.classList.contains("st-down")) { formToModel(); const tr = b.closest("tr"); const i = Array.from(tr.parentNode.children).indexOf(tr); if (b.classList.contains("st-del")) current.steps.splice(i, 1); else { const j = b.classList.contains("st-up") ? i - 1 : i + 1; if (j >= 0 && j < current.steps.length) { [current.steps[i], current.steps[j]] = [current.steps[j], current.steps[i]]; } } modelToForm(); }
@@ -478,7 +489,7 @@
       stage.classList.toggle("finished", !!r && r.state === "finished");
       if (!r) { $("#pl-adventure").textContent = "Scegli un'avventura e premi Inizia"; $("#pl-text").textContent = "—"; return; }
       $("#pl-adventure").textContent = r.adventure + (r.state === "finished" ? ` · ${r.outcome}` : ""); $("#pl-score").textContent = r.score; $("#pl-elapsed").textContent = Math.round(r.elapsed);
-      if (r.step) { $("#pl-step-title").textContent = `Passo ${r.step_index + 1} di ${r.steps_total} · ${r.step.title}`; $("#pl-text").textContent = r.step.text || r.step.title; $("#pl-trigger").textContent = "aspetto: " + r.step.trigger; $("#pl-progress").textContent = r.step.progress || "";
+      if (r.step) { $("#pl-step-title").textContent = `Passo ${r.step_index + 1} di ${r.steps_total} · ${r.step.title}`; $("#pl-text").textContent = r.step.text || r.step.title; $("#pl-trigger").textContent = "aspetto: " + r.step.trigger + (r.step.fail ? ` · attento: ${r.step.fail} fa perdere il passo` : ""); $("#pl-progress").textContent = r.step.progress || "";
         const fill = $("#pl-timebar"); if (r.step.timeout) { const pct = Math.max(0, Math.min(100, 100 * r.step.remaining / r.step.timeout)); fill.style.width = pct + "%"; fill.style.background = pct < 25 ? "#d7262c" : pct < 50 ? "#f5c400" : "#2e9e44"; } else fill.style.width = "0"; }
       else { $("#pl-step-title").textContent = ""; $("#pl-text").textContent = r.state === "finished" ? `Finita: ${r.outcome} · ${r.score} punti` : "…"; $("#pl-trigger").textContent = ""; $("#pl-progress").textContent = ""; $("#pl-timebar").style.width = "0"; }
       const c = r.context || {}; $("#pl-context").textContent = `👖 ${c.pants || "—"} · 🎨 ${c.color || "—"} · 🔲 ${c.tile || "—"}${c.lifted ? " · ✋ in mano" : ""}`;
@@ -486,12 +497,49 @@
       $("#pl-results").innerHTML = (r.results || []).map((x) => `<li class="${x.outcome === "ok" ? "ok" : "ko"}">${esc(x.title)} · ${x.outcome} · ${x.points} punti</li>`).join("");
     }
     async function refresh() { try { render((await api("/api/adventure/status")).status); } catch (e) { flash(msg, e.message, true); } }
-    onEvent((ev) => { if (ev.type !== "ADVENTURE") return; addLog(`${ev.kind}: ${ev.text}`); if (["start", "step", "success", "timeout", "finish", "progress", "score"].includes(ev.kind)) refresh(); });
+    onEvent((ev) => { if (ev.type !== "ADVENTURE") return; addLog(`${ev.kind}: ${ev.text}`); if (["start", "step", "success", "timeout", "fail", "finish", "progress", "score", "tile"].includes(ev.kind)) refresh(); });
     $("#play-start").addEventListener("click", async () => { try { render((await api("/api/adventure/start", "POST", { id: $("#play-select").value })).status); flash(msg, ""); } catch (e) { flash(msg, e.message, true); } });
     $("#play-stop").addEventListener("click", async () => { try { render((await api("/api/adventure/stop", "POST", {})).status); } catch (e) { flash(msg, e.message, true); } });
     $("#play-big").addEventListener("change", () => stage.classList.toggle("big", $("#play-big").checked));
     document.addEventListener("click", async (ev) => { const b = ev.target.closest("button[data-advsim]"); if (!b) return; try { const r = await api("/api/adventure/simulate", "POST", { what: b.dataset.advsim }); flash(msg, r.progressed ? "evento riconosciuto!" : "evento ricevuto, nessun progresso"); render(r.status); } catch (e) { flash(msg, e.message, true); } });
     refresh(); setInterval(refresh, 1000); startStream();
+  }
+
+  // ---- partita salvata: cronaca e replay (gli eventi del motore riletti con i loro tempi) ----
+  if (page === "adventures" && $("#replay")) {
+    const data = JSON.parse($("#rp-data").textContent), log = data.log || [];
+    const t0 = data.started || (log[0] && log[0].ts) || 0, end = log.length ? log[log.length - 1].ts - t0 : 0;
+    const rows = $$("#rp-table tbody tr"), pos = $("#rp-pos"), btn = $("#rp-play");
+    let t = 0, playing = false, last = 0;
+    const clock = (x) => `${Math.floor(x / 60)}:${(x % 60).toFixed(1).padStart(4, "0")}`;
+    function show(at) {
+      t = Math.max(0, Math.min(end, at)); pos.value = t; $("#rp-clock").textContent = clock(t); $("#rp-elapsed").textContent = Math.round(t);
+      let score = 0, step = null, total = 0, lastText = "", progress = "", path = [], results = [], finished = null;
+      log.forEach((ev, i) => {
+        if (ev.ts - t0 > t + 1e-6) return;
+        score = ev.score ?? score; if (ev.text) lastText = ev.text;
+        if (ev.kind === "start") total = ev.steps || 0;
+        if (ev.kind === "step") { step = ev; progress = ""; }
+        if (ev.kind === "progress") progress = ev.progress || "";
+        if (ev.kind === "tile") path.push(ev.name || ev.text);
+        if (["success", "timeout", "fail"].includes(ev.kind)) results.push({ ok: ev.kind === "success", text: `${(step && step.title) || ev.step} · ${ev.kind === "success" ? `${ev.points} punti` : ev.kind === "fail" ? "perso" : "tempo scaduto"}` });
+        if (ev.kind === "finish") finished = ev;
+        if (rows[i]) rows[i].classList.toggle("owned", ev.ts - t0 <= t + 1e-6 && (i + 1 >= log.length || log[i + 1].ts - t0 > t + 1e-6));
+      });
+      $("#rp-score").textContent = score;
+      $("#rp-step-title").textContent = step && !finished ? `Passo ${(step.index ?? 0) + 1}${total ? " di " + total : ""} · ${step.title || ""}` : "";
+      $("#rp-text").textContent = finished ? `Finita: ${finished.outcome} · ${finished.score} punti` : step ? step.text || step.title : t ? "…" : "Premi ▶ per rivedere la partita";
+      $("#rp-trigger").textContent = step && !finished ? "aspettava: " + (step.trigger || "") : "";
+      $("#rp-last").textContent = progress || lastText;
+      $("#rp-path").innerHTML = path.map((x) => `<span>${esc(x)}</span>`).join("") || '<span class="muted">nessuna basetta</span>';
+      $("#rp-results").innerHTML = results.map((x) => `<li class="${x.ok ? "ok" : "ko"}">${esc(x.text)}</li>`).join("");
+      $("#replay").classList.toggle("finished", !!finished);
+    }
+    function frame(now) { if (!playing) return; t += (now - last) / 1000 * Number($("#rp-speed").value); last = now; show(t); if (t >= end) { playing = false; btn.textContent = "▶ Rivedi"; return; } requestAnimationFrame(frame); }
+    btn.addEventListener("click", () => { playing = !playing; btn.textContent = playing ? "⏸ Pausa" : "▶ Riprendi"; if (playing) { if (t >= end) t = 0; last = performance.now(); requestAnimationFrame(frame); } });
+    pos.addEventListener("input", () => show(Number(pos.value)));
+    rows.forEach((tr) => tr.addEventListener("click", () => show(Number(tr.dataset.offset))));
+    const hash = /^#t=([\d.]+)$/.exec(location.hash); show(hash ? Number(hash[1]) : 0);  // #t=12.5: un momento preciso
   }
 
   if (page === "sounds") {

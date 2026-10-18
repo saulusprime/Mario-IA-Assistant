@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Partita {{ run.id }}{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="actions"><a href="/adventures">← avventure</a><span class="spacer"></span>{% if run.adventure_id %}<a href="/adventures/play?id={{ run.adventure_id }}"><button class="small primary">Gioca ancora</button></a>{% endif %} <a href="/api/adventure/runs/{{ run.id }}"><button class="small ghost">JSON</button></a></div>
+  <h1>{{ run.name }} <small class="muted">partita {{ run.id }}</small></h1>
+  <p>{{ fmt_time(run.started) }} · esito <b>{{ run.outcome }}</b> · ⭐ {{ run.score }} punti{% if run.ended and run.started %} · durata {{ (run.ended - run.started)|round|int }} s{% endif %} · {{ rows|length }} eventi</p>
+</section>
+<section class="card stage" id="replay">
+  <div class="actions">
+    <button id="rp-play" class="primary">▶ Rivedi</button>
+    <label>velocità <select id="rp-speed"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="10">10×</option></select></label>
+    <input type="range" id="rp-pos" min="0" max="{{ (rows[-1].offset if rows else 0)|round(1) }}" step="0.1" value="0" style="flex:1">
+    <span id="rp-clock" class="muted">0:00.0</span>
+  </div>
+  <div class="stage-top">
+    <div class="stage-score">⭐ <span id="rp-score">0</span></div>
+    <div class="stage-title">{{ run.name }}</div>
+    <div class="stage-time">⏱ <span id="rp-elapsed">0</span> s</div>
+  </div>
+  <div class="mission">
+    <div class="mission-step muted" id="rp-step-title"></div>
+    <div class="mission-text" id="rp-text">Premi ▶ per rivedere la partita</div>
+    <div class="mission-trigger muted" id="rp-trigger"></div>
+    <div class="mission-progress" id="rp-last"></div>
+  </div>
+  <div class="stage-bottom">
+    <div class="path" id="rp-path"></div>
+    <ol class="results" id="rp-results"></ol>
+    <div></div>
+  </div>
+</section>
+<section class="card">
+  <h1>Cronaca</h1>
+  <table class="compact" id="rp-table"><thead><tr><th>Tempo</th><th>Cosa</th><th>Passo</th><th>Testo</th><th>Punti</th></tr></thead>
+  <tbody>{% for r in rows %}<tr data-offset="{{ '%.1f'|format(r.offset) }}"><td class="nowrap">{{ r.clock }}</td><td class="nowrap">{{ r.label }}</td><td>{{ r.step }}</td><td>{{ r.text }}</td><td>{{ r.score }}</td></tr>{% endfor %}</tbody></table>
+  {% if not rows %}<p class="muted">Questa partita non ha eventi salvati.</p>{% endif %}
+</section>
+<script type="application/json" id="rp-data">{{ {"started": run.started, "log": run.log}|tojson }}</script>
+{% endblock %}

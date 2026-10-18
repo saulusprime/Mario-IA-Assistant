@@ -1,15 +1,59 @@
 """Collegamento del motore delle avventure con il worker Bluetooth, il database e la voce (dashboard)."""
 from __future__ import annotations
 
+import json
 import logging
 import threading
+import time
 from typing import Any, Optional
 
+from .. import codes
+from ..assistant.intents import short_name, tile_family
 from .engine import AdventureRunner
 from .library import library
-from .model import Adventure, load_examples, validate
+from .model import Adventure, example_files, validate
 
 log = logging.getLogger("mario.adventures")
+
+EXAMPLES_KEY = "adventures.examples"
+# Esempi caricati prima che il database tenesse il conto di quelli già offerti
+FIRST_EXAMPLES = ("01-caccia-ai-colori", "02-percorso-a-ostacoli", "03-quiz-dei-nemici")
+
+
+def draft_from_tiles(tiles: list[dict], name: str = "") -> dict:
+    """Avventura "percorso" dalle basette registrate: un passo per basetta, nello stesso ordine. Il tempo
+    impiegato durante la registrazione suggerisce il timeout (tre volte tanto, almeno 30 s)."""
+    steps = []
+    for i, tile in enumerate(tiles):
+        took = tile["ts"] - tiles[i - 1]["ts"] if i else 0.0
+        steps.append({"id": f"tappa{i + 1}", "title": tile["name"], "text": f"Porta Mario sulla basetta {tile['name']}!",
+                      "trigger": {"kind": "barcode", "code": tile["hex"]}, "points": 10,
+                      "success_text": "Trovata!" if i + 1 < len(tiles) else "Percorso completato!",
+                      "timeout": int(max(30, 3 * took)) if i else 0})
+    when = time.strftime("%d/%m %H:%M")
+    return {"name": name or f"Percorso registrato {when}", "author": "", "version": 1,
+            "description": f"Percorso di {len(tiles)} basette registrato il {when} facendo camminare Mario.",
+            "intro_text": "Segui il percorso: ti dico io la prossima basetta.",
+            "end_text": "Percorso finito! Hai fatto {score} punti.", "time_limit": 0, "kid_mode": True, "steps": steps}
+
+
+def seed_examples(db) -> int:
+    """Aggiunge al database gli esempi non ancora offerti. Un esempio nuovo arriva anche in un database già in
+    uso; uno cancellato dall'utente non torna."""
+    raw = db.get_setting(EXAMPLES_KEY)
+    if raw is not None:
+        offered = set(json.loads(raw))
+    else:
+        offered = set(FIRST_EXAMPLES) if db.count_adventures() else set()
+    added = 0
+    for stem, adv in example_files():
+        if stem not in offered:
+            db.save_adventure(adv.to_dict())
+            offered.add(stem)
+            added += 1
+    if raw is None or added:
+        db.set_setting(EXAMPLES_KEY, json.dumps(sorted(offered)))
+    return added
 
 
 class AdventureService:
@@ -19,21 +63,15 @@ class AdventureService:
         self.speaker = None if quiet else speaker
         self.runner: Optional[AdventureRunner] = None
         self.adventure_id: Optional[int] = None
+        self.recording: Optional[dict] = None     # modalità "registra": basette lette in ordine
         self._lock = threading.Lock()
-        if seed and self.db.count_adventures() == 0:
-            self.seed_examples()
+        if seed:
+            seed_examples(self.db)
         self._thread = threading.Thread(target=self._consume, name="adventure-events", daemon=True)
         if start:
             self._thread.start()
 
     # ----- catalogo ---------------------------------------------------------------------
-
-    def seed_examples(self) -> int:
-        n = 0
-        for adv in load_examples():
-            self.db.save_adventure(adv.to_dict())
-            n += 1
-        return n
 
     def list(self) -> list[dict]:
         return self.db.list_adventures()
@@ -103,11 +141,44 @@ class AdventureService:
         except Exception as exc:
             log.debug("partita non salvata: %s", exc)
 
+    # ----- modalità "registra": il percorso costruito facendo camminare Mario sulle basette ------
+
+    def record_start(self) -> dict:
+        with self._lock:
+            self.recording = {"started": time.time(), "tiles": []}
+        return self.record_status()
+
+    def record_status(self) -> dict:
+        rec = self.recording
+        return {"recording": rec is not None, "tiles": list(rec["tiles"]) if rec else []}
+
+    def record_stop(self, name: str = "") -> dict:
+        """Chiude la registrazione e restituisce la bozza dell'avventura (non salvata: la salva l'editor)."""
+        with self._lock:
+            rec, self.recording = self.recording, None
+        tiles = rec["tiles"] if rec else []
+        return {"tiles": tiles, "draft": draft_from_tiles(tiles, name)}
+
+    def _record(self, ev: dict) -> None:
+        rec = self.recording
+        if rec is None:
+            return
+        signal = AdventureRunner._signal(ev)
+        if signal is None or signal[0] != "scanner" or signal[1]["barcode"] == 0xFFFF:
+            return
+        code = signal[1]["barcode"]
+        if rec["tiles"] and rec["tiles"][-1]["code"] == code:
+            return  # la stessa basetta letta di nuovo subito dopo: una sola tappa
+        name = short_name(codes.BARCODES.get(code, f"0x{code:04X}"))
+        rec["tiles"].append({"code": code, "hex": f"0x{code:04X}", "name": name, "family": tile_family(code),
+                             "ts": float(ev.get("ts") or time.time())})
+
     def simulate(self, ev: dict) -> bool:
         return self._handle(ev)
 
     def _handle(self, ev: dict) -> bool:
         with self._lock:
+            self._record(ev)
             r = self.runner
             if r is None or r.state != "running":
                 return False

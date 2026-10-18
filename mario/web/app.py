@@ -102,11 +102,32 @@ SIMULATIONS = {
     "rotazione": {"type": "PORT_VALUE_SINGLE", "io_type": 0x47, "mode": 1, "hex": "00 01"},
     "sollevato": {"type": "PORT_VALUE_SINGLE", "io_type": 0x49, "mode": 0, "hex": "ff ff ff ff"},
     "pulsante": {"type": "HUB_PROPERTIES", "prop": "BUTTON", "value": True},
+    "livello_inizio": {"type": "PORT_VALUE_SINGLE", "io_type": 0x46, "mode": 2, "hex": "03 18 01 00"},
+    "livello_ultimi_secondi": {"type": "PORT_VALUE_SINGLE", "io_type": 0x46, "mode": 2, "hex": "03 18 04 00"},
+    "livello_fine": {"type": "PORT_VALUE_SINGLE", "io_type": 0x46, "mode": 2, "hex": "03 18 03 00"},
     "batteria": {"type": "HUB_PROPERTIES", "prop": "BATTERY_VOLTAGE", "value": 10},
 }
 
 ALERT_NAMES = {"low_voltage": HubAlertType.LOW_VOLTAGE, "high_current": HubAlertType.HIGH_CURRENT,
                "low_signal": HubAlertType.LOW_SIGNAL_STRENGTH, "over_power": HubAlertType.OVER_POWER_CONDITION}
+
+
+RUN_KIND_LABELS = {"start": "🚩 inizio", "step": "📜 passo", "tile": "🔲 basetta", "progress": "➕ progresso",
+                   "success": "⭐ riuscito", "timeout": "⏰ tempo scaduto", "fail": "❌ perso", "message": "💬 messaggio",
+                   "score": "🪙 punti", "volume": "🔊 volume", "music": "🎵 musica", "webhook": "🌐 webhook",
+                   "error": "⚠️ errore", "finish": "🏁 fine"}
+
+
+def run_rows(run: dict) -> list[dict]:
+    """Righe della cronaca di una partita salvata: secondi dall'inizio, tipo, passo, testo, punti."""
+    t0 = run.get("started") or (run["log"][0]["ts"] if run.get("log") else 0.0)
+    rows = []
+    for ev in run.get("log") or []:
+        offset = max(0.0, float(ev.get("ts") or t0) - t0)
+        rows.append({"offset": offset, "clock": f"{int(offset // 60)}:{offset % 60:04.1f}",
+                     "kind": ev.get("kind", ""), "label": RUN_KIND_LABELS.get(ev.get("kind", ""), ev.get("kind", "")),
+                     "step": ev.get("step") or "", "text": ev.get("text") or "", "score": ev.get("score", "")})
+    return rows
 
 
 def parse_enum(enum_cls, text: str) -> int:
@@ -311,6 +332,14 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     def page_adventure_play():
         return render_template("play.html", page="adventures", adventures=adventures.list(), simulations=list(SIMULATIONS),
                                selected=request.args.get("id", ""))
+
+    @app.get("/adventures/runs/<int:run_id>")
+    def page_adventure_run(run_id: int):
+        run = db.get_run(run_id)
+        if run is None:
+            return render_template("message.html", page="adventures", title="Partita non trovata",
+                                   text=f"Nessuna partita con id {run_id}."), 404
+        return render_template("run.html", page="adventures", run=run, rows=run_rows(run))
 
     @app.get("/report")
     def page_report():
@@ -951,6 +980,18 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
             spec["data"] = bytes.fromhex(spec.pop("hex"))
         spec["ts"] = time.time()
         return ok(progressed=adventures.simulate(spec), status=adventures.status())
+
+    @app.post("/api/adventure/record")
+    @api
+    def api_adventure_record():
+        """Modalità "registra": action = start, status o stop (stop restituisce la bozza da caricare nell'editor)."""
+        d = body()
+        action = str(d.get("action") or "status")
+        if action == "start":
+            return ok(**adventures.record_start())
+        if action == "stop":
+            return ok(**adventures.record_stop(str(d.get("name") or "")))
+        return ok(**adventures.record_status())
 
     @app.get("/api/adventure/runs")
     @api

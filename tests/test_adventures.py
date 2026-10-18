@@ -19,13 +19,20 @@ class FakeClock:
 
 class FakeSpeaker:
     def __init__(self):
-        self.spoken, self.played = [], []
+        self.spoken, self.played, self.music_calls = [], [], []
 
     def speak(self, text, emotion=None):
         self.spoken.append((text, emotion))
 
     def play(self, name):
         self.played.append(name)
+
+    def music(self, what, volume):
+        self.music_calls.append((what, volume))
+        return what != "manca"
+
+    def music_stop(self):
+        self.music_calls.append("stop")
 
 
 def gesture(bits):
@@ -54,7 +61,7 @@ def make(steps, **kw):
 class ModelTests(unittest.TestCase):
     def test_examples_are_valid_and_round_trip(self):
         examples = load_examples()
-        self.assertEqual(len(examples), 3)
+        self.assertEqual(len(examples), 4)
         for adv in examples:
             self.assertEqual(validate(adv), [], adv.name)
             again = Adventure.from_json(adv.to_json())
@@ -76,6 +83,24 @@ class ModelTests(unittest.TestCase):
                        "meno di due", "count richiede", "timeout negativo"):
             self.assertTrue(any(needle in p for p in problems), (needle, problems))
         self.assertIn("nessun passo", validate(Adventure.from_dict({"name": " "})))
+        adv = make([{"id": "a", "trigger": {"kind": "level", "name": "metà"}},
+                    {"id": "b", "trigger": {"kind": "any_of", "steps": [{"kind": "button"}]}},
+                    {"id": "c", "trigger": {"kind": "count", "of": {"kind": "button"}, "times": 3, "seconds": 2, "window": 3}},
+                    {"id": "d", "trigger": {"kind": "sequence", "steps": [{"kind": "button"}, {"kind": "timer", "seconds": 2}]},
+                     "fail": {"kind": "gesture", "name": "piroetta"}}])
+        problems = validate(adv)
+        for needle in ("fase del livello sconosciuta 'metà'", "any_of con meno di due", "count impossibile",
+                       "trigger semplici, non 'timer'", "fail: gesto sconosciuto 'piroetta'"):
+            self.assertTrue(any(needle in p for p in problems), (needle, problems))
+
+    def test_new_triggers_round_trip_and_describe(self):
+        t = Trigger.from_dict({"kind": "any_of", "steps": [{"kind": "level", "name": "fine"},
+                                                           {"kind": "count", "of": {"kind": "gesture", "name": "salto"},
+                                                            "times": 3, "window": 5}]})
+        self.assertEqual(Trigger.from_dict(t.to_dict()).to_dict(), t.to_dict())
+        self.assertEqual(t.describe(), "fine del livello oppure gesto salto × 3 entro 5 s")
+        lib = library()
+        self.assertEqual([x["name"] for x in lib["levels"]], ["inizio", "ultimi_secondi", "fine", "uscita"])
 
 
 class EngineTests(unittest.TestCase):
@@ -180,6 +205,60 @@ class EngineTests(unittest.TestCase):
         self.assertEqual((r.state, r.score), ("finished", 40))
         self.assertIn("progress", self.kinds())
 
+    def test_level_phases_any_of_and_fail(self):
+        adv = make([
+            {"id": "via", "trigger": {"kind": "level", "name": "inizio"}, "points": 1},
+            {"id": "nemici", "trigger": {"kind": "count", "of": {"kind": "barcode", "family": "enemy"}, "times": 2},
+             "fail": {"kind": "level", "name": "ultimi_secondi"}, "points": 20, "timeout_text": "peccato",
+             "on_timeout": [{"kind": "score", "value": -1}]},
+            {"id": "fine", "trigger": {"kind": "any_of", "steps": [{"kind": "level", "name": "fine"}, {"kind": "button"}]},
+             "points": 3},
+            {"id": "attesa", "trigger": {"kind": "any_of", "steps": [{"kind": "gesture", "name": "salto"},
+                                                                     {"kind": "timer", "seconds": 4}]}, "points": 2},
+            {"id": "veloce", "trigger": {"kind": "any_of", "steps": [
+                {"kind": "count", "of": {"kind": "gesture", "name": "scossa"}, "times": 2},
+                {"kind": "button"}]}, "points": 5},
+        ])
+        r = self.runner(adv)
+        r.start()
+        self.assertFalse(r.handle_event(game_event(0x1803, 4)))     # altra fase: niente
+        self.assertTrue(r.handle_event(game_event(0x1803, 1)))      # Start letto
+        self.assertTrue(r.handle_event(scanner(barcode=0x0002)) is False)
+        self.assertEqual(r.status()["step"]["fail"], "ultimi 15 secondi del livello")
+        self.assertTrue(r.handle_event(game_event(0x1803, 4)))      # ultimi 15 s: passo perso
+        self.assertEqual(r.step_results[-1]["outcome"], "fallito")
+        self.assertEqual(r.score, 0)                                 # 1 dell'inizio, -1 dell'azione del timeout
+        self.assertIn(("peccato", "tristezza"), self.speaker.spoken)
+        self.assertIn("fail", self.kinds())
+        self.assertEqual(r.current_step.id, "fine")
+        self.assertTrue(r.handle_event(game_event(0x1803, 3)))      # fine del livello
+        self.assertEqual(r.current_step.id, "attesa")
+        self.clock.advance(3)
+        r.tick()
+        self.assertEqual(r.current_step.id, "attesa")
+        self.clock.advance(1.5)
+        r.tick()                                                     # "oppure dopo 4 s"
+        self.assertEqual((r.current_step.id, r.score), ("veloce", 5))
+        self.assertFalse(r.handle_event(gesture(0x0010)))
+        self.assertEqual(r.status()["step"]["progress"], "1/2")
+        self.clock.advance(1)
+        self.assertTrue(r.handle_event(gesture(0x0010)))
+        self.assertEqual((r.state, r.score), ("finished", 10))
+
+    def test_count_window(self):
+        adv = make([{"id": "scatto", "trigger": {"kind": "count", "of": {"kind": "gesture", "name": "salto"},
+                                                 "times": 3, "window": 5}}])
+        r = self.runner(adv)
+        r.start()
+        for _ in range(2):
+            self.assertFalse(r.handle_event(gesture(0x8000)))
+            self.clock.advance(3)
+        self.assertFalse(r.handle_event(gesture(0x8000)))           # il primo salto è ormai fuori dai 5 s
+        self.assertEqual(r.status()["step"]["progress"], "2/3")
+        self.clock.advance(1)
+        self.assertTrue(r.handle_event(gesture(0x8000)))
+        self.assertEqual(r.state, "finished")
+
     def test_goto_end_webhook_and_stop(self):
         adv = make([
             {"id": "a", "trigger": {"kind": "button"}, "points": 0, "on_success": [{"kind": "goto", "value": "c"}, {"kind": "webhook", "text": "http://127.0.0.1:9/x"}]},
@@ -200,6 +279,34 @@ class EngineTests(unittest.TestCase):
         r2.stop()
         self.assertEqual((r2.state, r2.outcome), ("finished", "abbandonata"))
         self.assertEqual(json.loads(json.dumps(r2.status(), default=str))["outcome"], "abbandonata")
+
+    def test_music_action(self):
+        adv = make([
+            {"id": "a", "trigger": {"kind": "button"}, "on_success": [{"kind": "music", "text": "tmk/nes/smb.nsf#1", "value": 20}]},
+            {"id": "b", "trigger": {"kind": "button"}, "on_success": [{"kind": "music", "text": "manca"}]},
+            {"id": "c", "trigger": {"kind": "button"}, "on_success": [{"kind": "music", "text": "stop"}]},
+            {"id": "d", "trigger": {"kind": "button"}, "on_success": [{"kind": "music", "text": "coin"}]},
+            {"id": "e", "trigger": {"kind": "button"}},
+        ])
+        self.assertEqual(validate(adv), [])
+        self.assertTrue(any("musica fuori" in p for p in validate(make([{"id": "x", "trigger": {"kind": "button"},
+                        "on_success": [{"kind": "music", "text": "coin", "value": 300}]}]))))
+        r = self.runner(adv)
+        r.start()
+        for _ in range(5):
+            r.handle_event(BUTTON)
+        self.assertEqual(self.speaker.music_calls[:2], [("tmk/nes/smb.nsf#1", 20), ("manca", 30)])
+        self.assertEqual(self.speaker.music_calls[2], "stop")
+        self.assertEqual(self.speaker.music_calls[3:], [("coin", 30), "stop"])   # la fine ferma la musica
+        texts = [e["text"] for e in self.events if e["kind"] == "music"]
+        self.assertEqual(texts, ["musica: tmk/nes/smb.nsf#1 (volume 20)", "musica non disponibile: manca",
+                                 "musica ferma", "musica: coin (volume 30)"])
+        self.events.clear()
+        quiet = AdventureRunner(adv, emit=self.events.append, clock=self.clock)   # senza voce del PC
+        quiet.start()
+        quiet.handle_event(BUTTON)
+        self.assertEqual([e["text"] for e in self.events if e["kind"] == "music"],
+                         ["musica non disponibile: tmk/nes/smb.nsf#1 (voce del PC spenta)"])
 
     def test_combined_event_and_lifted_context(self):
         adv = make([{"id": "a", "trigger": {"kind": "gesture", "name": "rotazione"}}])

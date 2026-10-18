@@ -7,9 +7,11 @@
   <table class="compact" id="adv-table"><thead><tr><th>Nome</th><th>Passi</th><th>Autore</th><th>Aggiornata</th><th></th></tr></thead>
   <tbody>{% for a in adventures %}<tr data-id="{{ a.id }}"><td><b>{{ a.name }}</b><br><span class="muted small">{{ a.description }}</span></td><td>{{ a.steps }}</td><td>{{ a.author }}</td><td>{{ fmt_time(a.updated) }}</td>
     <td><button class="small adv-edit" data-id="{{ a.id }}">Modifica</button> <a class="small" href="/adventures/play?id={{ a.id }}"><button class="small primary">Gioca</button></a> <a href="/api/adventures/{{ a.id }}/export"><button class="small ghost">JSON</button></a> <button class="small ghost danger adv-del" data-id="{{ a.id }}">×</button></td></tr>{% endfor %}</tbody></table>
-  <div class="actions"><button id="adv-new">Nuova avventura</button> <button id="adv-import" class="ghost">Importa JSON…</button> <span id="adv-msg" class="muted"></span></div>
+  <div class="actions"><button id="adv-new">Nuova avventura</button> <button id="adv-record" title="fai camminare Mario sulle basette: ogni basetta letta diventa un passo">Registra un percorso</button> <button id="adv-import" class="ghost">Importa JSON…</button> <span id="adv-msg" class="muted"></span></div>
+  <div id="rec-box" class="hidden"><p>⏺ <b>Registrazione</b>: porta Mario sulle basette nell'ordine del percorso. <span id="rec-tiles" class="muted">nessuna basetta ancora</span></p>
+    <div class="actions"><span class="muted small">Senza Mario:</span>{% for s in simulations if s.startswith("basetta_") %} <button class="small ghost" data-recsim="{{ s }}">{{ s.replace('_', ' ') }}</button>{% endfor %}</div></div>
   <textarea id="adv-import-text" rows="4" class="hidden" placeholder='Incolla qui il JSON di un'avventura esportata'></textarea>
-  <h2>Partite giocate</h2>
+  <h2>Partite giocate <small class="muted">(clic sulla data: cronaca e replay)</small></h2>
   <table class="compact" id="runs-table"><thead><tr><th>Quando</th><th>Avventura</th><th>Esito</th><th>Punti</th><th>Durata</th></tr></thead><tbody></tbody></table>
 </section>
 <section class="card">
@@ -38,7 +40,7 @@
   </div>
   <h2>Passi</h2>
   <table class="compact" id="steps-table"><thead><tr><th>#</th><th>Id</th><th>Titolo</th><th>Missione (detta e mostrata)</th><th>Trigger</th><th>Parametro</th><th>Punti</th><th>Timeout s</th><th>Frase di successo</th><th>Frase di timeout</th><th></th></tr></thead><tbody></tbody></table>
-  <p class="hint">Parametro: codice esadecimale per basetta/colore/pantaloni/evento (es. 0x0002), famiglia per basetta (start, goal, enemy, prize, friend, any), nome del gesto (salto, scossa, urto, rotazione, caduta), secondi per il timer. Sequenze, ripetizioni e azioni (volume, goto, webhook, end) si scrivono nel JSON.</p>
+  <p class="hint">Parametro: codice esadecimale per basetta/colore/pantaloni/evento (es. 0x0002), famiglia per basetta (start, goal, enemy, prize, friend, any), nome del gesto (salto, scossa, urto, rotazione, caduta), fase del livello (inizio, ultimi_secondi, fine, uscita), secondi per il timer. Nel JSON: sequenze, ripetizioni (<code>count</code>, con <code>window</code> per "tutte entro N secondi"), alternative (<code>any_of</code>: A oppure B, anche oppure un timer), il trigger <code>fail</code> del passo (se succede, il passo è perso come per il timeout) e le azioni (volume, goto, webhook, end).</p>
   <div class="actions"><button id="step-add">Aggiungi passo</button> <button id="ed-validate" class="ghost">Controlla</button> <button id="ed-save" class="primary">Salva</button> <button id="ed-play">Salva e gioca</button> <span id="ed-msg" class="muted"></span></div>
 </section>
 {% endblock %}

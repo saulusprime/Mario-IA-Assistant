@@ -1304,7 +1304,7 @@ LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 ADVENTURE_SIM_HELP = """Eventi simulabili (una riga ciascuno): salto, scossa, urto, rotazione, caduta, pulsante,
   basetta <codice>  (es. basetta 0x02),  colore <codice>  (es. colore 0x25),  pantaloni <codice>  (es. pantaloni 0x12),
-  evento <codice> <valore>  (es. evento 0x386B 7),  stato, stop, esci"""
+  evento <codice> <valore>  (es. evento 0x386B 7),  livello inizio|ultimi|fine|uscita,  stato, stop, esci"""
 
 
 def adventure_sim_event(line: str) -> Optional[dict]:
@@ -1326,6 +1326,12 @@ def adventure_sim_event(line: str) -> Optional[dict]:
                 "data": bar.to_bytes(2, "little") + col.to_bytes(2, "little")}
     if cmd == "pantaloni" and len(parts) > 1:
         return {"ts": now, "type": "PORT_VALUE_SINGLE", "io_type": 0x4A, "mode": 0, "data": bytes([parse_int(parts[1]) & 0x3F])}
+    if cmd == "livello" and len(parts) > 1:
+        phases = {"inizio": 1, "ultimi": 4, "ultimi_secondi": 4, "fine": 3, "uscita": 0}
+        if parts[1].lower() not in phases:
+            return None
+        return {"ts": now, "type": "PORT_VALUE_SINGLE", "io_type": 0x46, "mode": 2,
+                "data": (0x1803).to_bytes(2, "little") + phases[parts[1].lower()].to_bytes(2, "little")}
     if cmd == "evento" and len(parts) > 2:
         return {"ts": now, "type": "PORT_VALUE_SINGLE", "io_type": 0x46, "mode": 2,
                 "data": parse_int(parts[1]).to_bytes(2, "little") + parse_int(parts[2]).to_bytes(2, "little")}
@@ -1358,9 +1364,8 @@ async def cmd_adventure(args) -> int:
         try:
             from .web.db import Database
             db = Database(Path(__file__).resolve().parent.parent / "data" / "mario.sqlite3")
-            if db.count_adventures() == 0:
-                for adv in load_examples():
-                    db.save_adventure(adv.to_dict())
+            from .adventures.service import seed_examples
+            seed_examples(db)
         except Exception as exc:
             say(f"Database non disponibile ({exc}): uso le avventure di esempio")
     if args.list or not args.play:

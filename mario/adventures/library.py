@@ -3,13 +3,16 @@ from __future__ import annotations
 
 from .. import codes
 from ..assistant.intents import COLOR_HINTS, TILE_FRIEND, TILE_GOAL, TILE_PRIZE, TILE_START, short_name, tile_family
-from .model import GESTURE_NAMES, Trigger
+from .model import GESTURE_NAMES, LEVEL_PHASE_NAMES, Trigger
 
 FAMILY_LABELS = {"start": "partenza", "goal": "traguardo", "enemy": "nemico", "prize": "premio", "friend": "amico",
                  "any": "qualsiasi basetta", "unknown": "sconosciuta"}
 FAMILY_ICONS = {"start": "🟢", "goal": "🏁", "enemy": "👾", "prize": "🎁", "friend": "🙂", "any": "🔲", "unknown": "❔"}
 COLOR_ICONS = {0x0013: "⬜", 0x0015: "🟥", 0x0017: "🟦", 0x0018: "🟨", 0x001A: "⬛", 0x0025: "🟩", 0x006A: "🟫",
                0x010C: "🟪", 0x0138: "🧱", 0x0142: "🧊"}
+LEVEL_LABELS = {"inizio": "inizio del livello", "ultimi_secondi": "ultimi 15 secondi del livello",
+                "fine": "fine del livello", "uscita": "uscita dal livello"}
+LEVEL_ICONS = {"inizio": "🚩", "ultimi_secondi": "⏳", "fine": "🏁", "uscita": "🚪"}
 GESTURE_ICONS = {"salto": "🦘", "caduta": "💥", "rotazione": "🔄", "urto": "👊", "scossa": "🫨", "inversione": "🙃"}
 PANTS_ICONS = {0x12: "🔥", 0x11: "🐱", 0x0C: "🚁", 0x03: "🐝", 0x06: "🐸", 0x0A: "🦝", 0x14: "🐧", 0x22: "🔧", 0x23: "🧊",
                0x21: "👖", 0x05: "💚", 0x18: "👑"}
@@ -44,6 +47,11 @@ def gestures() -> list[dict]:
              "label": short_name(codes.GESTURES.get(bits, name))} for name, bits in GESTURE_NAMES.items()]
 
 
+def levels() -> list[dict]:
+    return [{"kind": "level", "name": name, "value": value, "icon": LEVEL_ICONS[name], "label": LEVEL_LABELS[name]}
+            for name, value in LEVEL_PHASE_NAMES.items()]
+
+
 def game_events() -> list[dict]:
     return [{"kind": "game_event", "code": c, "hex": f"0x{c:04X}", "name": n} for c, n in sorted(codes.GAME_EVENTS.items())]
 
@@ -59,7 +67,7 @@ def sounds() -> dict:
 
 def library(owned_codes: set[int] | None = None) -> dict:
     return {"tiles": tiles(owned_codes), "colors": colors(), "pants": pants(), "gestures": gestures(),
-            "game_events": game_events(), "families": FAMILY_LABELS, "sounds": sounds()}
+            "levels": levels(), "game_events": game_events(), "families": FAMILY_LABELS, "sounds": sounds()}
 
 
 def describe_trigger(t: Trigger) -> str:
@@ -79,14 +87,19 @@ def describe_trigger(t: Trigger) -> str:
         name = codes.GAME_EVENTS.get(t.code or -1, f"0x{(t.code or 0):04X}").split(" (")[0]
         extra = f" = {t.value}" if t.value is not None else (f" ≥ {t.min_value}" if t.min_value is not None else "")
         return f"evento {name}{extra}"
+    if t.kind == "level":
+        return LEVEL_LABELS.get((t.name or "").lower(), f"livello {t.name}")
     if t.kind == "timer":
         return f"dopo {t.seconds:g} s"
     if t.kind == "sequence":
         return " poi ".join(describe_trigger(s) for s in t.steps) + (f" entro {t.seconds:g} s" if t.seconds else "")
     if t.kind == "count":
-        return f"{describe_trigger(t.of)} × {t.times}" if t.of else f"× {t.times}"
+        text = f"{describe_trigger(t.of)} × {t.times}" if t.of else f"× {t.times}"
+        return text + (f" entro {t.window:g} s" if t.window else "")
+    if t.kind == "any_of":
+        return " oppure ".join(describe_trigger(s) for s in t.steps)
     return t.kind
 
 
-__all__ = ["library", "tiles", "colors", "pants", "gestures", "game_events", "describe_trigger",
+__all__ = ["library", "tiles", "colors", "pants", "gestures", "levels", "game_events", "describe_trigger",
            "TILE_START", "TILE_GOAL", "TILE_PRIZE", "TILE_FRIEND"]

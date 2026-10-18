@@ -19,7 +19,7 @@ from typing import Any, Callable, Optional
 from .. import codes
 from ..assistant.intents import event_data, short_name, tile_family
 from ..lwp3 import le16
-from .model import GESTURE_NAMES, Action, Adventure, Step, Trigger
+from .model import GESTURE_NAMES, LEVEL_EVENT, LEVEL_PHASE_NAMES, Action, Adventure, Step, Trigger
 
 
 class AdventureRunner:
@@ -91,22 +91,26 @@ class AdventureRunner:
             "state": self.state, "outcome": self.outcome, "adventure": self.adventure.name, "score": self.score,
             "step_index": self.index, "steps_total": len(self.adventure.steps),
             "step": {"id": step.id, "title": step.title, "text": step.text, "trigger": step.trigger.describe(),
+                     "fail": step.fail.describe() if step.fail else None,
                      "timeout": step.timeout, "remaining": max(0.0, step.timeout - (now - self.step_started)) if step.timeout else None,
-                     "progress": self._progress_text(step)} if step else None,
+                     "progress": self._progress_text(step.trigger, step.id)} if step else None,
             "elapsed": round(now - self.started, 1) if self.started else 0.0,
             "time_limit": self.adventure.time_limit,
             "context": dict(self.context), "path": self.path[-12:], "results": self.step_results,
             "started": self.started, "ended": self.ended,
         }
 
-    def _progress_text(self, step: Step) -> str:
-        p = self._progress.get(step.id)
+    def _progress_text(self, t: Trigger, key: str) -> str:
+        if t.kind == "any_of":
+            parts = [self._progress_text(sub, f"{key}/{i}") for i, sub in enumerate(t.steps)]
+            return " · ".join(p for p in parts if p)
+        p = self._progress.get(key)
         if not p:
             return ""
-        if step.trigger.kind == "count":
-            return f"{p.get('n', 0)}/{step.trigger.times}"
-        if step.trigger.kind == "sequence":
-            return f"{p.get('n', 0)}/{len(step.trigger.steps)}"
+        if t.kind == "count":
+            return f"{p.get('n', 0)}/{t.times}"
+        if t.kind == "sequence":
+            return f"{p.get('n', 0)}/{len(t.steps)}"
         return ""
 
     # ----- ciclo di vita -----------------------------------------------------------------------
@@ -137,7 +141,8 @@ class AdventureRunner:
         if step is None:
             return
         self.step_started = self.clock()
-        self._progress.pop(step.id, None)
+        for key in [k for k in self._progress if k == step.id or k.startswith(step.id + "/")]:
+            del self._progress[key]
         self.emit("step", text=step.text, title=step.title, index=self.index, trigger=step.trigger.describe(),
                   timeout=step.timeout)
         self.say(step.text, "calma")
@@ -145,6 +150,7 @@ class AdventureRunner:
     def _finish(self, outcome: str) -> None:
         self.state, self.outcome = "finished", outcome
         self.ended = self.clock()
+        self._stop_music()
         text = self.adventure.end_text.format(score=self.score, outcome=outcome)
         self.emit("finish", text=text, outcome=outcome, elapsed=round(self.ended - self.started, 1),
                   results=self.step_results)
@@ -185,6 +191,9 @@ class AdventureRunner:
         if self._matches(step.trigger, step.id, kind, payload, now):
             self._succeed(step)
             return True
+        if step.fail is not None and self._matches(step.fail, f"{step.id}/fail", kind, payload, now):
+            self._timeout(step, failed=True)
+            return True
         return False
 
     def tick(self, now: Optional[float] = None) -> None:
@@ -197,11 +206,26 @@ class AdventureRunner:
         step = self.current_step
         if step is None:
             return
-        if step.trigger.kind == "timer" and now - self.step_started >= step.trigger.seconds:
+        due = self._timer_seconds(step.trigger)
+        if due is not None and now - self.step_started >= due:
             self._succeed(step)
+            return
+        due = self._timer_seconds(step.fail) if step.fail is not None else None
+        if due is not None and now - self.step_started >= due:
+            self._timeout(step, failed=True)
             return
         if step.timeout and now - self.step_started >= step.timeout:
             self._timeout(step)
+
+    @staticmethod
+    def _timer_seconds(t: Trigger) -> Optional[float]:
+        """Secondi dopo i quali il trigger scatta da solo: un timer, o il timer più breve di un any_of."""
+        if t.kind == "timer":
+            return t.seconds
+        if t.kind == "any_of":
+            times = [s.seconds for s in t.steps if s.kind == "timer"]
+            return min(times) if times else None
+        return None
 
     def _check_time(self, now: Optional[float] = None) -> bool:
         now = now if now is not None else self.clock()
@@ -257,6 +281,7 @@ class AdventureRunner:
                 if barcode != self._last_tile and self.state == "running":
                     self.path.append({"ts": self.clock(), "code": barcode, "name": name, "family": tile_family(barcode)})
                     del self.path[:-50]
+                    self.emit("tile", text=f"basetta {name}", name=name, code=f"0x{barcode:04X}")
             self._last_tile = barcode if barcode != 0xFFFF else None
 
     # ----- trigger -------------------------------------------------------------------------------
@@ -266,6 +291,9 @@ class AdventureRunner:
             return self._match_sequence(t, key, kind, payload, now)
         if t.kind == "count":
             return self._match_count(t, key, kind, payload, now)
+        if t.kind == "any_of":
+            # basta uno; i trigger composti tengono il proprio progresso (chiave "passo/indice")
+            return any(self._matches(sub, f"{key}/{i}", kind, payload, now) for i, sub in enumerate(t.steps))
         return self._match_simple(t, kind, payload, now)
 
     def _match_simple(self, t: Trigger, kind: str, payload: dict, now: float) -> bool:
@@ -290,6 +318,9 @@ class AdventureRunner:
             return payload["code"] == t.code
         if t.kind == "button" and kind == "button":
             return True
+        if t.kind == "level" and kind == "game_event":
+            phase = LEVEL_PHASE_NAMES.get((t.name or "").lower())
+            return payload["code"] == LEVEL_EVENT and phase is not None and payload["value"] == phase
         if t.kind == "game_event" and kind == "game_event":
             if payload["code"] != t.code:
                 return False
@@ -319,13 +350,17 @@ class AdventureRunner:
     def _match_count(self, t: Trigger, key: str, kind: str, payload: dict, now: float) -> bool:
         if t.of is None:
             return False
-        p = self._progress.setdefault(key, {"n": 0, "last": 0.0})
+        p = self._progress.setdefault(key, {"n": 0, "last": 0.0, "hits": []})
         if not self._match_simple(t.of, kind, payload, now):
             return False
         if now - p["last"] < max(0.0, t.seconds):
             return False
-        p["n"] += 1
         p["last"] = now
+        p["hits"].append(now)
+        if t.window:
+            # contano solo le ripetizioni degli ultimi `window` secondi
+            p["hits"] = [h for h in p["hits"] if now - h <= t.window]
+        p["n"] = len(p["hits"])
         self.emit("progress", text=f"{p['n']}/{t.times}: {t.of.describe()}", progress=f"{p['n']}/{t.times}")
         return p["n"] >= t.times
 
@@ -344,10 +379,16 @@ class AdventureRunner:
             return
         self._goto(target if target is not None else step.next)
 
-    def _timeout(self, step: Step) -> None:
-        self.step_results.append({"id": step.id, "title": step.title, "outcome": "tempo scaduto", "points": 0,
-                                  "seconds": round(step.timeout, 1)})
-        self.emit("timeout", text=step.timeout_text or f"Tempo scaduto: {step.title}", timeout=step.timeout)
+    def _timeout(self, step: Step, failed: bool = False) -> None:
+        """Passo perso: per il timeout o perché è successo il suo trigger `fail`."""
+        seconds = round(self.clock() - self.step_started, 1) if failed else round(step.timeout, 1)
+        outcome = "fallito" if failed else "tempo scaduto"
+        self.step_results.append({"id": step.id, "title": step.title, "outcome": outcome, "points": 0, "seconds": seconds})
+        if failed:
+            self.emit("fail", text=step.timeout_text or f"Passo perso: {step.title}", reason=step.fail.describe(),
+                      seconds=seconds)
+        else:
+            self.emit("timeout", text=step.timeout_text or f"Tempo scaduto: {step.title}", timeout=step.timeout)
         self.play("sad")
         self.say(step.timeout_text, "tristezza")
         target = self._apply(step.on_timeout)
@@ -376,6 +417,8 @@ class AdventureRunner:
                     self.emit("volume", text=f"volume di Mario {int(a.value)}", level=int(a.value))
                 elif a.kind == "webhook":
                     self._webhook(a.text)
+                elif a.kind == "music":
+                    self._music(a)
                 elif a.kind == "goto":
                     target = str(a.value)
                 elif a.kind == "end":
@@ -384,6 +427,27 @@ class AdventureRunner:
             except Exception as exc:
                 self.emit("error", text=f"azione {a.kind} fallita: {exc}")
         return target
+
+    def _music(self, a: Action) -> None:
+        what = (a.text or "").strip()
+        if not what or what.lower() == "stop":
+            self._stop_music()
+            self.emit("music", text="musica ferma")
+            return
+        volume = int(a.value) if a.value not in (None, "") else 30
+        player = getattr(self.speaker, "music", None)
+        started = bool(player(what, volume)) if player else False
+        self.emit("music", text=f"musica: {what} (volume {volume})" if started else
+                  f"musica non disponibile: {what}" + ("" if player else " (voce del PC spenta)"),
+                  file=what, volume=volume, playing=started)
+
+    def _stop_music(self) -> None:
+        stop = getattr(self.speaker, "music_stop", None)
+        if stop is not None:
+            try:
+                stop()
+            except Exception:
+                pass
 
     def _webhook(self, url: str) -> None:
         body = json.dumps(self.status(), ensure_ascii=False, default=str).encode("utf-8")

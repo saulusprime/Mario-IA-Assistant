@@ -107,6 +107,9 @@ def detect_engine(piper_model: str = "", openvoice_reference: str = "") -> Optio
     return None
 
 
+MUSIC_VOLUME = 30  # % del volume pieno per la musica di sottofondo delle avventure
+
+
 def detect_player() -> Optional[list[str]]:
     for cmd in (["paplay"], ["pw-play"], ["aplay", "-q"], ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"]):
         if shutil.which(cmd[0]):
@@ -170,6 +173,9 @@ class Speaker:
         self._generation = 0
         self._serial = itertools.count(1)
         self._ov: Optional[ov.OpenVoiceClient] = None
+        self.music_playing: Optional[str] = None               # brano di sottofondo in ciclo (avventure)
+        self._music_stop: Optional[threading.Event] = None
+        self._music_thread: Optional[threading.Thread] = None
         self._start_worker()
         self._thread = threading.Thread(target=self._run, name="tts", daemon=True)
         self._thread.start()
@@ -254,8 +260,9 @@ class Speaker:
         return self.openvoice_problem(self.openvoice_reference, self.piper_model) or self.last_error
 
     def close(self) -> None:
-        """Ferma la voce e il processo OpenVoice (alla chiusura dell'applicazione)."""
+        """Ferma la voce, la musica di sottofondo e il processo OpenVoice (alla chiusura dell'applicazione)."""
         self.stop()
+        self.music_stop()
         self._stop_openvoice()
 
     def status(self) -> dict:
@@ -271,7 +278,7 @@ class Speaker:
                 "voice_effect": self.voice_effect, "sound_style": self.sound_style, "soundpack": {"files": len(self.pack.items),
                                                               "folder": str(self.pack.folder)},
                 "avg_render_s": round(sum(renders) / len(renders), 2) if renders else None,
-                "last_error": self.last_error}
+                "music": self.music_playing, "last_error": self.last_error}
 
     @property
     def available(self) -> bool:
@@ -602,3 +609,81 @@ class Speaker:
         """Suona sul PC un file preciso dell'archivio (prova dalla pagina Suoni), anche a voce spenta."""
         path = self.pack.playable(rel, seconds)
         return path if self._play_path(path) else None
+
+    # ----- musica di sottofondo (azione "music" delle avventure) ----------------------------
+
+    def music_command(self, path: Path, volume: int) -> list[str]:
+        """Riga di comando del lettore a volume ridotto (0-100 %). aplay non ha un volume: suona pieno."""
+        cmd = list(self.player or [])
+        volume = max(0, min(100, int(volume)))
+        if cmd and cmd[0] == "paplay":
+            cmd.append(f"--volume={int(65536 * volume / 100)}")
+        elif cmd and cmd[0] == "pw-play":
+            cmd.append(f"--volume={volume / 100:.2f}")
+        elif cmd and cmd[0] == "ffplay":
+            cmd += ["-volume", str(volume)]
+        return cmd + [str(path)]
+
+    def music(self, what: str, volume: int = MUSIC_VOLUME) -> bool:
+        """Suona in ciclo, a volume basso e sotto voce ed effetti, un brano dell'archivio (percorso come nella
+        pagina Suoni: NSF, SPC, moduli e MIDI convertiti, 90 s per giro) o un effetto per nome. Sostituisce il
+        brano precedente. False se il brano non c'è, il PC non sa suonarlo o i suoni sono spenti; la
+        conversione (alcuni secondi la prima volta) avviene nel thread della musica."""
+        self.music_stop()
+        if not (self.enabled and self.sounds and self.player):
+            return False
+        what = str(what or "").strip()
+        rel = self.pack.normalize(what) or what
+        if "/" in rel:
+            item = self.pack.by_rel.get(rel.split("#")[0], {})
+            if self.pack.resolve(item.get("play_rel") or rel) is None or not self.pack.can_play(rel):
+                return False
+            source: Callable[[], Optional[Path]] = lambda: self.pack.playable(rel)
+        else:
+            path = self.sound_path(what)
+            if path is None:
+                return False
+            source = lambda: path
+        stop = threading.Event()
+        self._music_stop, self.music_playing = stop, what
+        self._music_thread = threading.Thread(target=self._music_loop, args=(source, volume, stop),
+                                              name="tts-music", daemon=True)
+        self._music_thread.start()
+        return True
+
+    def music_stop(self) -> None:
+        stop, thread = self._music_stop, self._music_thread
+        self._music_stop = self._music_thread = None
+        self.music_playing = None
+        if stop is not None:
+            stop.set()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=3)
+
+    def _music_loop(self, source: Callable[[], Optional[Path]], volume: int, stop: threading.Event) -> None:
+        path = source()
+        if path is None:
+            self.last_error = f"musica: conversione non riuscita ({self.music_playing})"
+            if self._music_stop is stop:
+                self.music_playing = None
+            return
+        cmd = self.music_command(path, volume)
+        while not stop.is_set():
+            started = time.time()
+            try:
+                proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as exc:
+                self.last_error = f"musica: {exc}"
+                return
+            while proc.poll() is None:
+                if stop.wait(0.2):
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    return
+            if proc.returncode != 0:
+                self.last_error = f"musica: il lettore è uscito con codice {proc.returncode}"
+                return
+            stop.wait(max(0.0, 0.5 - (time.time() - started)))  # un file vuoto non deve girare a vuoto

@@ -1,11 +1,13 @@
 """Servizio e API delle avventure: catalogo nel database, partita simulata, partite salvate, pagine."""
 import importlib.util
+import json
 import queue
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
+from mario.adventures import Adventure, validate
 from mario.adventures.service import AdventureService
 from mario.web.db import Database
 
@@ -53,7 +55,7 @@ class ServiceTests(unittest.TestCase):
 
     def test_seed_catalog_and_crud(self):
         items = self.service.list()
-        self.assertEqual(len(items), 3)
+        self.assertEqual(len(items), 4)
         self.assertEqual(items[0]["name"], "Caccia al tesoro dei colori")
         self.assertEqual(items[1]["steps"], 4)
         new_id = self.service.save({"name": "Mia", "steps": [{"id": "x", "trigger": {"kind": "button"}}]})
@@ -65,7 +67,39 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(self.service.delete(new_id), 1)
         lib = self.service.library()
         self.assertIn("tiles", lib)
+        self.assertIn("levels", lib)
         self.assertFalse(any(t["owned"] for t in lib["tiles"]))
+
+    def test_record_mode_builds_a_route(self):
+        def tile(code, ts):
+            return {"type": "PORT_VALUE_SINGLE", "io_type": 0x49, "mode": 0, "ts": ts,
+                    "data": code.to_bytes(2, "little") + (0x25).to_bytes(2, "little")}
+        self.service.simulate(tile(0x00B8, 100.0))                  # prima della registrazione: ignorata
+        self.assertEqual(self.service.record_start()["tiles"], [])
+        for code, ts in ((0x00B8, 100.0), (0x00B8, 101.0), (0x0002, 104.0), (0xFFFF, 105.0), (0x00B7, 150.0)):
+            self.service.simulate(tile(code, ts))
+        self.assertEqual([t["name"] for t in self.service.record_status()["tiles"]], ["Start Mario", "Goomba", "Traguardo"])
+        out = self.service.record_stop("Il mio percorso")
+        draft = out["draft"]
+        self.assertEqual(draft["name"], "Il mio percorso")
+        self.assertEqual([s["trigger"] for s in draft["steps"]],
+                         [{"kind": "barcode", "code": "0x00B8"}, {"kind": "barcode", "code": "0x0002"},
+                          {"kind": "barcode", "code": "0x00B7"}])
+        self.assertEqual([s["timeout"] for s in draft["steps"]], [0, 30, 138])   # 3 × il tempo, almeno 30 s
+        self.assertEqual(validate(Adventure.from_dict(draft)), [])
+        self.assertFalse(self.service.record_status()["recording"])
+
+    def test_new_examples_reach_existing_databases(self):
+        from mario.adventures.service import EXAMPLES_KEY, seed_examples
+        db = Database(Path(self.tmp.name) / "vecchio.sqlite3")
+        for name in ("Caccia al tesoro dei colori", "Percorso", "Quiz"):  # database di prima del conto
+            db.save_adventure({"name": name, "steps": [{"id": "x", "trigger": {"kind": "button"}}]})
+        self.assertEqual(seed_examples(db), 1)                               # solo l'esempio nuovo
+        self.assertEqual(db.list_adventures()[-1]["name"], "Sfida a tempo nel livello")
+        db.delete_adventure(db.list_adventures()[-1]["id"])
+        self.assertEqual(seed_examples(db), 0)                               # cancellato: non torna
+        self.assertEqual(len(json.loads(db.get_setting(EXAMPLES_KEY))), 4)
+        self.assertEqual(seed_examples(self.db), 0)                          # database nuovo: già tutti
 
     def test_play_through_worker_stream_and_store_run(self):
         aid = self.service.save({"name": "Due passi", "steps": [
@@ -109,7 +143,7 @@ class AdventureApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/adventures/play?id=1").status_code, 200)
         self.assertIn(b"/adventures", self.client.get("/").data)
         items = self.client.get("/api/adventures").get_json()["adventures"]
-        self.assertEqual(len(items), 3)
+        self.assertEqual(len(items), 4)
         lib = self.client.get("/api/adventures/library").get_json()
         self.assertIn("barcode", lib["trigger_kinds"])
         r = self.client.post("/api/adventures/validate", json={"data": {"name": "x", "steps": [{"trigger": {"kind": "timer"}}]}}).get_json()
@@ -133,6 +167,19 @@ class AdventureApiTests(unittest.TestCase):
         self.assertEqual(runs[0]["score"], 3)
         run = self.client.get(f"/api/adventure/runs/{runs[0]['id']}").get_json()["run"]
         self.assertEqual(run["outcome"], "completata")
+        page = self.client.get(f"/adventures/runs/{runs[0]['id']}")
+        self.assertEqual(page.status_code, 200)
+        html = page.data.decode("utf-8")
+        for needle in ("🚩 inizio", "⭐ riuscito", "🏁 fine", 'id="rp-data"', "Gioca ancora"):
+            self.assertIn(needle, html)
+        self.assertEqual(self.client.get("/adventures/runs/999").status_code, 404)
+        r = self.client.post("/api/adventure/simulate", json={"what": "livello_fine"}).get_json()
+        self.assertFalse(r["progressed"])  # nessuna partita in corso
+        self.assertTrue(self.client.post("/api/adventure/record", json={"action": "start"}).get_json()["recording"])
+        self.client.post("/api/adventure/simulate", json={"what": "basetta_goomba"})
+        r = self.client.post("/api/adventure/record", json={"action": "stop"}).get_json()
+        self.assertEqual(r["draft"]["steps"][0]["title"], "Goomba")
+        self.assertIn("Registra un percorso", self.client.get("/adventures").data.decode("utf-8"))
         self.assertEqual(self.client.delete(f"/api/adventures/{aid}").get_json()["deleted"], 1)
         self.assertEqual(self.client.get("/api/adventures/999").status_code, 404)
 
