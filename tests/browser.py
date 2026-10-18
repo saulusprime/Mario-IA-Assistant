@@ -185,6 +185,19 @@ class Browser:
         if not found:
             raise BrowserError(f"elemento non trovato: {selector}")
 
+    def drag(self, selector: str, x_from: float, x_to: float, y: float = 0.5) -> None:
+        """Trascina con il mouse vero (azioni BiDi) dentro l'elemento, da x_from a x_to (frazioni della larghezza)."""
+        box = self.js(f"(() => {{ const el = document.querySelector({json.dumps(selector)}); el.scrollIntoView({{block: 'center'}}); "
+                      f"const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }})()")
+        left, top, width, height = box
+        at = lambda fx: {"x": int(left + width * fx), "y": int(top + height * y)}  # noqa: E731
+        self.command("input.performActions", {"context": self.context, "actions": [{
+            "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"}, "actions": [
+                {"type": "pointerMove", **at(x_from)}, {"type": "pointerDown", "button": 0},
+                {"type": "pointerMove", "duration": 150, **at((x_from + x_to) / 2)},
+                {"type": "pointerMove", "duration": 150, **at(x_to)}, {"type": "pointerUp", "button": 0}]}]})
+        self.command("input.releaseActions", {"context": self.context})
+
     def screenshot(self, path: str, whole_page: bool = False) -> None:
         """Foto della scheda in PNG (per controllare a occhio una pagina dopo qualche clic)."""
         res = self.command("browsingContext.captureScreenshot",

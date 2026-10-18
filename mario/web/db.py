@@ -13,6 +13,7 @@ Tabelle:
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import threading
@@ -66,7 +67,8 @@ CREATE TABLE IF NOT EXISTS events (
     mode       INTEGER,
     raw        TEXT,
     text       TEXT,
-    decoded    TEXT
+    decoded    TEXT,
+    modes      TEXT
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS events_port ON events(port);
@@ -142,6 +144,8 @@ class Database:
     @staticmethod
     def _migrate(c: sqlite3.Connection) -> None:
         """Colonne aggiunte dopo la prima versione (database già esistenti)."""
+        if "modes" not in {row[1] for row in c.execute("PRAGMA table_info(events)")}:
+            c.execute("ALTER TABLE events ADD COLUMN modes TEXT")  # valori per modo degli eventi combinati (JSON)
         have = {row[1] for row in c.execute("PRAGMA table_info(assistant_memory)")}
         for column, ddl in (("profile", "TEXT NOT NULL DEFAULT ''"), ("source", "TEXT NOT NULL DEFAULT ''"),
                             ("expires", "REAL")):
@@ -287,49 +291,29 @@ class Database:
     # ----- eventi -------------------------------------------------------------------
 
     def add_event(self, device_id: Optional[int], ev: dict) -> int:
+        modes = ev.get("modes")
         rowid = self._insert(
-            "INSERT INTO events (ts, device_id, type, port, mode, raw, text, decoded) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO events (ts, device_id, type, port, mode, raw, text, decoded, modes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ev.get("ts", time.time()), device_id, ev.get("type"), ev.get("port"), ev.get("mode"),
-             ev.get("raw"), ev.get("text"), ev.get("decoded")))
+             ev.get("raw"), ev.get("text"), ev.get("decoded"),
+             json.dumps(modes, ensure_ascii=False, default=str) if modes else None))
         self._inserts += 1
         if self._inserts % 500 == 0:
             self.prune_events()
         return rowid
 
-    def list_events(self, since_id: int = 0, limit: int = 200, port: Optional[int] = None,
-                    type_name: Optional[str] = None, device_id: Optional[int] = None,
-                    query: str = "") -> list[dict]:
-        sql, params = "SELECT * FROM events WHERE id>?", [since_id]
-        if port is not None:
-            sql += " AND port=?"
-            params.append(port)
+    @staticmethod
+    def _event_filter(since_id: int = 0, port: Optional[int] = None, type_name: Optional[str] = None,
+                      device_id: Optional[int] = None, query: str = "", since_ts: Optional[float] = None,
+                      until_ts: Optional[float] = None) -> tuple[str, list]:
+        sql, params = " WHERE id>?", [since_id]
+        for column, value in (("port", port), ("device_id", device_id)):
+            if value is not None:
+                sql += f" AND {column}=?"
+                params.append(value)
         if type_name:
             sql += " AND type=?"
             params.append(type_name)
-        if device_id is not None:
-            sql += " AND device_id=?"
-            params.append(device_id)
-        if query:
-            sql += " AND (text LIKE ? OR decoded LIKE ?)"
-            params += [f"%{query}%"] * 2
-        sql += " ORDER BY id DESC LIMIT ?"
-        params.append(max(1, min(int(limit), 2000)))
-        return self._all(sql, params)
-
-    def iter_events(self, limit: int = 50000, port: Optional[int] = None, type_name: Optional[str] = None,
-                    device_id: Optional[int] = None, query: str = "", since_id: int = 0,
-                    since_ts: Optional[float] = None, until_ts: Optional[float] = None) -> list[dict]:
-        """Eventi in ordine cronologico per l'esportazione (limite alto, stessi filtri di list_events)."""
-        sql, params = "SELECT * FROM events WHERE id>?", [since_id]
-        if port is not None:
-            sql += " AND port=?"
-            params.append(port)
-        if type_name:
-            sql += " AND type=?"
-            params.append(type_name)
-        if device_id is not None:
-            sql += " AND device_id=?"
-            params.append(device_id)
         if query:
             sql += " AND (text LIKE ? OR decoded LIKE ?)"
             params += [f"%{query}%"] * 2
@@ -339,22 +323,44 @@ class Database:
         if until_ts is not None:
             sql += " AND ts<=?"
             params.append(until_ts)
-        sql += " ORDER BY id ASC LIMIT ?"
-        params.append(max(1, min(int(limit), 200000)))
-        return self._all(sql, params)
+        return sql, params
+
+    def list_events(self, since_id: int = 0, limit: int = 200, port: Optional[int] = None,
+                    type_name: Optional[str] = None, device_id: Optional[int] = None,
+                    query: str = "", since_ts: Optional[float] = None, until_ts: Optional[float] = None) -> list[dict]:
+        """Gli eventi più recenti per primi (tabella della pagina Eventi)."""
+        where, params = self._event_filter(since_id, port, type_name, device_id, query, since_ts, until_ts)
+        return self._all("SELECT * FROM events" + where + " ORDER BY id DESC LIMIT ?",
+                         params + [max(1, min(int(limit), 2000))])
+
+    def iter_events(self, limit: int = 50000, port: Optional[int] = None, type_name: Optional[str] = None,
+                    device_id: Optional[int] = None, query: str = "", since_id: int = 0,
+                    since_ts: Optional[float] = None, until_ts: Optional[float] = None) -> list[dict]:
+        """Eventi in ordine cronologico per l'esportazione (limite alto, stessi filtri di list_events)."""
+        where, params = self._event_filter(since_id, port, type_name, device_id, query, since_ts, until_ts)
+        return self._all("SELECT * FROM events" + where + " ORDER BY id ASC LIMIT ?",
+                         params + [max(1, min(int(limit), 200000))])
+
+    @staticmethod
+    def _range(sql: str, params: list, device_id: Optional[int], since_ts: Optional[float],
+               until_ts: Optional[float]) -> tuple[str, list]:
+        """Aggiunge a una query dei grafici dispositivo e intervallo di tempo."""
+        for clause, value in (("device_id=?", device_id), ("ts>=?", since_ts), ("ts<=?", until_ts)):
+            if value is not None:
+                sql += (" AND " if " WHERE " in sql else " WHERE ") + clause
+                params = params + [value]
+        return sql, params
 
     _PCT = re.compile(r": (\d+) %")
     _MV = re.compile(r"circa (\d+) mV")
     _GESTURE_TAIL = re.compile(r"\s*\(0x[0-9A-Fa-f]{4}\)\s*$")
 
-    def battery_series(self, limit: int = 2000, device_id: Optional[int] = None) -> dict:
+    def battery_series(self, limit: int = 2000, device_id: Optional[int] = None, since_ts: Optional[float] = None,
+                       until_ts: Optional[float] = None) -> dict:
         """Percentuale (proprietà BATTERY_VOLTAGE) e millivolt (porta 6) nel tempo, dal più vecchio."""
-        sql = ("SELECT ts, type, text, decoded FROM events WHERE ((type='HUB_PROPERTIES' AND text LIKE 'Proprietà BATTERY_VOLTAGE%')"
-               " OR (port=6 AND decoded LIKE 'batteria circa%'))")
-        params: list = []
-        if device_id is not None:
-            sql += " AND device_id=?"
-            params.append(device_id)
+        sql, params = self._range(
+            "SELECT ts, type, text, decoded FROM events WHERE ((type='HUB_PROPERTIES' AND text LIKE 'Proprietà BATTERY_VOLTAGE%')"
+            " OR (port=6 AND decoded LIKE 'batteria circa%'))", [], device_id, since_ts, until_ts)
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(max(1, min(int(limit), 20000)))
         percent, millivolt = [], []
@@ -369,11 +375,10 @@ class Database:
                     millivolt.append({"ts": r["ts"], "value": int(m.group(1))})
         return {"percent": percent, "millivolt": millivolt}
 
-    def gesture_histogram(self, device_id: Optional[int] = None) -> dict[str, int]:
-        sql, params = "SELECT decoded FROM events WHERE port=0 AND decoded LIKE 'gesto:%' AND decoded NOT LIKE 'gesto: nessuno%'", []
-        if device_id is not None:
-            sql += " AND device_id=?"
-            params.append(device_id)
+    def gesture_histogram(self, device_id: Optional[int] = None, since_ts: Optional[float] = None,
+                          until_ts: Optional[float] = None) -> dict[str, int]:
+        sql, params = self._range("SELECT decoded FROM events WHERE port=0 AND decoded LIKE 'gesto:%' "
+                                  "AND decoded NOT LIKE 'gesto: nessuno%'", [], device_id, since_ts, until_ts)
         counts: dict[str, int] = {}
         for r in self._all(sql, params):
             body = self._GESTURE_TAIL.sub("", (r["decoded"] or "")[len("gesto:"):]).strip()
@@ -383,11 +388,10 @@ class Database:
                     counts[name] = counts.get(name, 0) + 1
         return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
-    def tile_counts(self, device_id: Optional[int] = None) -> dict[str, int]:
-        sql, params = "SELECT decoded FROM events WHERE port=1 AND decoded LIKE 'barcode 0x%'", []
-        if device_id is not None:
-            sql += " AND device_id=?"
-            params.append(device_id)
+    def tile_counts(self, device_id: Optional[int] = None, since_ts: Optional[float] = None,
+                    until_ts: Optional[float] = None) -> dict[str, int]:
+        sql, params = self._range("SELECT decoded FROM events WHERE port=1 AND decoded LIKE 'barcode 0x%'", [],
+                                  device_id, since_ts, until_ts)
         counts: dict[str, int] = {}
         for r in self._all(sql, params):
             part = (r["decoded"] or "").split(";", 1)[0]
@@ -396,11 +400,9 @@ class Database:
             counts[name] = counts.get(name, 0) + 1
         return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
-    def event_type_counts(self, device_id: Optional[int] = None) -> dict[str, int]:
-        sql, params = "SELECT type, COUNT(*) AS n FROM events", []
-        if device_id is not None:
-            sql += " WHERE device_id=?"
-            params.append(device_id)
+    def event_type_counts(self, device_id: Optional[int] = None, since_ts: Optional[float] = None,
+                          until_ts: Optional[float] = None) -> dict[str, int]:
+        sql, params = self._range("SELECT type, COUNT(*) AS n FROM events", [], device_id, since_ts, until_ts)
         sql += " GROUP BY type ORDER BY n DESC"
         return {r["type"]: r["n"] for r in self._all(sql, params)}
 

@@ -95,6 +95,29 @@ class EventsPageTests(unittest.TestCase):
         r = self.client.get("/api/history?limit=3")
         self.assertEqual(len(r.get_json()["events"]), 3)
 
+    def test_time_range_and_combined_modes(self):
+        t0 = time.time() - 600
+        # da 35 s a 55 s dall'inizio: tre eventi (batteria 70 %, due gesti)
+        rows = self.client.get(f"/api/history?from={t0 + 15}&to={t0 + 45}").get_json()["events"]
+        self.assertEqual(len(rows), 3)
+        charts = self.client.get(f"/api/charts?from={t0 + 15}&to={t0 + 45}").get_json()
+        self.assertEqual([p["value"] for p in charts["battery"]["percent"]], [70])
+        self.assertEqual(charts["gestures"], {"salto (jump)": 2, "urto (bump)": 1})
+        self.assertEqual(charts["range"], {"since_ts": t0 + 15, "until_ts": t0 + 45})
+        # evento in modalità combinata: i valori per modo restano nel database e nell'esportazione
+        self.db.add_event(self.did, {"ts": t0 + 200, "type": "PORT_VALUE_COMBINED", "port": 0, "raw": "0b 00 46 00 00 07 01 02 03 00 80",
+                                     "text": "Valori combinati porta 0", "decoded": "RAW: x=1 | GEST: salto",
+                                     "modes": {"0": {"name": "RAW", "data": "01 02 03", "decoded": "accelerazione x=1 y=2 z=3"},
+                                               "1": {"name": "GEST", "data": "00 80", "decoded": "gesto: salto (jump) (0x8000)"}}})
+        lines = self.client.get("/api/history.csv?port=0").data.decode("utf-8-sig").splitlines()
+        header = lines[0].split(";")
+        self.assertEqual(header[-2:], ["modo RAW", "modo GEST"])
+        self.assertEqual(lines[-1].split(";")[-2:], ["accelerazione x=1 y=2 z=3", "gesto: salto (jump) (0x8000)"])
+        self.assertEqual(lines[1].split(";")[-2:], ["", ""])                   # eventi semplici: colonne vuote
+        rows = json.loads(self.client.get("/api/history.json?type=PORT_VALUE_COMBINED").data)
+        self.assertEqual(rows[0]["modes"]["1"]["name"], "GEST")
+        self.assertIn('id="evp-reset"', self.client.get("/events").get_data(as_text=True))
+
     def test_device_update_volume_and_name(self):
         r = self.client.post(f"/api/devices/{self.did}", json={"name": "Nuovo", "volume": "35"}).get_json()
         self.assertTrue(r["ok"])

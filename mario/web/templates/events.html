@@ -7,8 +7,9 @@
     <label>Porta <select id="evp-port"><option value="">tutte</option>{% for p in range(0, 8) %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></label>
     <label>Tipo <select id="evp-type"><option value="">tutti</option>{% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select></label>
     <label>Testo <input type="text" id="evp-q" placeholder="es. Goomba, salto, 0x386B" style="width:12em"></label>
-    <label>Dal <input type="datetime-local" id="evp-from"></label>
-    <label>Al <input type="datetime-local" id="evp-to"></label>
+    <label>Dal <input type="datetime-local" id="evp-from" step="1"></label>
+    <label>Al <input type="datetime-local" id="evp-to" step="1"></label>
+    <button id="evp-reset" class="ghost" title="tutto l'archivio">Tutto</button>
     <label>Limite <input type="number" id="evp-limit" value="200" min="1" max="2000" style="width:5em"></label>
     <button id="evp-load" class="primary">Carica</button>
     <button id="evp-csv">Esporta CSV</button>
@@ -20,8 +21,8 @@
 <div class="grid two">
   <section class="card">
     <h1>Batteria nel tempo <small class="muted" id="chart-battery-info"></small></h1>
-    <svg id="chart-battery" class="chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
-    <p class="hint">Linea piena: percentuale (proprietà BATTERY_VOLTAGE); tratteggiata: millivolt della porta 6 riportati su 0–100 (2000–3300 mV).</p>
+    <svg id="chart-battery" class="chart zoomable" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
+    <p class="hint">Linea piena: percentuale (proprietà BATTERY_VOLTAGE); tratteggiata: millivolt della porta 6 riportati su 0–100 (2000–3300 mV). Trascina sul grafico per scegliere un intervallo: tabella, grafici ed esportazioni lo seguono; doppio clic o "Tutto" per tornare all'intero archivio. Nell'esportazione CSV gli eventi in modalità combinata hanno una colonna per modo.</p>
   </section>
   <section class="card">
     <h1>Gesti <small class="muted">(porta 0, modo GEST)</small></h1>

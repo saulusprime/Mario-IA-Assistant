@@ -43,6 +43,7 @@
       else if (name === "discover") { await api("/api/discover", "POST", { full: 1 }); if (page === "report" || page === "devices") location.reload(); }
       else if (name === "off") { if (confirm("Spegnere Mario?")) await api("/api/hub_action", "POST", { action: "SWITCH_OFF" }); }
       else if (name === "subscribe-defaults") { await api("/api/subscribe_defaults", "POST", {}); }
+      else if (name === "subscribe-combined") { await api("/api/subscribe_defaults", "POST", { combined: 1 }); }
       else if (name === "unpair") { if (confirm("Rimuovere l'associazione? Al prossimo collegamento verrà rifatto il pairing.")) await api("/api/unpair", "POST", { address: extra || "" }); }
       await refreshStatus();
     } catch (e) { flash($("#st-progress"), e.message, true); alert(e.message); }
@@ -152,10 +153,12 @@
       if (!entries.length) { el.innerHTML = '<span class="muted">nessun dato</span>'; return; }
       entries.slice(0, 16).forEach(([k, v]) => { el.insertAdjacentHTML("beforeend", `<span>${esc(k)}</span><div class="bar${alt ? " alt" : ""}" style="width:${Math.round(100 * v / max)}%"></div><span>${v}</span>`); });
     }
-    function drawBattery(svg, series) {
-      const W = 600, H = 220, pad = 28; svg.innerHTML = "";
+    let span = null;  // intervallo mostrato dal grafico della batteria, per lo zoom con il trascinamento
+    function drawBattery(svg, series, range) {
+      const W = 600, H = 220, pad = 28; svg.innerHTML = ""; span = null;
       const all = [...series.percent, ...series.millivolt]; if (!all.length) { svg.innerHTML = '<text x="20" y="40" fill="#6b6f7a">nessun dato</text>'; return; }
-      const t0 = Math.min(...all.map((p) => p.ts)), t1 = Math.max(...all.map((p) => p.ts)) || t0 + 1;
+      const t0 = (range && range.since_ts) || Math.min(...all.map((p) => p.ts)), t1 = (range && range.until_ts) || Math.max(...all.map((p) => p.ts)) || t0 + 1;
+      span = { t0, t1, pad, W };
       const x = (ts) => pad + (W - 2 * pad) * (t1 > t0 ? (ts - t0) / (t1 - t0) : 0.5), y = (v) => H - pad - (H - 2 * pad) * Math.max(0, Math.min(100, v)) / 100;
       let g = `<line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#ccc"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#ccc"/>`;
       [0, 50, 100].forEach((v) => { g += `<text x="2" y="${y(v) + 4}" font-size="10" fill="#6b6f7a">${v}</text>`; });
@@ -166,13 +169,24 @@
       $("#chart-battery-info").textContent = `${series.percent.length} letture %, ${series.millivolt.length} letture mV, ${fmtDate(t0)} → ${fmtDate(t1)}`;
     }
     async function loadCharts() {
-      try { const r = await api("/api/charts?device_id=" + encodeURIComponent($("#evp-device").value));
-        drawBattery($("#chart-battery"), r.battery); drawBars($("#chart-gestures"), r.gestures); drawBars($("#chart-tiles"), r.tiles, true); drawBars($("#chart-types"), r.types); } catch (e) { flash(msg, e.message, true); }
+      try { const r = await api("/api/charts?" + query());
+        drawBattery($("#chart-battery"), r.battery, r.range); drawBars($("#chart-gestures"), r.gestures); drawBars($("#chart-tiles"), r.tiles, true); drawBars($("#chart-types"), r.types); } catch (e) { flash(msg, e.message, true); }
     }
     $("#evp-load").addEventListener("click", () => { loadTable(); loadCharts(); });
     $("#evp-csv").addEventListener("click", () => { location.href = "/api/history.csv?" + query({ limit: 50000 }); });
     $("#evp-json").addEventListener("click", () => { location.href = "/api/history.json?" + query({ limit: 50000 }); });
     $("#evp-device").addEventListener("change", loadCharts);
+    const tsToLocal = (ts) => { const d = new Date(ts * 1000), z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`; };
+    function setRange(from, to) { $("#evp-from").value = from ? tsToLocal(Math.floor(from)) : ""; $("#evp-to").value = to ? tsToLocal(Math.ceil(to)) : ""; loadTable(); loadCharts(); }
+    $("#evp-reset").addEventListener("click", () => setRange(null, null));
+    const svg = $("#chart-battery"); let dragFrom = null, sel = null;
+    const toView = (ev) => { const box = svg.getBoundingClientRect(); return Math.max(0, Math.min(600, (ev.clientX - box.left) / box.width * 600)); };
+    const toTs = (x) => span.t0 + (span.t1 - span.t0) * Math.max(0, Math.min(1, (x - span.pad) / (span.W - 2 * span.pad)));
+    svg.addEventListener("pointerdown", (ev) => { if (!span) return; dragFrom = toView(ev); svg.setPointerCapture(ev.pointerId);
+      sel = document.createElementNS("http://www.w3.org/2000/svg", "rect"); Object.entries({ x: dragFrom, y: 0, width: 0, height: 220, fill: "#1f5fbf", "fill-opacity": 0.15 }).forEach(([k, v]) => sel.setAttribute(k, v)); svg.appendChild(sel); });
+    svg.addEventListener("pointermove", (ev) => { if (dragFrom === null || !sel) return; const x = toView(ev); sel.setAttribute("x", Math.min(x, dragFrom)); sel.setAttribute("width", Math.abs(x - dragFrom)); });
+    svg.addEventListener("pointerup", (ev) => { if (dragFrom === null) return; const x = toView(ev), a = Math.min(x, dragFrom), b = Math.max(x, dragFrom); dragFrom = null; if (sel) sel.remove(); sel = null; if (b - a > 6) setRange(toTs(a), toTs(b)); });
+    svg.addEventListener("dblclick", () => setRange(null, null));
     loadTable(); loadCharts();
   }
 

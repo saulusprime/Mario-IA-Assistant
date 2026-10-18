@@ -547,29 +547,51 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @app.get("/api/history")
     @api
     def api_history():
-        rows = db.list_events(limit=int(request.args.get("limit", 200)), **history_filters())
+        rows = with_modes(db.list_events(limit=int(request.args.get("limit", 200)), **history_filters(), **time_range()))
         return ok(events=rows, stats=db.event_stats())
 
-    def export_rows() -> list[dict]:
-        a = request.args
-        extra = {}
+    def time_range() -> dict:
+        """`from` e `to` della richiesta (secondi Unix o data del campo datetime-local) come since_ts/until_ts."""
+        a, out = request.args, {}
         for key, name in (("from", "since_ts"), ("to", "until_ts")):
             if a.get(key):
                 try:
-                    extra[name] = float(a[key])
+                    out[name] = float(a[key])
                 except ValueError:
-                    extra[name] = time.mktime(time.strptime(a[key][:16], "%Y-%m-%dT%H:%M"))
-        return db.iter_events(limit=int(a.get("limit", 50000)), **history_filters(), **extra)
+                    out[name] = time.mktime(time.strptime(a[key][:16], "%Y-%m-%dT%H:%M"))
+        return out
+
+    def with_modes(rows: list[dict]) -> list[dict]:
+        """Valori per modo degli eventi combinati, dal JSON salvato nel database."""
+        for r in rows:
+            try:
+                r["modes"] = json.loads(r["modes"]) if r.get("modes") else None
+            except ValueError:
+                r["modes"] = None
+        return rows
+
+    def export_rows() -> list[dict]:
+        return with_modes(db.iter_events(limit=int(request.args.get("limit", 50000)), **history_filters(), **time_range()))
 
     @app.get("/api/history.csv")
     @api
     def api_history_csv():
         buf = io.StringIO()
         writer = csv.writer(buf, delimiter=";")
-        writer.writerow(["id", "data_ora", "ts", "dispositivo", "tipo", "porta", "modo", "grezzo", "testo", "decodifica"])
-        for r in export_rows():
+        rows = export_rows()
+        # una colonna per ogni modo degli eventi combinati (es. "modo RAW", "modo GEST"), nell'ordine in cui compaiono
+        labels: list[str] = []
+        for r in rows:
+            for key, m in (r["modes"] or {}).items():
+                label = m.get("name") or key
+                if label not in labels:
+                    labels.append(label)
+        writer.writerow(["id", "data_ora", "ts", "dispositivo", "tipo", "porta", "modo", "grezzo", "testo", "decodifica"]
+                        + [f"modo {label}" for label in labels])
+        for r in rows:
+            by_label = {(m.get("name") or key): (m.get("decoded") or m.get("data") or "") for key, m in (r["modes"] or {}).items()}
             writer.writerow([r["id"], fmt_time(r["ts"]), r["ts"], r["device_id"], r["type"], r["port"], r["mode"],
-                             r["raw"], r["text"], r["decoded"]])
+                             r["raw"], r["text"], r["decoded"]] + [by_label.get(label, "") for label in labels])
         name = f"mario-eventi-{time.strftime('%Y%m%d-%H%M%S')}.csv"
         return Response("\ufeff" + buf.getvalue(), mimetype="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f"attachment; filename={name}"})
@@ -586,8 +608,10 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     def api_charts():
         device_id = request.args.get("device_id")
         dev_id = int(device_id) if device_id not in (None, "") else None
-        return ok(battery=db.battery_series(device_id=dev_id), gestures=db.gesture_histogram(dev_id),
-                  tiles=db.tile_counts(dev_id), types=db.event_type_counts(dev_id), stats=db.event_stats())
+        span = time_range()
+        return ok(battery=db.battery_series(device_id=dev_id, **span), gestures=db.gesture_histogram(dev_id, **span),
+                  tiles=db.tile_counts(dev_id, **span), types=db.event_type_counts(dev_id, **span),
+                  stats=db.event_stats(), range=span)
 
     # ----- API: porte e comandi ------------------------------------------------------------
 
@@ -603,7 +627,8 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
     @api
     def api_subscribe_defaults():
         dev = worker._require()
-        worker.call(lambda: worker._subscribe_defaults(dev), timeout=60)
+        combined = str(body().get("combined", "")).lower() in ("1", "true", "on", "si", "sì")
+        worker.call(lambda: worker._subscribe_defaults(dev, combined=combined), timeout=60)
         return ok(subscriptions=worker.status()["subscriptions"])
 
     @app.post("/api/value")

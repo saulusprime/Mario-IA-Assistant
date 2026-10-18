@@ -688,6 +688,22 @@ class MarioDevice:
         await self.send(lwp3.port_input_format_setup_combined(
             port, CombinedModeSubcommand.UNLOCK_MULTI_UPDATE_ENABLED))
 
+    async def subscribe_combined_default(self, port: int) -> Optional[list[int]]:
+        """Modalità combinata con la prima combinazione annunciata dalla porta, tutti i dataset di ogni modo
+        (accelerometro grezzo con delta 4, gli altri 1): sono `monitor --combined` e il pulsante della
+        dashboard. Ritorna i modi attivati, None se la porta non è combinabile."""
+        ps = self.state.ports.get(port)
+        if not (ps and ps.info and ps.info.capabilities & 0x04 and ps.combinations):
+            return None
+        modes = list(ps.combinations[0])
+        entries, deltas = [], {}
+        for mode in modes:
+            vf = ps.value_format(mode)
+            entries += [(mode, ds) for ds in range(vf.datasets if vf else 1)]
+            deltas[mode] = 4 if (ps.io_type == codes.IO_MARIO_ACCELEROMETER and mode == 0) else 1
+        await self.set_combined_mode(port, 0, entries, deltas=deltas)
+        return modes
+
     async def reset_combined_mode(self, port: int) -> None:
         await self.send(lwp3.port_input_format_setup_combined(port, CombinedModeSubcommand.RESET_SENSOR))
 

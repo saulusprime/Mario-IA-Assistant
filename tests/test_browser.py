@@ -100,6 +100,26 @@ class DashboardInBrowserTests(unittest.TestCase):
         self.assertLess(b.js(visible), total)
         self.assertNoErrors("tabelle")
 
+    def test_events_chart_zoom_by_dragging(self):
+        import time
+        db = self.app.extensions["db"]
+        did = db.upsert_device("AA:BB:CC:DD", name="Mario prova")
+        t0 = time.time() - 3600
+        for i in range(12):   # una lettura della batteria ogni 5 minuti, dal 90 al 35 %
+            db.add_event(did, {"ts": t0 + i * 300, "type": "HUB_PROPERTIES", "raw": "06 00 01 06 06 00",
+                               "text": f"Proprietà BATTERY_VOLTAGE (0x06) [UPDATE]: {90 - i * 5} %"})
+        b = self.open("/events")
+        b.wait_for("document.querySelectorAll('#chart-battery polyline').length > 0")
+        b.wait_for("document.querySelectorAll('#evp-table tbody tr').length === 12")
+        b.drag("#chart-battery", 0.30, 0.70)
+        b.wait_for("document.querySelector('#evp-from').value !== ''")
+        rows = b.wait_for("(() => { const n = document.querySelectorAll('#evp-table tbody tr').length; return n > 0 && n < 12 ? n : 0; })()")
+        self.assertLess(rows, 12)
+        self.assertIn("letture %", b.js("document.querySelector('#chart-battery-info').textContent"))
+        b.click("#evp-reset")
+        b.wait_for("document.querySelector('#evp-from').value === '' && document.querySelectorAll('#evp-table tbody tr').length === 12")
+        self.assertNoErrors("eventi")
+
     def test_play_and_replay(self):
         client = self.app.test_client()
         r = client.post("/api/adventures", json={"data": {"name": "Prova browser", "steps": [

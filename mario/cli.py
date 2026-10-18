@@ -180,16 +180,10 @@ async def _monitor_subscribe(dev: MarioDevice, args, session: SessionLog) -> Non
                 continue
             names = {m: mi.name for m, mi in ps.modes.items()}
             if args.combined and ps.info and ps.info.capabilities & 0x04 and ps.combinations:
-                modes = ps.combinations[0]
-                entries, deltas = [], {}
-                for mode in modes:
-                    vf = ps.value_format(mode)
-                    entries += [(mode, ds) for ds in range(vf.datasets if vf else 1)]
-                    deltas[mode] = 4 if (ps.io_type == codes.IO_MARIO_ACCELEROMETER and mode == 0) else 1
                 try:
-                    await dev.set_combined_mode(port, 0, entries, deltas=deltas)
+                    modes = await dev.subscribe_combined_default(port)
                     text = (f"Modalità combinata: porta {port} modi {modes} "
-                            f"({', '.join(names.get(m, '?') for m in modes)}) insieme")
+                            f"({', '.join(names.get(m, '?') for m in modes or [])}) insieme")
                 except (LWPError, asyncio.TimeoutError, BleakError) as exc:
                     text = f"Porta {port}: modalità combinata non attivata ({exc})"
                 say(text)

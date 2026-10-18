@@ -301,9 +301,19 @@ class BleWorker:
                 pass
             self.device = None
 
-    async def _subscribe_defaults(self, dev: MarioDevice) -> None:
+    async def _subscribe_defaults(self, dev: MarioDevice, combined: bool = False) -> None:
+        """Sensori standard; con `combined` le porte combinabili (accelerometro + gesti, scanner + RGB)
+        mandano tutti i loro modi insieme, come `monitor --combined`."""
         for port, ps in sorted(dev.state.ports.items()):
             names = {m: mi.name for m, mi in ps.modes.items()}
+            if combined:
+                try:
+                    modes = await dev.subscribe_combined_default(port)
+                    if modes is not None:
+                        self._say(f"Modalità combinata: porta {port} modi {', '.join(names.get(m, '?') for m in modes)}")
+                        continue
+                except (LWPError, asyncio.TimeoutError, BleakError) as exc:
+                    self._say(f"Porta {port}: modalità combinata non attivata ({exc})")
             mode = codes.default_mode(ps.io_type, names)
             if mode is None:
                 continue
