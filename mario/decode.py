@@ -43,6 +43,9 @@ DEFAULT_CAPS = next((p for p in (DOCS_DIR / "capabilities-fw-6.5.01.json", PACKA
                      if p.is_file()), PACKAGE_DATA / "capabilities-fw-6.5.01.json")
 
 ATT_NOTIFY, ATT_INDICATE, ATT_WRITE_REQ, ATT_WRITE_CMD, ATT_READ_RSP = 0x1B, 0x1D, 0x12, 0x52, 0x0B
+ATT_READ_REQ, ATT_READ_BY_TYPE_RSP = 0x0A, 0x09
+# caratteristica LWP3 00001624-1212-efde-1623-785feabcd123, come compare nei pacchetti ATT (little endian)
+LWP3_CHAR_UUID = bytes.fromhex("000016241212efde1623785feabcd123")[::-1]
 MONITOR_ACL_TX, MONITOR_ACL_RX = 4, 5
 BTSNOOP_MAGIC, ZIP_MAGIC, GZIP_MAGIC = b"btsnoop\x00", b"PK\x03\x04", b"\x1f\x8b"
 BTSNOOZ_BEGIN, BTSNOOZ_END = "--- BEGIN:BTSNOOP_LOG_SUMMARY", "--- END:BTSNOOP_LOG_SUMMARY"
@@ -147,12 +150,55 @@ class _L2capReassembler:
         return None
 
 
+def well_formed(data: bytes) -> bool:
+    """Vero se i byte sono uno o più messaggi LWP3 interi (lunghezze coerenti, hub 0x00): distingue i dati di
+    Mario dalle altre scritture e letture ATT (descrittori CCCD, nome del dispositivo, ...)."""
+    pos = 0
+    while pos < len(data):
+        first = data[pos]
+        if first & 0x80:
+            if pos + 1 >= len(data):
+                return False
+            length, header = (first & 0x7F) | (data[pos + 1] << 7), 4
+        else:
+            length, header = first, 3
+        if length < header or pos + length > len(data) or data[pos + header - 2] != 0x00:
+            return False
+        pos += length
+    return pos == len(data) and pos > 0
+
+
+def lwp3_handles(l2: bytes) -> set[int]:
+    """Maniglie della caratteristica LWP3 annunciate in una Read By Type Response (scoperta GATT)."""
+    if len(l2) < 2 or l2[0] != ATT_READ_BY_TYPE_RSP:
+        return set()
+    size, found = l2[1], set()
+    for pos in range(2, len(l2) - size + 1, size):
+        entry = l2[pos:pos + size]
+        if size == 21 and entry[5:21] == LWP3_CHAR_UUID:  # handle(2) proprietà(1) handle del valore(2) uuid(16)
+            found.add(struct.unpack("<H", entry[3:5])[0])
+    return found
+
+
 def _acl_frames(packets: Iterator[tuple[bytes, str, str]], source: str,
                 notes: Optional[list[str]] = None) -> Iterator[Frame]:
     """(ACL HCI, direzione, orario) -> messaggi LWP3 degli ATT sulla caratteristica LEGO, con riassemblaggio
-    L2CAP. I pacchetti ACL più corti di quanto dichiara la loro intestazione (btsnooz, snaplen) vengono
-    contati e scartati: la nota finale spiega perché la cattura è vuota."""
+    L2CAP. La maniglia della caratteristica si impara dalla scoperta GATT, se è nella cattura; altrimenti
+    passano solo i dati con la struttura di un messaggio LWP3. I pacchetti ACL più corti di quanto dichiara
+    la loro intestazione (btsnooz, snaplen) vengono contati e scartati: la nota finale spiega perché la
+    cattura è vuota."""
     counter, reasm, truncated = [0], _L2capReassembler(), 0
+    known: set[int] = set()            # maniglie LWP3 dalla scoperta GATT
+    pending_read: dict[str, int] = {}  # lettura in corso: direzione della risposta -> maniglia richiesta
+    skipped = 0
+
+    def ours(handle: Optional[int], payload: bytes) -> bool:
+        nonlocal skipped
+        if (handle in known) if known else well_formed(payload):
+            return True
+        skipped += 1
+        return False
+
     for acl, direction, when in packets:
         if len(acl) < 4:
             continue
@@ -166,12 +212,24 @@ def _acl_frames(packets: Iterator[tuple[bytes, str, str]], source: str,
         if cid != 0x0004 or not l2:  # solo ATT
             continue
         op = l2[0]
-        if op in (ATT_NOTIFY, ATT_INDICATE) and len(l2) > 3:
-            yield from _split_messages(l2[3:], "<-", when, source, counter)
+        handle = struct.unpack("<H", l2[1:3])[0] if len(l2) >= 3 else None
+        if op == ATT_READ_BY_TYPE_RSP:
+            known |= lwp3_handles(l2)
+        elif op == ATT_READ_REQ and handle is not None:
+            pending_read["<-" if direction == "->" else "->"] = handle
+        elif op in (ATT_NOTIFY, ATT_INDICATE) and len(l2) > 3:
+            if ours(handle, l2[3:]):
+                yield from _split_messages(l2[3:], "<-", when, source, counter)
         elif op in (ATT_WRITE_REQ, ATT_WRITE_CMD) and len(l2) > 3:
-            yield from _split_messages(l2[3:], "->", when, source, counter)
+            if ours(handle, l2[3:]):
+                yield from _split_messages(l2[3:], "->", when, source, counter)
         elif op == ATT_READ_RSP and len(l2) > 1:
-            yield from _split_messages(l2[1:], "<-", when, source, counter)
+            if ours(pending_read.pop(direction, None), l2[1:]):
+                yield from _split_messages(l2[1:], "<-", when, source, counter)
+    if skipped and notes is not None:
+        notes.append(f"{source}: {skipped} scritture o letture ATT non LWP3 ignorate (descrittori, nome del "
+                     f"dispositivo, servizi standard)" + (f"; caratteristica LEGO alla maniglia "
+                                                          f"{', '.join(f'0x{h:04X}' for h in sorted(known))}" if known else ""))
     if truncated and notes is not None:
         notes.append(f"{source}: {truncated} pacchetti ACL troncati (log 'riassunto' btsnooz o snaplen): "
                      "per vedere i messaggi serve l'HCI snoop log completo del telefono")
@@ -467,6 +525,105 @@ def read_any(path: Path | str, notes: Optional[list[str]] = None) -> Iterator[Fr
 
 # ----- riepilogo ---------------------------------------------------------------------------
 
+LEVEL_PHASES = {1: "inizio", 4: "ultimi 15 s", 3: "fine", 0: "uscita"}  # evento 0x1803 (ASIS, sezione 2)
+LEVEL_SECONDS = 60.0
+
+
+def _seconds(when: str) -> Optional[float]:
+    """'18:25:39' (log di testo) o '2.395s' (btsnoop) -> secondi; None se l'orario manca."""
+    when = (when or "").strip()
+    if when.endswith("s"):
+        try:
+            return float(when[:-1])
+        except ValueError:
+            return None
+    parts = when.split(":")
+    if len(parts) == 3:
+        try:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        except ValueError:
+            return None
+    return None
+
+
+def levels(records: list[dict]) -> list[dict]:
+    """Ricostruisce i livelli giocati: fasi dall'evento 0x1803, basette lette (porta 1) con le monete che
+    hanno dato (0x20C2), totale monete (0x386B) e nemici (0x2042). Un livello iniziato prima della
+    registrazione (manca 0x1803 = 1) prende le basette dei 45 s precedenti agli ultimi 15 secondi.
+    I messaggi doppi identici (difetto delle notifiche dopo una riconnessione, corretto il 18/10) contano una volta."""
+    from . import codes
+    out: list[dict] = []
+    current: Optional[dict] = None
+    outside: list[dict] = []          # basette lette fuori da un livello noto
+    loose: dict = {}                  # monete e nemici visti fuori da un livello noto (inizio non registrato)
+    last_key = None
+    for r in records:
+        if r.get("direction") == "->":
+            continue
+        key = (r.get("when"), r.get("raw"))
+        if key == last_key:
+            continue
+        last_key = key
+        when, t = r.get("when") or "", _seconds(r.get("when") or "")
+        values = r.get("values") or []
+        if r.get("io_type") == codes.IO_MARIO_SCANNER and r.get("mode") == 0 and values and r["type"] == "PORT_VALUE_SINGLE":
+            code = int(values[0]) & 0xFFFF
+            if code == 0xFFFF:
+                continue
+            tiles = current["tiles"] if current else outside
+            if not tiles or tiles[-1]["code"] != code:
+                tiles.append({"when": when, "t": t, "code": code, "coins": 0,
+                              "name": codes.barcode_label(code).split(" (")[0]})
+            continue
+        if not (r.get("io_type") == codes.IO_MARIO_EVENTS and r.get("mode") == 2 and len(values) >= 2):
+            continue
+        code, value = int(values[0]) & 0xFFFF, int(values[1]) & 0xFFFF
+        if code == 0x1803 and value in LEVEL_PHASES:
+            if value in (1, 4) and (current is None or current.get("closed")):
+                current = {"phases": [], "tiles": [], "coins": None, "enemies": None, "closed": False,
+                           "started_before": value != 1}
+                if value == 4:   # inizio non registrato: le basette, le monete e i nemici dei 45 s prima
+                    current["tiles"] = [x for x in outside if t is None or x["t"] is None or t - x["t"] <= 45.5]
+                    current["coins"], current["enemies"] = loose.get("coins"), loose.get("enemies")
+                outside, loose = [], {}
+                out.append(current)
+            if current is not None:
+                current["phases"].append((LEVEL_PHASES[value], when))
+                if value == 0:
+                    current["closed"] = True
+                    current, outside, loose = None, [], {}
+        elif code in (0x386B, 0x2042):
+            (current if current is not None else loose)["coins" if code == 0x386B else "enemies"] = value
+        elif code == 0x20C2:
+            tiles = current["tiles"] if current is not None else outside
+            if tiles:
+                tiles[-1]["coins"] += value
+    return out
+
+
+def format_levels(found: list[dict]) -> list[str]:
+    lines = [f"livelli ricostruiti: {len(found)}"]
+    for i, lv in enumerate(found, 1):
+        phases = ", ".join(f"{name} {when}".strip() for name, when in lv["phases"])
+        start = next((w for n, w in lv["phases"] if n == "inizio"), None)
+        end = next((w for n, w in lv["phases"] if n == "fine"), None)
+        span = ""
+        if start and end and _seconds(start) is not None and _seconds(end) is not None:
+            span = f" ({_seconds(end) - _seconds(start):.0f} s)"
+        lines.append(f"  livello {i}: {phases}{span}" + (" (iniziato prima della registrazione)" if lv["started_before"] else ""))
+        if lv["tiles"]:
+            lines.append("    basette: " + " → ".join(f"{x['when']} {x['name']}".strip() + (f" (+{x['coins']} monete)" if x["coins"] else "")
+                                                     for x in lv["tiles"]))
+        totals = []
+        if lv["coins"] is not None:
+            totals.append(f"monete {lv['coins']}")
+        if lv["enemies"] is not None:
+            totals.append(f"nemici {lv['enemies']}")
+        if totals:
+            lines.append("    " + ", ".join(totals))
+    return lines
+
+
 def summarize(records: list[dict]) -> str:
     by_type: dict[str, int] = {}
     by_port: dict[str, int] = {}
@@ -513,6 +670,9 @@ def summarize(records: list[dict]) -> str:
         lines.append(f"traccia DEBUG della porta 3: {debug_chunks} pezzi, {len(debug)} byte"
                      + (f" ({debug_repeats} pezzi uguali al precedente saltati)" if debug_repeats else ""))
         lines += [f"  testo: {t!r}" for t in codes.printable_runs(debug, minimum=6)]
+    found = levels(records)
+    if found:
+        lines += format_levels(found)
     if errors:
         lines.append(f"errori generici: {len(errors)}")
         lines += [f"  {e}" for e in errors[:10]]

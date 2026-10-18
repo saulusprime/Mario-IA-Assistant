@@ -69,6 +69,35 @@ class BtsnoopTests(unittest.TestCase):
         self.assertIn("Mario normale", rows[2]["decoded"])
         self.assertEqual(rows[2]["port"], 2)
 
+    def test_gatt_discovery_and_non_lwp3_att_traffic(self):
+        """Come nella cattura vera dell'11/10: scoperta GATT, descrittore CCCD, lettura del nome, poi LWP3."""
+        lego = struct.pack("<HBH", 0x0011, 0x1E, 0x0012) + decode.LWP3_CHAR_UUID
+        other = struct.pack("<HBH", 0x0002, 0x02, 0x0003) + bytes(16)
+        discovery = bytes([0x09, 21]) + other + lego                           # Read By Type Response
+        value = bytes.fromhex("05 00 45 02 21")
+        recs = [
+            (5, acl(0x40, discovery)),
+            (4, acl(0x40, bytes([0x12]) + struct.pack("<H", 0x0004) + b"\x02\x00")),      # indicazioni sul CCCD
+            (4, acl(0x40, bytes([0x0A]) + struct.pack("<H", 0x0003))),                    # lettura del nome
+            (5, acl(0x40, bytes([0x0B]) + b"\x05\x00\x01\x02\x06")),                   # sembra LWP3, ma è il nome
+            (4, acl(0x40, att_write(bytes.fromhex("05 00 01 06 05"), handle=0x0013))),  # altra maniglia
+            (5, acl(0x40, att_notify(value, handle=0x0012))),
+        ]
+        path = self.dir / "vera.btsnoop"
+        path.write_bytes(btsnoop(recs))
+        notes = []
+        frames = list(decode._acl_frames(decode._btsnoop_packets(path.read_bytes()), "vera.btsnoop", notes))
+        self.assertEqual([(f.direction, f.msg.type_name) for f in frames], [("<-", "PORT_VALUE_SINGLE")])
+        self.assertIn("3 scritture o letture ATT non LWP3 ignorate", notes[0])
+        self.assertIn("maniglia 0x0012", notes[0])
+        # senza scoperta GATT nella cattura decide la forma dei dati: il CCCD "02 00" non passa
+        recs = [(4, acl(0x40, bytes([0x12]) + struct.pack("<H", 0x0004) + b"\x02\x00")),
+                (5, acl(0x40, att_notify(value)))]
+        path.write_bytes(btsnoop(recs))
+        self.assertEqual([f.msg.type_name for f in decode.read_btsnoop(path)], ["PORT_VALUE_SINGLE"])
+        self.assertTrue(decode.well_formed(bytes.fromhex("05 00 45 02 21 04 00 02 02")))
+        self.assertFalse(decode.well_formed(b"LEGO Mario"))
+
     def test_h4_format_direction_flags(self):
         value = bytes.fromhex("05 00 45 02 12")
         recs = [(1, b"\x02" + acl(0x40, att_notify(value))),      # ricevuto
@@ -116,6 +145,37 @@ class BtsnoopTests(unittest.TestCase):
         buf = io.StringIO()
         decode.run([], hex_args=["-> 04 00 02 01", "05 00 45 02 21"], out=buf, downstream=False)
         self.assertEqual(len(buf.getvalue().splitlines()), 1)
+
+    def test_summary_rebuilds_levels(self):
+        def ev(when, code, value):
+            raw = lwp3.build(MessageType.PORT_VALUE_SINGLE, bytes([3]) + code.to_bytes(2, "little") + value.to_bytes(2, "little"))
+            return {"when": when, "direction": "<-", "type": "PORT_VALUE_SINGLE", "raw": raw.hex(" "), "io_type": 0x46,
+                    "mode": 2, "values": [code, value]}
+
+        def tile(when, code):
+            return {"when": when, "direction": "<-", "type": "PORT_VALUE_SINGLE", "raw": f"t{when}{code}", "io_type": 0x49,
+                    "mode": 0, "values": [code, -1]}
+        records = [
+            tile("10:00:00", 0x00B8),                       # fuori dal livello, troppo presto: non conta
+            tile("10:01:30", 0x0002), ev("10:01:31", 0x2042, 1), ev("10:01:31", 0x386B, 1),
+            ev("10:02:00", 0x1803, 4), ev("10:02:00", 0x1803, 4),   # doppione (difetto del 14/10): una volta
+            ev("10:02:15", 0x1803, 3), ev("10:02:24", 0x1803, 0),
+            ev("10:05:00", 0x1803, 1), tile("10:05:01", 0x00B8), tile("10:05:02", 0x00B8), tile("10:05:10", 0x0160),
+            ev("10:05:13", 0x20C2, 6), ev("10:05:13", 0x386B, 6), ev("10:05:45", 0x1803, 4), ev("10:06:00", 0x1803, 3),
+        ]
+        found = decode.levels(records)
+        self.assertEqual(len(found), 2)
+        self.assertTrue(found[0]["started_before"])
+        self.assertEqual([x["name"] for x in found[0]["tiles"]], ["Goomba"])
+        self.assertEqual((found[0]["coins"], found[0]["enemies"]), (1, 1))
+        self.assertEqual([n for n, _ in found[0]["phases"]], ["ultimi 15 s", "fine", "uscita"])
+        self.assertEqual([(x["name"], x["coins"]) for x in found[1]["tiles"]], [("Start Mario", 0), ("Aereo", 6)])
+        text = "\n".join(decode.format_levels(found))
+        self.assertIn("livello 2: inizio 10:05:00, ultimi 15 s 10:05:45, fine 10:06:00 (60 s)", text)
+        self.assertIn("10:05:10 Aereo (+6 monete)", text)
+        self.assertIn("(iniziato prima della registrazione)", text)
+        self.assertEqual(decode._seconds("2.500s"), 2.5)
+        self.assertIsNone(decode._seconds(""))
 
     def test_summary_rebuilds_debug_trace_text(self):
         # porta 3 in modo DEBUG (re-checks del 14/10/2026): il testo attraversa i confini dei pacchetti
