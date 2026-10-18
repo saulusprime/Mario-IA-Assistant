@@ -17,7 +17,8 @@ dentro ogni gruppo le prime sono le più utili.
 - [ ] **Scanner in modo RGB da solo** (`monitor --sub 1:1`): in modalità combinata si muove solo
       il primo dei tre canali; capire se nel modo singolo i tre canali cambiano con il colore.
 - [ ] **Pantaloni diversi dai blu**: quando ci saranno altri pantaloni, confrontare i codici con
-      `codes.PANTS` (oggi verificato solo 0x21).
+      `codes.PANTS` (oggi verificato solo 0x21). Con Tanuki o Elica, chiarire `0x0A` e `0x0C`: legomario.py
+      li dà al contrario di bricklife e pyLegoMario (nota nella pagina Tabelle dei codici).
 - [ ] **Bowser Jr. `0x0099`**: capire se il codice della community è un'altra basetta di Bowser Jr.
       (set 71396 "Clown Koopa di Bowser Junior"?) o un errore della tabella.
 - [ ] **Allarme batteria spontaneo**: con batteria scarica, verificare che arrivi l'aggiornamento
@@ -46,6 +47,17 @@ dentro ogni gruppo le prime sono le più utili.
       convertiti; caricare un suono dal telefono. Ascoltare qualche MIDI per il volume rispetto agli
       altri brani e qualcuno degli 11 moduli estratti in Python (`super_mario_rpg-culex-5`,
       `super_mario_land-muda-1`, ...).
+- [ ] **Novità del 18/10 scritte senza Mario, da provare dal vivo**:
+  - pulsante "Standard, modi combinati" del Monitor e, nella pagina Eventi, le colonne per modo
+    dell'esportazione CSV con dati veri;
+  - avventura "Sfida a tempo nel livello" con il livello vero (fasi `0x1803`, passo perso negli ultimi 15 s),
+    modalità "registra" con le basette reali, musica di sottofondo durante una partita (volume rispetto alla
+    voce e agli effetti), replay di una partita vera;
+  - `./run.sh bridge --dashboard ...` con Mario connesso alla dashboard e un broker MQTT vero
+    (`mosquitto_sub -t 'mario/#' -v`);
+  - `decode --summary` sul log di un livello intero registrato dall'inizio: fasi, basette e monete;
+  - dashboard aperta alla rete con `--self-signed` dal telefono: avviso del certificato con l'impronta
+    stampata, sessione nella Panoramica, revoca dal PC.
 - [ ] **Novità del 13/10 scritte senza Mario, da provare dal vivo**: `monitor --combined`
       (accelerometro + gesti e barcode + RGB ricomposti per modo), riconnessione automatica di
       `monitor` e `shell` (spegnere e riaccendere Mario a metà sessione), `info` che salva il JSON
@@ -98,55 +110,47 @@ agente di pairing sono chiusi (ASIS, sezione 3).
 
 ## 4. Miglioramenti software
 
-- [ ] **`decode` su una cattura vera**: i formati btsnoop (monitor, H4 di Android, HCI) sono stati
-      provati solo con file costruiti nei test; verificare con una cattura `btmon -w` durante una
-      sessione reale e con un HCI snoop log di Android.
+- [ ] **`decode` su una cattura vera con messaggi LWP3**: le tre catture `btmon -w` dell'11/10 (ASIS, sezione
+      4) contengono solo tentativi di connessione falliti; serve una cattura durante una sessione riuscita
+      (`./tools/capture_btmon.sh`) e un HCI snoop log di Android (H4).
 - [ ] **Luigi e Peach**: stesso protocollo; verificare che tabelle e nomi reggano
       (system type 0x44/0x45, pantaloni Luigi/Peach già in tabella).
-- [ ] **`monitor --json` come sorgente per altri programmi**: documentare lo schema delle righe e
-      aggiungere un esempio di consumatore (MQTT o WebSocket, vedi sezione 8).
-- [ ] **Shell**: completamento anche dei nomi delle proprietà e dei numeri di porta; `history`.
-- [ ] **Pacchetto**: provare `pip install -e .` in un venv pulito e pubblicare una release su GitHub
-      (il workflow dei test è attivo; manca il badge nel README e il controllo che la CI sia verde).
-- [ ] **Tabelle JSON**: aggiungere le voci della community ancora mancanti (altri barcode di
-      pyLegoMario senza nome, pantaloni di Luigi/Peach) e una pagina della dashboard che mostri
-      fonte e verifica anche per gesti ed eventi di gioco (oggi solo accessori).
+- [ ] **Release su GitHub**: il pacchetto si installa (anche non modificabile) e la CI è di nuovo verde;
+      resta da decidere la versione (oggi 0.2.0) e pubblicare la release (`gh release create`, `gh` non è
+      installato sul PC).
+- [ ] **Tabelle**: le tute di Luigi e Peach oltre a quelle base non sono in nessuna fonte consultata;
+      aggiungerle quando ci saranno, con `catalog-tiles` o `monitor`.
 
 ## 5. Dashboard web
 
 - [ ] **Console e "Aggiorna funzioni"** dalla scheda dispositivo: mai provate con Mario connesso.
 - [ ] **Pagina "Assistente" nel browser con Mario connesso**: provata solo con backend demo e
       simulazione dei sensori; checklist nella sezione 7.
-- [ ] **Test con un browser headless** (Playwright): oggi il JavaScript ha solo il controllo di
-      sintassi con `node --check` e la coerenza id/azioni con i template (`tests/test_web_static.py`);
-      le pagine vanno provate a mano dopo ogni modifica.
+- [ ] **Più giri nel browser headless**: `tests/test_browser.py` prova oggi caricamento ed errori di ogni
+      pagina, avventure, tabelle e zoom degli eventi; mancano Assistente (chat in streaming con il backend
+      demo), Suoni, Console e la pagina protetta da token.
 - [ ] Dispositivo attivo selezionabile quando ce n'è più d'uno (Mario, Luigi, Peach) e
       connessioni multiple in parallelo (un `MarioDevice` per personaggio).
-- [ ] **Pagina Eventi**: grafici con zoom e scelta dell'intervallo direttamente sul grafico;
-      esportazione anche dei valori combinati per modo.
 - [ ] Foto o icona per dispositivo e per accessorio.
-- [ ] **Token**: scadenza configurabile e revoca; HTTPS (oggi il token viaggia in chiaro sulla
-      rete locale).
+- [ ] **HTTPS con waitress**: oggi con `--cert` o `--self-signed` serve il server di Flask (waitress non fa
+      TLS); per un uso stabile in rete, un proxy (Caddy) davanti a waitress.
 
 ## 6. Designer di avventure
 
 La prima versione (ASIS, sezione 4) è stata provata solo con eventi simulati.
 
-- [ ] **Prova dal vivo**: il "Quiz sulle basette" con le 8 basette dell'utente e il "Percorso a
-      ostacoli" con i gesti; tarare le pause dei gesti ripetuti (0,8 s) e i timeout.
+- [ ] **Prova dal vivo**: il "Quiz sulle basette" con le 8 basette dell'utente, il "Percorso a
+      ostacoli" con i gesti e la "Sfida a tempo nel livello"; tarare le pause dei gesti ripetuti (0,8 s)
+      e i timeout (vedi anche le novità del 18/10 nella sezione 1).
 - [ ] **Editor visuale**: griglia o percorso trascinabile con le basette, proprietà per casella,
       anteprima; oggi l'editor è a moduli (tabella dei passi) più il JSON per sequenze e azioni.
-- [ ] **Modalità "registra"**: costruire il percorso facendo camminare Mario sulle basette reali
-      (il motore già tiene la sequenza delle basette lette).
-- [ ] **Trigger mancanti**: "tempo quasi scaduto" (`0x1803 = 4`, ultimi 15 s del livello) e "livello
-      finito" (`0x1803 = 3`) come trigger con un nome (oggi solo con il trigger generico "evento di gioco");
-      "salto riuscito" e "colpito" dagli eventi della porta 3 (servono le ipotesi confermate della sezione
-      2); contatori con soglie sul tempo; combinazioni "A oppure B".
+- [ ] **Trigger mancanti**: "salto riuscito" e "colpito" dagli eventi della porta 3 (servono le ipotesi
+      confermate della sezione 2); un `any_of` che sappia quale ramo è scattato (oggi tutti i rami portano
+      allo stesso esito; per "A prima di B" c'è il trigger `fail`).
 - [ ] **Azioni verso Mario**: oltre al volume non c'è nulla finché le porte 4 e 7 restano inerti
-      (sezione 7); notifica esterna oggi solo via webhook HTTP (ponte MQTT/WebSocket da scrivere).
-- [ ] **Schermo di gioco**: mappa del percorso disegnata, immagini per basette e colori (catalogo
-      di icone libere), versione a tutto schermo senza menù.
-- [ ] **Partite**: pagina di dettaglio con la cronaca completa e il replay degli eventi.
+      (sezione 7). Le notifiche esterne passano dal webhook o dal ponte (`./run.sh bridge`).
+- [ ] **Schermo di gioco**: una mappa vera del percorso (oggi una fila di basette con le icone di famiglia
+      e le frecce) e immagini per basette e colori (catalogo di icone libere).
 - [ ] **Multigiocatore**: Mario + Luigi + Peach connessi insieme, turni e gare.
 - [ ] **Latenza del flusso** sotto i 200 ms: da misurare dal vivo (evento → voce del PC).
 
@@ -298,15 +302,12 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 
 - Controller: usare gesti e pantaloni di Mario come input per un gioco o un emulatore
   (precedenti pubblici: Mario come controller di Super Mario Bros).
-- Registrare una partita intera e ricostruire il livello (sequenza di barcode e colori)
-  come log leggibile.
+- Nella ricostruzione dei livelli di `decode --summary` (oggi fasi, basette, monete e nemici) aggiungere i
+  colori calpestati e i gesti, filtrando i colori del tavolo.
 - Far dialogare due personaggi tramite il PC (Mario e Luigi) emulando ciò che fanno via
   radio tra loro, una volta capito il formato della porta 4.
-- Esporre Mario via MQTT o WebSocket per domotica e notifiche.
-- Musica di sottofondo nelle avventure: un'azione "music" che avvia e ferma in ciclo un brano
-  dell'archivio (NSF, SPC, MP3 convertiti) a volume basso, sotto voce ed effetti.
+- Ponte (`./run.sh bridge`): un esempio di automazione domestica (Home Assistant via MQTT: una luce che
+  cambia colore con i pantaloni) e i comandi in ingresso (volume da MQTT).
 - Voce IA con le emozioni: OpenVoice cambia il timbro ma non il tono; una registrazione di riferimento
   per emozione (allegra, triste, spaventata) scelta in base al tag della frase darebbe più
   espressività (le impronte si calcolano una volta e restano in cache).
-- Voce IA più veloce: misurare l'effetto dell'opzione `--threads` del processo della voce (oggi torch usa
-  i 4 thread logici dei 2 core) mentre Bluetooth e dashboard sono attivi.

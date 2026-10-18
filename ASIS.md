@@ -138,20 +138,47 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   arrivo e in uscita, formati valore, scaling SI); `mario/hubstate.py` con lo stato dell'hub senza
   bleak (porte, modi, formati, **valori combinati 0x46 ricomposti per modo**, evento unico per
   dashboard, CLI e assistente, stato iniziale dal JSON delle funzioni); tabelle in
-  `mario/data/mario_codes.json` con fonte e data di verifica; `MarioDevice` con scansione,
+  `mario/data/mario_codes.json` con fonte e data di verifica (dal 18/10 anche le strisce colorate dei
+  barcode, i 73 codici che pyLegoMario conosce senza nome, tenuti a parte perché non diventino basette
+  "nemico", e la nota sulla discordanza `0x0A`/`0x0C` dei pantaloni fra legomario.py e le altre fonti);
+  `MarioDevice` con scansione,
   connessione con tentativi, agente di pairing, richieste con attesa, scoperta, modalità combinata
   con delta per modo, report (con stato del bond) e JSON.
 - **CLI** `./run.sh`: `scan`, `info` (salva `mario/data/capabilities-fw-<versione>.json`), `monitor`
   (`--combined`, `--json`, `--duration`, `--no-battery`, riconnessione automatica), `shell`
-  (readline, `help <comando>`, `log`, riconnessione), `decode` (catture btsnoop, bugreport Android con
-  sezioni btsnooz, PacketLogger di Apple, gzip, log, byte; i formati dei telefoni provati su file sintetici),
-  `assistant`, `adventure`, `web` (waitress, token), comandi rapidi, strumenti di `tools/` come
-  sottocomandi; log di sessione in `logs/`.
+  (readline, `help <comando>`, `log`, riconnessione; dal 18/10 Tab completa anche nomi delle proprietà,
+  porte annunciate, modi della porta e on/off, e c'è `history` con `!!` e `!N`), `decode` (catture btsnoop,
+  bugreport Android con sezioni btsnooz, PacketLogger di Apple, gzip, log, byte; i formati dei telefoni
+  provati su file sintetici), `assistant`, `adventure`, `bridge`, `web` (waitress, token, HTTPS), comandi
+  rapidi, strumenti di `tools/` come sottocomandi; log di sessione in `logs/`.
+- **`decode` sulle catture vere (18/10)**: le tre catture `btmon -w` dell'11/10 (tentativi di connessione
+  falliti, nessun messaggio LWP3) hanno mostrato due difetti, corretti: una scrittura sul descrittore CCCD
+  (`02 00`, la richiesta che faceva scattare il pairing) diventava un messaggio di Mario, e le risposte di
+  lettura ATT (per esempio il nome del dispositivo) sarebbero state lette come LWP3. Ora la maniglia della
+  caratteristica LEGO si impara dalla scoperta GATT nella cattura (`0x0012`, come in btmon) e, se la scoperta
+  non c'è, passano solo dati con la forma di un messaggio LWP3. `--summary` ricostruisce anche i **livelli**
+  (fasi, basette lette con le monete date, monete e nemici), pure quando l'inizio non è nel log: provato sui
+  log di `docs/sessioni/`, per esempio il livello del 12/10 18:25 con otto basette, 8 monete e 2 nemici.
+- **Ponte verso altri programmi (18/10)**: `./run.sh bridge` traduce gli eventi in fatti con un nome (gesto,
+  basetta, colore, pantaloni, fase del livello, monete, pulsante, batteria, avventura) e li pubblica su MQTT
+  3.1.1 e/o su un WebSocket, con la sola libreria standard; legge `monitor --json` o il flusso della
+  dashboard, che tiene la connessione con Mario. Schema delle righe e dei fatti in `docs/monitor-json.md`.
+  Provato con un broker finto, un client WebSocket e il flusso vero della dashboard; nessun broker reale.
 - **Dashboard Flask** `mario/web/`: Panoramica, Scansione, Dispositivi (nome e volume dalla scheda),
-  Monitor (SSE), **Eventi** (filtri, esportazione CSV/JSON, grafici), Console, Accessori (con colonna
-  "verificato"), Assistente, **Avventure** (editor e schermo di gioco), Funzioni, Documentazione;
-  database SQLite (`devices`, `accessories`, `events`, `settings`, `assistant_messages`,
-  `assistant_memory`, `adventures`, `adventure_runs`); accesso con token oltre 127.0.0.1.
+  Monitor (SSE, dal 18/10 anche "Standard, modi combinati"), **Eventi** (filtri, esportazione CSV/JSON,
+  grafici), Console, Accessori (con colonna "verificato"), **Tabelle dei codici**, Assistente,
+  **Avventure** (editor, schermo di gioco, partite), Funzioni, Documentazione; database SQLite
+  (`devices`, `accessories`, `events`, `settings`, `assistant_messages`, `assistant_memory`,
+  `adventures`, `adventure_runs`, `web_sessions`); accesso con token oltre 127.0.0.1. Novità del 18/10:
+  - **Eventi**: trascinando sul grafico della batteria si sceglie l'intervallo, e tabella, grafici ed
+    esportazioni lo seguono (prima "Dal/Al" valeva solo per l'esportazione); gli eventi in modalità
+    combinata conservano i valori per modo (colonna `modes`), con una colonna per modo nel CSV.
+  - **Tabelle dei codici** (`/codes`, `/api/codes`): tutte le tabelle con fonte, verifica, ipotesi e note,
+    anche gesti ed eventi di gioco; strisce colorate dei barcode secondo pyLegoMario.
+  - **Accesso**: dopo il token il browser riceve una sessione (identificativo casuale nel cookie, impronta,
+    browser e scadenza nel database, `web --session-days`, default 30), elencata nella Panoramica con la
+    revoca; cambiare il token chiude tutte le sessioni; "Esci" nella barra; `/login` non rimanda verso altri
+    siti. HTTPS con `--cert/--key` o `--self-signed` (openssl, impronta SHA-256 stampata all'avvio).
 - **Assistente** `mario/assistant/`: regole sensori → intenti con pause e filtro di stabilità,
   parser delle emozioni in streaming, voce dal PC (speech-dispatcher / espeak-ng / piper) con
   effetti sonori, backend Claude (API Messages), compatibile OpenAI e demo, comportamenti su Mario
@@ -163,10 +190,23 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   gioco, timer, sequenza, ripetizione) e azioni (punti, voce, suono, messaggio, volume, goto, fine,
   webhook), timeout per passo e limite dell'avventura, stima della posizione dalle basette, log
   della partita; libreria degli elementi; servizio collegato al worker; pagine editor e gioco;
-  comando `adventure` con simulazione da tastiera; tre avventure di esempio. Provato con eventi
-  simulati, non ancora con Mario.
+  comando `adventure` con simulazione da tastiera. Provato con eventi simulati, non ancora con Mario.
+  Aggiunte del 18/10, anche queste solo simulate:
+  - trigger `level` (inizio, ultimi 15 secondi, fine, uscita: l'evento `0x1803`), `any_of` ("A oppure B",
+    anche "oppure dopo N secondi"), ripetizioni con `window` (tutte entro N secondi) e trigger `fail` del
+    passo (se succede, il passo è perso come per il timeout);
+  - azione `music`: un brano dell'archivio dei suoni in ciclo a volume basso (30 %), fermato a fine partita;
+  - modalità "registra": si cammina con Mario sulle basette e il percorso diventa una bozza nell'editor,
+    un passo per basetta, con il timeout suggerito dal tempo impiegato;
+  - pagina della partita (`/adventures/runs/<id>`) con la cronaca e il replay a 1–10×; le basette lette
+    entrano nella cronaca; schermo di gioco a tutto schermo con il percorso disegnato con le icone;
+  - quarto esempio, "Sfida a tempo nel livello", che arriva anche nei database già in uso (gli esempi
+    cancellati non tornano).
 - **Strumenti dal vivo**: `tools/probe_port4.py`, `tools/catalog_tiles.py`, `tools/live_checks.py`
   (anche come `./run.sh live-checks` ecc.), `tools/99-mario-btusb.rules`.
+- **Thread della voce IA (misura del 18/10, PC scarico)**: torch usa già 2 thread (i core fisici), e
+  con 2 thread una frase richiede in media 1,7 s; con 4 thread 1,85 s, con uno solo 2,3 s. Il valore
+  automatico resta. Riferimento sintetico (piper), script in `logs/ov-bench/` (locale).
 - **Voce IA con OpenVoice V2 (14/10)**: `tools/setup_openvoice.sh` installa in `.venv-openvoice`
   torch per CPU, OpenVoice (convertitore V2 da Hugging Face) e piper con le voci italiane. piper legge
   la frase e OpenVoice le dà il timbro della registrazione di riferimento, in un processo separato
@@ -233,10 +273,19 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   due volte (`monitor` e `shell` dopo la riconnessione, dashboard dopo "Connetti", `live-checks` e
   `re-checks`). Ora `MarioDevice` chiude sempre il client; lo provano un BleakClient finto che imita
   BlueZ e il worker della dashboard. La conferma con Mario è nel TODO.
-- **Test**: 215 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
-  SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
-  GitHub Actions su Python 3.11 e 3.13.
+- **Test**: 243 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+  SSE locale per i backend, broker MQTT finto, controlli statici del JavaScript), verdi nel venv
+  dell'host; workflow GitHub Actions su Python 3.11 e 3.13. Dal 18/10 le pagine della dashboard si provano
+  anche in un **Firefox headless vero** (`tests/test_browser.py`): client WebDriver BiDi con la sola libreria
+  standard (`tests/browser.py`), errori JavaScript di ogni pagina, editor e registrazione di un percorso,
+  partita simulata e replay, filtri delle tabelle, zoom con un trascinamento vero del mouse; saltati se
+  Firefox non c'è. La CI era rossa dal 16/10 per un test che cercava la chiave API del `.env` locale: corretto,
+  e la suite è stata riprovata da un clone pulito con Python 3.11 e quasi nessun programma di sistema.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).
+  Dal 18/10 si installa anche come pacchetto normale (`pip install .`, provato in un venv pulito): esempi
+  delle avventure e mappa delle funzioni (spostata in `mario/data/`) sono nel pacchetto; database, log e
+  modelli vanno in `~/.local/share/mario-ble` invece che dentro site-packages (`mario/paths.py`,
+  `MARIO_HOME` per un'altra cartella); dal sorgente tutto resta nella cartella del progetto.
 - **Documentazione**: README (uso, protocollo, funzioni verificate, eventi decodificati, decode,
   avventure, problemi di connessione), HANDOFF (diario con orari), TODO (lavoro aperto), ASIS
   (questo file), `docs/sessioni/` (15 log delle prove, anonimizzati).

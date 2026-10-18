@@ -38,6 +38,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh fetch-sounds --all   # archivio di suoni, voci e musiche di Mario in locale (uso privato); pagina Suoni
 ./run.sh adventure --list     # avventure del designer; --play quiz [--no-mario] per giocarne una
 ./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
+./run.sh monitor --json | ./run.sh bridge --mqtt localhost   # eventi con un nome su MQTT e/o WebSocket (--ws 8766)
 ./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect)
 ./run.sh re-checks --steps sonno,porta3   # reverse engineering dal vivo (sezione 2 del TODO): annuncio, GATT, porta 3, porte 4 e 7
 ./run.sh re-checks --steps porta3 --port3-modes DEBUG   # un solo modo della porta 3 (DEBUG: traccia del firmware)
@@ -55,7 +56,9 @@ il tempo di ricerca, `-i hci1` un altro adattatore, `--any-lego` accetta qualsia
 `--no-pair` disattiva il pairing automatico, `-d` mostra i byte grezzi TX/RX.
 
 Opzioni utili di `monitor`: `--combined` (accelerometro + gesti e barcode + RGB insieme, in
-modalità combinata), `--json` (una riga JSON per evento, per collegare Mario ad altri programmi),
+modalità combinata), `--json` (una riga JSON per evento, per collegare Mario ad altri programmi:
+schema in [docs/monitor-json.md](docs/monitor-json.md), insieme al ponte `./run.sh bridge` che
+pubblica gesti, basette, pantaloni, fasi del livello e monete su MQTT o WebSocket),
 `--duration 120`, `--no-battery`, `--rssi`, `--raw-accel`, `--sub 7:0`. Se Mario cade, `monitor`
 e `shell` aspettano che torni visibile e lo riagganciano (`--no-reconnect` per uscire subito). Fino
 al 18/10 dopo una riconnessione ogni messaggio arrivava due volte: il client Bluetooth precedente
@@ -71,6 +74,11 @@ sessione un proprio agente BlueZ NoInputNoOutput che accetta automaticamente, e 
 connessione associa Mario al PC (`Device1.Pair`, con bond salvato da BlueZ). Dalle volte
 successive il bond viene riusato. Comandi utili: `./run.sh pair` (solo associazione),
 `./run.sh unpair` (dimentica Mario), opzione `--no-pair` per disattivare l'automatismo.
+
+**Come pacchetto.** Oltre che con `run.sh` dal clone, si installa con `pip install .` (o `-e .` per
+lavorarci): il comando è `mario`. Dal clone database, log e modelli restano nella cartella del
+progetto; da un pacchetto installato vanno in `~/.local/share/mario-ble` (`MARIO_HOME` per sceglierne
+un'altra). Gli strumenti di `tools/` ci sono solo nel clone.
 
 `run.sh` crea il virtualenv `.venv` al primo avvio. Se viene lanciato dentro un
 sandbox Flatpak (per esempio il terminale di VS Code installato da Flathub) si
@@ -92,15 +100,20 @@ adattatore (per esempio una chiavetta USB), `-d` per vedere i byte grezzi TX/RX.
 Interfaccia Flask con menù principale: **Panoramica** (stato, azioni rapide, ultimi
 eventi), **Scansione**, **Dispositivi** (catalogo nel database locale: proprietà, mappa
 delle funzioni, note), **Monitor** (sensori in tempo reale via Server-Sent Events, schede
-per porta, storico), **Console** (proprietà, volume, nome, messaggi LWP3 e byte grezzi,
+per porta, storico; i sensori standard anche in modalità combinata, come `monitor --combined`), **Console** (proprietà, volume, nome, messaggi LWP3 e byte grezzi,
 Port Output Command, azioni e allarmi, log di tutte le risposte), **Accessori**
 (pantaloni, basette con barcode, colori terreno e altri accessori: posseduti, quantità,
 set, note; "visti" si aggiorna da solo quando il sensore li riconosce), **Assistente**
 (Mario come ingresso e uscita di una sessione con un modello: chat in streaming, voce dal
 PC, emozioni, regole sensori → intenti, sezione dedicata più sotto), **Eventi** (archivio con
-filtri per dispositivo, porta, tipo, testo e intervallo; esportazione CSV e JSON; grafici senza
-librerie esterne: batteria nel tempo, istogramma dei gesti, basette lette, eventi per tipo),
-**Avventure** (designer e schermo di gioco, sezione dedicata più sotto), **Suoni** (archivio locale
+filtri per dispositivo, porta, tipo, testo e intervallo; esportazione CSV e JSON, con una colonna per
+modo per gli eventi in modalità combinata; grafici senza librerie esterne: batteria nel tempo,
+istogramma dei gesti, basette lette, eventi per tipo; trascinando sul grafico della batteria si
+sceglie l'intervallo, e tabella, grafici ed esportazioni lo seguono),
+**Avventure** (designer, schermo di gioco e partite giocate con cronaca e replay, sezione dedicata più
+sotto), **Tabelle dei codici** (dalla pagina Accessori: pantaloni, basette, colori, gesti ed eventi di gioco
+con fonte, verifica, ipotesi, note e strisce colorate dei barcode; `/api/codes` per gli altri programmi),
+**Suoni** (archivio locale
 di effetti, voci e musiche di Mario, scelta del suono di ogni effetto, suoni propri; sezione
 "Effetti sonori dei giochi"), **Funzioni** (report
 completo) e **Documentazione** (README, ASIS, TODO, HANDOFF). Dalla scheda di un dispositivo si
@@ -110,13 +123,20 @@ Server: `waitress` se installato nel venv (`.venv/bin/pip install waitress`), al
 di sviluppo di Flask (`--server flask|waitress`, `--threads`). Con `--host 0.0.0.0` la dashboard
 è raggiungibile dalla rete locale e l'accesso richiede un token: generato all'avvio e stampato,
 oppure scelto con `--token` o `MARIO_WEB_TOKEN` (`--no-token` per disattivarlo). Si entra con
-`?token=…` nell'URL, dalla pagina `/login` o con `Authorization: Bearer` per le API; il token
-resta in un cookie per trenta giorni.
+`?token=…` nell'URL, dalla pagina `/login` o con `Authorization: Bearer` per le API. Il browser
+riceve una sessione, non il token: un identificativo casuale nel cookie, valido trenta giorni
+(`--session-days`). La Panoramica elenca le sessioni aperte, con browser e ultimo uso, e le revoca;
+"Esci" nella barra chiude quella in uso; un token nuovo all'avvio le chiude tutte. Per non far
+viaggiare token e pagine in chiaro sulla rete di casa: `--self-signed` crea con openssl un certificato
+in `data/tls/` e stampa la sua impronta SHA-256 (da confrontare con quella mostrata dal browser
+all'avviso), oppure `--cert` e `--key` per un certificato proprio. In HTTPS serve il server di Flask,
+perché waitress non gestisce TLS.
 
 Architettura: un thread dedicato possiede il loop asyncio e il `MarioDevice`; le rotte
 Flask vi inoltrano le richieste con `run_coroutine_threadsafe`; gli eventi di Mario vanno
 ai client SSE e nel database SQLite `data/mario.sqlite3` (tabelle `devices`,
-`accessories`, `events`, `settings`, `assistant_messages`, senza dipendenze oltre a Flask). Il server gira
+`accessories`, `events`, `settings`, `assistant_messages`, `assistant_memory`, `adventures`,
+`adventure_runs`, `web_sessions`, senza dipendenze oltre a Flask). Il server gira
 sull'host (serve BlueZ); il browser si collega in locale.
 
 ## Assistente: Mario come ingresso e uscita di un modello di linguaggio
@@ -503,11 +523,16 @@ Un'avventura è una sequenza di passi: ogni passo ha una missione detta e mostra
 qualcosa di verde"), un trigger che la completa e un'azione. I trigger sono gli elementi del mondo
 di Mario che il PC riconosce dai sensori: basetta (codice preciso o famiglia: partenza, traguardo,
 nemico, premio, amico, qualsiasi), colore del terreno, pantaloni, gesto, pulsante, evento di gioco
-della porta 3 (per esempio monete totali ≥ 5 o tre giri sulla piattaforma rotante), timer,
-sequenza di trigger entro N secondi, stesso trigger ripetuto N volte. Le azioni: punti, frase
-detta dal PC, effetto sonoro, messaggio a schermo, volume di Mario, salto a un altro passo, fine,
-webhook (POST JSON, solo se abilitati). Ogni passo può avere un timeout con frase e passo di
-ripiego; l'avventura un limite di tempo complessivo.
+della porta 3 (per esempio monete totali ≥ 5 o tre giri sulla piattaforma rotante), fase del
+livello vero di Mario (`level`: inizio alla basetta Start, ultimi 15 secondi, fine, uscita), timer,
+sequenza di trigger entro N secondi, stesso trigger ripetuto N volte (anche "tutte entro N
+secondi", `window`), uno qualsiasi fra più trigger (`any_of`: "salta oppure premi il pulsante",
+anche "oppure dopo 10 secondi"). Le azioni: punti, frase detta dal PC, effetto sonoro, messaggio a
+schermo, volume di Mario, musica di sottofondo (`music`: un brano dell'archivio dei suoni in ciclo
+a volume basso, fermato a fine partita), salto a un altro passo, fine, webhook (POST JSON, solo se
+abilitati). Ogni passo può avere un timeout con frase e passo di ripiego e un trigger `fail`
+("prima che finisca il tempo del livello": se succede, il passo è perso come per il timeout);
+l'avventura un limite di tempo complessivo.
 
 ```sh
 ./run.sh web                      # pagina "Avventure": catalogo, editor, libreria degli elementi, partite giocate
@@ -518,11 +543,17 @@ ripiego; l'avventura un limite di tempo complessivo.
 
 Il motore (`mario/adventures/engine.py`) è una macchina a stati che riceve gli stessi eventi del
 worker della dashboard e di `monitor --json`; si prova senza Mario con i pulsanti di simulazione
-della pagina o con la tastiera. Le avventure sono JSON (`mario/data/adventures/` contiene tre
-esempi: caccia al tesoro dei colori, percorso a ostacoli con i gesti, quiz con le basette dei set
-71360 e 71425), si importano ed esportano dalla pagina. Le partite finiscono nella tabella
-`adventure_runs` con esito, punti e cronaca. L'editor è a moduli (passo per passo) più il JSON
-per sequenze e azioni; la versione trascinabile e la modalità "registra" sono nel TODO.
+della pagina o con la tastiera (`livello inizio|ultimi|fine` per le fasi del livello). Le avventure
+sono JSON (`mario/data/adventures/` contiene quattro esempi: caccia al tesoro dei colori, percorso a
+ostacoli con i gesti, quiz con le basette dei set 71360 e 71425, sfida a tempo nel livello), si
+importano ed esportano dalla pagina; un esempio nuovo arriva anche nei database già in uso, uno
+cancellato non torna. L'editor è a moduli (passo per passo) più il JSON per sequenze, alternative e
+azioni. **Registra un percorso**: si cammina con Mario sulle basette e ogni basetta letta diventa un
+passo della bozza, con il timeout suggerito dal tempo impiegato. Le partite finiscono nella tabella
+`adventure_runs` con esito, punti e cronaca; cliccando la data nella pagina Avventure si apre la
+partita con la cronaca e il **replay** (1–10×, `#t=12.5` nell'indirizzo per un momento preciso). Lo
+schermo di gioco va anche a tutto schermo, senza menù, con il percorso disegnato con le icone delle
+basette.
 
 ## La shell interattiva
 
@@ -539,12 +570,14 @@ mostra ogni messaggio in arrivo (prefisso `<-`). Comandi principali:
 | `alert low_voltage on`, `busy on`, `action 0x05` | allarmi e azioni dell'hub |
 | `msg 0x01 12 05`, `raw 05 00 01 12 05`, `out 0 1 00` | messaggi arbitrari verso Mario |
 | `log nome.txt`, `log off` | cambia o sospende il file di log della sessione |
+| `history 10`, `!!`, `!3` | ultimi comandi; ripete l'ultimo o quello con il numero indicato |
 | `quiet`, `debug`, `off`, `quit` | utilità |
 
 Scrivi `help` per l'elenco completo e `help sub` (o `combo`, `out`, `alert`, …) per i dettagli di
 un comando. Su un terminale la shell usa readline: frecce per la cronologia (salvata in
-`~/.local/state/mario/`), Tab per completare i comandi. I valori combinati (0x46) vengono
-ricomposti per modo e descritti come i valori singoli.
+`~/.local/state/mario/`), Tab per completare i comandi e i loro argomenti: nomi delle proprietà
+(`prop bat` → `battery`), porte annunciate da Mario, modi della porta scritta prima, `on`/`off`.
+I valori combinati (0x46) vengono ricomposti per modo e descritti come i valori singoli.
 
 ## Decodifica offline (`decode`)
 
@@ -566,9 +599,20 @@ coda alla riga, righe `TX`/`RX` dell'opzione `-d`, uscita di `btmon -r`) e byte 
 formato viene riconosciuto dal contenuto. Lo stato delle porte parte da
 `mario/data/capabilities-fw-6.5.01.json` (ogni porta nel modo che `monitor` attiva di default,
 `--no-default-modes` per non presumerlo) ed evolve con le sottoscrizioni e le modalità combinate
-viste nel file. `--summary` conta i messaggi per tipo e porta ed elenca gli eventi della porta 3
+viste nel file. Nelle catture la maniglia della caratteristica LEGO si impara dalla scoperta GATT
+(nelle catture dell'11/10 è `0x0012`); se la scoperta manca, passano solo i dati con la forma di un
+messaggio LWP3, così descrittori, nome del dispositivo e servizi standard non vengono scambiati per
+messaggi di Mario. `--summary` conta i messaggi per tipo e porta ed elenca gli eventi della porta 3
 con i valori osservati; se la porta 3 è stata in modo DEBUG, ricompone la traccia del firmware dai
-pezzi di 16 byte e ne stampa il testo leggibile. La procedura per catturare il traffico dell'app ufficiale dal telefono (Android
+pezzi di 16 byte e ne stampa il testo leggibile. Ricostruisce anche i **livelli** giocati: fasi
+(inizio, ultimi 15 s, fine, uscita), basette lette con le monete date, totale di monete e nemici,
+anche quando l'inizio del livello non è nel log. Per esempio, dal log del 12/10 in `docs/sessioni/`:
+
+```
+livello 1: ultimi 15 s 18:26:08, fine 18:26:24, uscita 18:26:33 (iniziato prima della registrazione)
+  basette: 18:25:39 Start Mario → 18:25:44 Bowser Jr. nel Clown Koopa → 18:25:48 Goomba → 18:25:51 Aereo (+6 monete) → …
+  monete 8, nemici 2
+``` La procedura per catturare il traffico dell'app ufficiale dal telefono (Android
 e iPhone, copione di gioco, analisi) è in [docs/cattura-app-ufficiale.md](docs/cattura-app-ufficiale.md);
 i lettori btsnooz e PacketLogger sono stati provati solo su file sintetici.
 
@@ -897,13 +941,13 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Duecentoquindici test senza Bluetooth né rete esterna, raggruppati per file:
+243 test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
 | `test_lwp3` (18) | codec LWP3, decodificatori e tabelle di Mario |
 | `test_hubstate` (5) | stato dell'hub da `capabilities`, valori combinati con i dati reali del 12/10 |
-| `test_decode` (10) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri, traccia DEBUG della porta 3 ricomposta |
+| `test_decode` (12) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP, scoperta GATT, descrittori e letture non LWP3 scartati), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri, traccia DEBUG della porta 3 ricomposta, livelli ricostruiti |
 | `test_device_fake` (9) | `MarioDevice` e `BleWorker` con un BleakClient finto che imita anche le sessioni di notifica di BlueZ: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata; agente di pairing che accetta solo il Mario in collegamento; riconnessione dopo che Mario ha chiuso il link (stesso dispositivo, dispositivo nuovo, dashboard) senza messaggi doppi |
 | `test_syscheck` (5) | `doctor` su un sysfs finto: adattatore Apple, rfkill, servizio, autosospensione (subito e ai prossimi avvii), banda del Wi-Fi (nmcli e `iw`), hub LEGO associati, sandbox Flatpak |
 | `test_db` (6) | database della dashboard |
@@ -914,10 +958,12 @@ Duecentoquindici test senza Bluetooth né rete esterna, raggruppati per file:
 | `test_rar20` (3) | estrazione RAR 2.0 in Python su un archivio costruito bit per bit (tabelle, letterali, copie corte e sovrapposte, ripetizione, CRC, errori) e da `fetch-sounds` |
 | `test_sounds_web` (3) | pagina Suoni: catalogo, file per l'anteprima e percorsi vietati, assegnazioni, stile, caricamento e cancellazione |
 | `test_llm_http` (6) | backend Claude e OpenAI contro un server SSE locale: intestazioni, errori HTTP, taglio, Stop, ragionamento spento per modello con nuovo tentativo, risposta vuota |
-| `test_service` (3), `test_tts` (5) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV |
-| `test_adventures` (7), `test_adventures_web` (3) | modello, validazione, motore con eventi simulati, servizio e API |
-| `test_web_pages` (7), `test_web_static` (5) | pagina Eventi, esportazioni, grafici, token, controllo del PC nella pagina Scansione; sintassi del JavaScript e coerenza id/azioni con i template |
-| `test_cli` (8), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, `decode`; importazione senza Bluetooth |
+| `test_service` (3), `test_tts` (6) | servizio dell'assistente con worker finto; righe di comando dei motori vocali ed effetti WAV; musica di sottofondo in ciclo con un lettore finto |
+| `test_adventures` (11), `test_adventures_web` (5) | modello, validazione, motore con eventi simulati (fasi del livello, alternative, ripetizioni a tempo, passo perso, musica), servizio e API, modalità registra, esempi nuovi nei database già in uso, pagina della partita |
+| `test_web_pages` (11), `test_web_static` (5) | pagina Eventi (intervalli, colonne per modo), esportazioni, grafici, tabelle dei codici, token e sessioni (revoca, scadenza, cambio di token), HTTPS con un certificato autofirmato, controllo del PC nella pagina Scansione; sintassi del JavaScript e coerenza id/azioni con i template |
+| `test_browser` (5) | la dashboard in un Firefox headless vero via WebDriver BiDi (client in `tests/browser.py`, solo libreria standard): errori JavaScript di ogni pagina, editor e registrazione di un percorso, partita e replay, filtri delle tabelle, zoom con un trascinamento del mouse; saltati senza Firefox |
+| `test_bridge` (7) | ponte: traduzione degli eventi in fatti, lettori di righe JSON e SSE, broker MQTT finto (anche credenziali e rifiuto), WebSocket con il client dei test, flusso vero della dashboard |
+| `test_cli` (11), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, completamento e cronologia della shell, cartelle dal sorgente e con `MARIO_HOME`, `decode`; importazione senza Bluetooth |
 
 I test che importano Flask o bleak vengono saltati dove mancano (per esempio nel sandbox) e
 girano nel venv dell'host e in GitHub Actions (`.github/workflows/tests.yml`, Python 3.11 e 3.13).
@@ -931,8 +977,10 @@ mario/lwp3.py           protocollo LWP3: messaggi, parser, descrizioni (anche in
 mario/hubstate.py       stato dell'hub senza bleak: porte, modi, formati, valori combinati, eventi
 mario/codes.py          tabelle Mario caricate da mario/data/mario_codes.json (fonte e verifica), modi di default
 mario/device.py         MarioDevice (bleak), agente di pairing BlueZ, scoperta, report
-mario/decode.py         decodifica offline: btsnoop, bugreport Android (zip, btsnooz), PacketLogger, gzip, log di testo, byte, riepilogo
-mario/cli.py            comandi scan/info/monitor/shell/decode/doctor/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
+mario/decode.py         decodifica offline: btsnoop, bugreport Android (zip, btsnooz), PacketLogger, gzip, log di testo, byte, riepilogo e livelli
+mario/bridge.py         ponte verso altri programmi: fatti con un nome su MQTT (client 3.1.1) e WebSocket, da monitor --json o dalla dashboard
+mario/paths.py          cartelle del programma: progetto dal sorgente, ~/.local/share/mario-ble da un pacchetto installato
+mario/cli.py            comandi scan/info/monitor/shell/decode/doctor/bridge/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
                         e gli strumenti di tools/ come sottocomandi
 mario/web/              dashboard: app.py (pagine e API), ble_worker.py, db.py, templates/, static/
 mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, memory, session, service,
@@ -940,14 +988,14 @@ mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, b
                         soundpack (suoni veri dei giochi per gli effetti), stt e stt_worker (ingresso vocale),
                         wake_worker (ascolto di «Ehi Mario» con Vosk), worker (processi con i modelli caricati), safety (temi da evitare), report (riepilogo)
 mario/adventures/       designer di avventure: model, engine, library, service
-mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
+mario/data/             mario_codes.json (tabelle), capabilities-fw-6.5.01.json (mappa delle funzioni), adventures/ (quattro esempi)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
 mario/syscheck.py       controllo del PC per il Bluetooth (`doctor`, pagina Scansione): adattatore, autosospensione, Wi-Fi, pairing
 mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'archivio dei suoni
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale e «Ehi Mario»), fetch_mario_sounds.py
-tests/                  test offline (215)
+tests/                  test offline (243), browser.py (Firefox headless via WebDriver BiDi)
 docs/                   monitor-json.md (righe JSON e ponte MQTT/WebSocket), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
