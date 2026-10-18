@@ -15,6 +15,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Callable, Optional
 
 from .behaviours import BehaviourEngine
@@ -24,6 +25,7 @@ from .llm import Backend, LLMError
 from .memory import (PARENT, SUMMARY_AT, SUMMARY_SYSTEM, SUMMARY_TARGET, ListMemory, MemoryStore, memory_prompt,
                      parse_summary, summary_candidates, summary_messages)
 from .safety import DEFAULT_THEMES, THEMES, ThemeFilter
+from .stt import DEFAULT_WAKE_PHRASES, split_wake
 from .tts import Speaker
 
 BASE_PROMPT = """Sei Mario, il personaggio LEGO Super Mario: una statuina vera, con dei sensori, che parla attraverso il computer di casa. Parli italiano, in prima persona, con frasi brevi, allegre e adatte a bambini dai sei anni. Niente elenchi, niente markdown, niente emoji: solo frasi. Al massimo tre frasi, salvo che ti chiedano una storia.
@@ -105,6 +107,10 @@ def parse_challenge(text: str, turn: int = 0, enabled: Optional[set] = None) -> 
 VOICE_RULE = ("I messaggi che iniziano con \"(a voce)\" sono la voce di chi gioca, trascritta in automatico: "
               "qualche parola può essere sbagliata. Se il senso non è chiaro, chiedi in modo simpatico di ripetere.")
 NOT_HEARD_SPEECH = "Non ho sentito bene. Tieni premuto il pulsante mentre parli, e lascialo alla fine!"
+NOT_HEARD_WAKE = "Non ho sentito bene. Chiamami di nuovo: Ehi Mario!"
+WAKE_REPLY = "Eccomi! Dimmi pure."
+WAKE_LISTEN_S = 6.0   # dopo "Eccomi!": quanto si aspetta che il bambino cominci a parlare
+WAKE_TAIL_S = 0.8     # dopo l'ultima frase di Mario: la coda degli altoparlanti non deve sembrare una chiamata
 
 FALLBACK_ERROR_SPEECH = "Ops, adesso non riesco a rispondere."
 BLOCKED_SPEECH = "Mmm, di questo preferisco non parlare. Facciamo un bel salto, piuttosto!"
@@ -126,7 +132,8 @@ class AssistantSession:
                  session_limit: float = 0.0, blocked_words: Optional[list[str]] = None,
                  exclamations: bool = True, sensor_backend_factory: Optional[Callable[[], Backend]] = None,
                  challenges: bool = True, wait_seconds: float = WAIT_SECONDS,
-                 voice_input=None, voice_button: bool = True, themes=DEFAULT_THEMES, session_turns: int = 0):
+                 voice_input=None, voice_button: bool = True, themes=DEFAULT_THEMES, session_turns: int = 0,
+                 wake=None):
         self.backend_factory = backend_factory
         self.sensor_backend_factory = sensor_backend_factory  # turni "[sensore: ...]": modello più rapido (o None)
         self.speaker = speaker
@@ -152,6 +159,8 @@ class AssistantSession:
         self._timeouts_in_row = 0
         self.voice_input = voice_input              # stt.VoiceInput: microfono -> testo (None = spento)
         self.voice_button = voice_button            # pulsante di Mario = tieni premuto e parla
+        self.wake = None                            # stt.WakeListener: "Ehi Mario" al posto del pulsante (None = spento)
+        self._speaker_busy_at = 0.0
         self._turn_sounds = 0
         self.started = time.time()
         self.time_up = False
@@ -172,6 +181,8 @@ class AssistantSession:
         self.pending_ttl = 8.0                # secondi: più vecchi di così si scartano
         self.speaker.on_start = self._on_speaking
         self.speaker.on_end = self._on_spoken
+        if wake is not None:
+            self.set_wake(wake)
 
     # ----- eventi in uscita -------------------------------------------------------------
 
@@ -224,6 +235,7 @@ class AssistantSession:
                 "challenges_enabled": self.challenges_enabled, "wait_seconds": self.wait_seconds,
                 "voice": self.voice_input.status() if self.voice_input is not None else None,
                 "voice_button": self._push_to_talk(),
+                "wake": self.wake.status() if self.wake is not None else None,
                 "speaker": self.speaker.status(), "behaviours": self.behaviours.status(),
                 "rules": self.mapper.rules_dict(), "emotions": [EMOTIONS[k].to_dict() for k in EMOTIONS]}
 
@@ -395,13 +407,95 @@ class AssistantSession:
                 return
             self.emit("voice_empty", info=info, text="non ho capito: " + (info.get("error") or "nessuna parola"))
             self._set_emotion("pensieroso")
-            self.speaker.speak(NOT_HEARD_SPEECH, "pensieroso")
+            self.speaker.speak(NOT_HEARD_WAKE if info.get("wake") else NOT_HEARD_SPEECH, "pensieroso")
             return
         self.emit("voice_text", info=info, text=text)
         try:
             self.ask(text, source="voce", priority=2)  # chi parla ha la precedenza, come chi scrive
         except (AssistantBusy, ValueError) as exc:
             self.emit("voice_error", text=str(exc))
+
+    # ----- "Ehi Mario": attivazione con la voce ----------------------------------------------------
+
+    def set_wake(self, listener) -> None:
+        """Collega (o stacca, con None) l'ascolto continuo di "Ehi Mario" (`stt.WakeListener`)."""
+        old, self.wake = self.wake, listener
+        if old is not None and old is not listener:
+            old.on_event = lambda ev: None
+            old.set_gate(None)
+        if listener is not None:
+            listener.on_event = self._on_wake_event
+            listener.set_gate(self.wake_allowed)
+
+    def wake_allowed(self) -> bool:
+        """L'ascolto di "Ehi Mario" resta acceso solo quando serve e non sentirebbe Mario stesso: mai mentre la
+        voce del PC parla (e per WAKE_TAIL_S dopo), né durante un'altra registrazione o trascrizione."""
+        now = time.time()
+        if not self.speaker.idle:
+            self._speaker_busy_at = now
+            return False
+        vi = self.voice_input
+        return bool(vi is not None and not vi.listening and not getattr(vi, "transcribing", False)
+                    and not self.time_up and now - self._speaker_busy_at >= WAKE_TAIL_S)
+
+    def _on_wake_event(self, ev: dict) -> None:
+        """Eventi del processo di ascolto (dal suo thread di lettura)."""
+        kind = ev.get("event")
+        if kind == "wake":
+            # segnale subito: Whisper conferma solo qualche secondo dopo, e senza un segnale il bambino non sa se
+            # Mario ha sentito (suona anche per le chiamate che Whisper poi scarta)
+            self.speaker.play("listen_on")
+            self.emit("voice_wake", text="👂 forse mi hai chiamato…")
+        elif kind == "utterance":
+            mode, vi = ev.get("mode"), self.voice_input
+            path = ev.get("path") or ""
+            if vi is None or not self._check_time():
+                if path:
+                    Path(path).unlink(missing_ok=True)
+                return
+            if mode == "listen":
+                self.speaker.play("think")
+                self.behaviours.express("attesa")
+                self.emit("voice_processing", reason="Ehi Mario", text="sto capendo…")
+            vi.transcribe_file(Path(path), float(ev.get("audio_s") or 0.0),
+                               lambda text, info: self._on_wake_text(text, info, mode), private=mode != "listen")
+        elif kind == "no_speech":
+            self.emit("voice_empty", text="nessuno ha parlato: per parlare con Mario chiamalo con «Ehi Mario»")
+        elif kind == "audio_end" and ev.get("error"):
+            self.emit("voice_error", text=f"ascolto di «Ehi Mario» fermo: {ev['error']}")
+
+    def _on_wake_text(self, text: str, info: dict, mode: Optional[str]) -> None:
+        info = {**info, "wake": True}
+        if mode == "listen":  # frase chiesta dopo "Eccomi!": niente parola di attivazione da cercare
+            self._on_voice_text(text, info)
+            return
+        phrases = self.wake.phrases if self.wake is not None else DEFAULT_WAKE_PHRASES
+        found, rest = split_wake(text, phrases)
+        if not found:
+            # Vosk aveva sentito qualcosa di simile, ma Whisper dice che non era una chiamata: la frase non era per
+            # Mario e il suo testo non va da nessuna parte (né diario, né pagina, né modello)
+            if self.wake is not None:
+                self.wake.counts["rejected"] += 1
+            self.emit("voice_wake_rejected", text="non era «Ehi Mario»: frase scartata")
+            return
+        if self.wake is not None:
+            self.wake.counts["accepted"] += 1
+        if rest:
+            self._on_voice_text(rest, info)
+            return
+        # solo "Ehi Mario": Mario risponde e poi ascolta la frase successiva senza bisogno di essere richiamato
+        self.emit("voice_wake", text="👂 Eccomi!")
+        self._set_emotion("gioia")
+        self.speaker.speak(WAKE_REPLY, "gioia")
+        threading.Thread(target=self._listen_after_reply, name="wake-listen", daemon=True).start()
+
+    def _listen_after_reply(self) -> None:
+        deadline = time.time() + 15.0
+        while not self.speaker.idle and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.3)  # la fine della frase esce ancora dagli altoparlanti
+        if self.wake is not None and self.wake.listen(WAKE_LISTEN_S):
+            self.emit("voice_listening", source="Ehi Mario", text="🎤 ti ascolto…")
 
     # ----- storia interattiva: [aspetta: ...] ------------------------------------------------------
 
@@ -748,6 +842,8 @@ class AssistantSession:
             self._abort = True
         self.pending.clear()
         self.challenge = None
+        if self.wake is not None:
+            self.wake.close()
         if self.voice_input is not None:
             self.voice_input.close()
         self.speaker.stop()

@@ -36,11 +36,12 @@ DEFAULTS: dict[str, str] = {
     "assistant.sound_style": "giochi", "assistant.voice_effect": "", "assistant.exclamations": "1",
     "assistant.challenges": "1", "assistant.wait_seconds": "20",
     "assistant.voice_input": "0", "assistant.voice_button": "1", "assistant.stt_model": "small",
+    "assistant.wake_word": "0", "assistant.wake_phrases": "ehi mario, hey mario",
     "assistant.safety_themes": "violenza,adulti,dati_personali", "assistant.session_turns": "0",
     "assistant.profiles": "", "assistant.profile": "", "assistant.memory_days": "0",
 }
 BOOL_KEYS = {"tts", "sounds", "behaviours", "volume_effects", "busy_indication", "port_writes", "listening", "memory",
-             "openvoice_watermark", "exclamations", "challenges", "voice_input", "voice_button"}
+             "openvoice_watermark", "exclamations", "challenges", "voice_input", "voice_button", "wake_word"}
 SECRET_KEYS = {"api_key"}
 
 
@@ -135,6 +136,7 @@ class AssistantService:
         except Exception as exc:
             log.debug("pulizia dei ricordi scaduti fallita: %s", exc)
         self._voice = None
+        self._wake = None
         self._configure_voice(s)
         self._apply_rules(self._json(s["rules"]))
         self._thread = threading.Thread(target=self._consume, name="assistant-events", daemon=True)
@@ -219,8 +221,9 @@ class AssistantService:
 
     def _configure_voice(self, s: dict) -> None:
         """Ingresso vocale (microfono -> faster-whisper): acceso solo se richiesto e mai in modalità silenziosa
-        (test); il modello si carica in background appena si accende."""
-        from .stt import MODELS, VoiceInput
+        (test); il modello si carica in background appena si accende. "Ehi Mario" (ascolto continuo con Vosk)
+        solo con l'ingresso vocale acceso e la sua casella: il microfono resta aperto, l'audio non esce dal PC."""
+        from .stt import MODELS, VoiceInput, WakeListener, parse_wake_phrases
         model = s["stt_model"] if s["stt_model"] in MODELS else MODELS[0]
         wanted = as_bool(s["voice_input"]) and not self.quiet
         if self._voice is not None and (not wanted or self._voice.model != model):
@@ -231,6 +234,17 @@ class AssistantService:
             self._voice.warmup()
         self.session.voice_input = self._voice
         self.session.voice_button = as_bool(s["voice_button"])
+        phrases = parse_wake_phrases(s["wake_phrases"])
+        wake_wanted = self._voice is not None and as_bool(s["wake_word"])
+        if self._wake is not None and (not wake_wanted or self._wake.phrases != phrases):
+            self.session.set_wake(None)
+            self._wake.close()
+            self._wake = None
+        if wake_wanted and self._wake is None:
+            self._wake = WakeListener(phrases)
+            if not self._wake.problem():
+                self._wake.start()
+            self.session.set_wake(self._wake)  # anche se manca qualcosa: lo stato lo mostra nella pagina
 
     def profiles(self) -> list[str]:
         return split_words(self.settings()["profiles"])

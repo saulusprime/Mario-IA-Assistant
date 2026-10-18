@@ -3,10 +3,15 @@
 # (Whisper di OpenAI su CTranslate2, licenza MIT; modelli Systran, licenza MIT), in un ambiente
 # Python separato. Tutto gira in locale, sulla CPU: l'audio del microfono non esce dal PC.
 #
+# Per l'attivazione con la voce ("Ehi Mario") installa anche Vosk (Apache 2.0) con il modello italiano
+# piccolo di Alpha Cephei (Apache 2.0, circa 50 MB scaricati, 88 MB estratti): ascolta il microfono di
+# continuo con poca CPU e annuncia le chiamate, che poi Whisper controlla.
+#
 # Cosa crea (tutto ignorato da git):
-#   .venv-stt/                       Python 3.11 con faster-whisper (ctranslate2, onnxruntime per il VAD)
+#   .venv-stt/                       Python 3.11 con faster-whisper (ctranslate2, onnxruntime per il VAD) e vosk
 #   third_party/whisper-models/      modelli base (circa 140 MB) e small (circa 480 MB)
-# Si toglie tutto cancellando le due cartelle.
+#   third_party/vosk-models/         modello vosk-model-small-it-0.22
+# Si toglie tutto cancellando le tre cartelle.
 #
 # Uso:  ./tools/setup_stt.sh               (dal sandbox di VS Code salta da solo sull'host)
 #       ./tools/setup_stt.sh medium        (anche un altro modello: tiny, base, small, medium)
@@ -54,4 +59,30 @@ for name in base small "$@"; do
         "$name" "$MODELS/$name"
 done
 
+# 3. "Ehi Mario": Vosk e il modello italiano piccolo (zip controllato con SHA-256)
+if ! "$PY" -c "import vosk" 2>/dev/null; then
+    say "Installo vosk (parola di attivazione)"
+    if [ -n "$UV" ]; then "$UV" pip install --python "$PY" vosk; else "$PY" -m pip install -q vosk; fi
+fi
+VOSK_DIR="$DIR/third_party/vosk-models"
+VOSK_NAME="vosk-model-small-it-0.22"
+VOSK_SHA256="9ec65e75861d1c6c2e457cccd932705340dcdf233f5b239f00733b4de0bf3267"
+if [ ! -s "$VOSK_DIR/$VOSK_NAME/am/final.mdl" ]; then
+    mkdir -p "$VOSK_DIR"
+    say "Scarico il modello Vosk $VOSK_NAME"
+    curl -sSfL -o "$VOSK_DIR/$VOSK_NAME.zip" "https://alphacephei.com/vosk/models/$VOSK_NAME.zip"
+    echo "$VOSK_SHA256  $VOSK_DIR/$VOSK_NAME.zip" | sha256sum -c --quiet
+    "$PY" -I -c "
+import pathlib, sys, zipfile
+dest = pathlib.Path(sys.argv[2]).resolve()
+with zipfile.ZipFile(sys.argv[1]) as z:
+    for name in z.namelist():  # niente percorsi fuori dalla cartella
+        if not (dest / name).resolve().is_relative_to(dest):
+            sys.exit(f'percorso non valido nello zip: {name}')
+    z.extractall(dest)
+" "$VOSK_DIR/$VOSK_NAME.zip" "$VOSK_DIR"
+    rm -f "$VOSK_DIR/$VOSK_NAME.zip"
+fi
+
 say "Fatto. Prova: ./run.sh listen --file registrazione.wav   oppure   ./run.sh listen (5 s dal microfono)"
+say "«Ehi Mario»: ./run.sh listen --wake (ascolta il microfono finché non premi Ctrl+C)"

@@ -879,7 +879,8 @@ async def cmd_assistant(args) -> int:
         elif kind in ("intent", "intent_dropped", "listening", "stopped", "reset", "repeat", "time_up", "blocked",
                       "memory_forgotten", "challenge", "challenge_done", "challenge_missed", "challenge_timeout",
                       "challenge_invalid", "voice_listening", "voice_processing", "voice_text", "voice_empty",
-                      "voice_error", "blocked_output", "profile", "memory_summarized"):
+                      "voice_error", "blocked_output", "profile", "memory_summarized", "voice_wake",
+                      "voice_wake_rejected"):
             out.line(f"[{ts()}] · {ev['text']}")
             session_log.write(ev["text"])
         elif kind == "memory":
@@ -900,15 +901,22 @@ async def cmd_assistant(args) -> int:
     if args.openvoice_ref and speaker.engine != "openvoice":
         say(f"Voce IA non disponibile, uso {speaker.engine or 'nessun motore'}: {speaker.openvoice_reason()}")
     engine = BehaviourEngine(LoopActions() if dev else NullActions(), emit=emit, enabled=not args.no_behaviours)
-    voice_input = None
-    if args.voice:
-        from .assistant.stt import VoiceInput
+    voice_input = wake = None
+    if args.voice or args.wake:
+        from .assistant.stt import VoiceInput, WakeListener
         voice_input = VoiceInput(args.stt_model)
         if voice_input.problem():
             say(f"Ingresso vocale non disponibile: {voice_input.problem()}")
             voice_input = None
         else:
             voice_input.warmup()
+        if voice_input is not None and args.wake:
+            wake = WakeListener(args.wake_phrase)
+            if wake.problem():
+                say(f"Attivazione con «Ehi Mario» non disponibile: {wake.problem()}")
+                wake = None
+            else:
+                wake.start()
     # ricordi e diario nel database della dashboard (data/mario.sqlite3), condivisi con la pagina Assistente
     memory, on_message = None, None
     if not args.no_db:
@@ -935,7 +943,8 @@ async def cmd_assistant(args) -> int:
                                blocked_words=[w.strip() for w in (args.block or "").split(",") if w.strip()],
                                themes=parse_themes(args.themes), session_turns=args.max_turns,
                                exclamations=not args.no_exclamations,
-                               voice_input=voice_input, voice_button=dev is not None and not args.no_voice_button)
+                               voice_input=voice_input, voice_button=dev is not None and not args.no_voice_button,
+                               wake=wake)
     if dev is not None:
         def on_message(msg, text):
             ev = event_from_message(dev, msg)
@@ -950,8 +959,10 @@ async def cmd_assistant(args) -> int:
     if speaker.engine == "openvoice":
         say("Voce IA in caricamento in background (10-25 s): fino ad allora parla la voce di riserva")
     if voice_input is not None:
-        say(f"Ingresso vocale ({args.stt_model}): " + ("tieni premuto il pulsante di Mario e parla, oppure " if
-                                                        session.voice_button else "") + "/parla e Invio per finire")
+        say(f"Ingresso vocale ({args.stt_model}): " + (f"di' «{wake.phrases[0].capitalize()}» e poi la domanda, oppure "
+                                                        if wake is not None else "")
+            + ("tieni premuto il pulsante di Mario e parla, oppure " if session.voice_button else "")
+            + "/parla e Invio per finire")
     if session_log.path:
         say(f"Log della sessione: {session_log.path}")
     print(ASSISTANT_HELP)
@@ -1124,6 +1135,8 @@ def cmd_listen(args) -> int:
     """Prova dell'ingresso vocale: trascrive un file, oppure registra qualche secondo dal microfono."""
     from .assistant import stt
     reason = stt.problem(args.model, recorder="file" if args.file else "auto")
+    if not reason and args.wake:
+        reason = stt.wake_problem(recorder="file" if args.file else "auto")
     if reason:
         print(f"Ingresso vocale non disponibile: {reason}", file=sys.stderr)
         return 1
@@ -1135,6 +1148,9 @@ def cmd_listen(args) -> int:
             print(f"Il riconoscimento vocale non è partito: {client.last_error}", file=sys.stderr)
             return 1
         say(f"Modello {args.model} pronto in {time.monotonic() - started:.1f} s")
+        if args.wake:
+            return _listen_wake(args, client, stt)
+        args.seconds = args.seconds or 5.0
         if args.file:
             path = Path(args.file).resolve()
         else:
@@ -1159,6 +1175,62 @@ def cmd_listen(args) -> int:
         return 0
     finally:
         client.stop()
+
+
+def _listen_wake(args, client, stt) -> int:
+    """Prova di «Ehi Mario»: ascolta il microfono (o legge un file) e per ogni chiamata del primo filtro (Vosk)
+    stampa che cosa ha capito Whisper e se la chiamata è valida. Nulla viene salvato: le frasi si cancellano."""
+    import queue
+    phrases = stt.parse_wake_phrases(args.phrases)
+    source = None
+    if args.file:
+        source = stt.ensure_wav16(Path(args.file).resolve())
+    events: "queue.Queue[dict]" = queue.Queue()
+    listener = stt.WakeListener(phrases, source_file=source, on_event=events.put)
+    listener.start()
+    if not listener.wait_ready(30):
+        print(f"L'ascolto di «Ehi Mario» non è partito: {listener.last_error}", file=sys.stderr)
+        return 1
+    say(f"Vosk pronto in {listener.load_s} s. " + (f"Leggo {args.file}" if args.file else
+        f"Di' «{phrases[0].capitalize()}» e poi una domanda" + (f" (per {args.seconds:g} s)" if args.seconds else "")
+        + "; Ctrl+C per finire."))
+    deadline = time.monotonic() + args.seconds if args.seconds and not args.file else None
+    calls = accepted = 0
+    try:
+        while deadline is None or time.monotonic() < deadline:
+            try:
+                ev = events.get(timeout=0.5)
+            except queue.Empty:
+                if listener.state == "errore":
+                    print(f"Ascolto fermo: {listener.last_error}", file=sys.stderr)
+                    return 1
+                continue
+            kind = ev.get("event")
+            if kind == "wake":
+                say(f"👂 primo filtro (Vosk): «{ev.get('text')}»")
+            elif kind == "utterance":
+                calls += 1
+                path = Path(ev["path"])
+                try:
+                    reply = client.transcribe(str(path))
+                finally:
+                    path.unlink(missing_ok=True)
+                text = stt.clean_transcript(reply.get("text", ""))
+                found, rest = stt.split_wake(text, phrases)
+                accepted += found
+                say(("✓ chiamata" if found else "✗ scartata, non era una chiamata") + f": «{text or '…'}»"
+                    + (f" → domanda: {rest or '(solo la chiamata)'}" if found else "")
+                    + f"  (frase di {ev.get('audio_s')} s, Whisper {reply.get('elapsed_s')} s)")
+            elif kind == "audio_end":
+                if ev.get("error"):
+                    print(f"Audio interrotto: {ev['error']}", file=sys.stderr)
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        listener.close()
+    say(f"Chiamate sentite da Vosk: {calls}, confermate da Whisper: {accepted}")
+    return 0
 
 
 def cmd_doctor(args) -> int:
@@ -1562,6 +1634,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="modello Whisper: small (circa 3 s per frase, preciso) o base (circa 1 s)")
     p.add_argument("--no-voice-button", action="store_true",
                    help="con --voice: il pulsante di Mario resta per l'ascolto dei sensori, si parla solo con /parla")
+    p.add_argument("--wake", action="store_true",
+                   help="attivazione con la voce: il microfono resta in ascolto e si parla a Mario dicendo «Ehi Mario» "
+                        "(offline, Vosk + Whisper; implica --voice; serve ./tools/setup_stt.sh)")
+    p.add_argument("--wake-phrase", default="ehi mario, hey mario",
+                   help="frasi di attivazione separate da virgola (default: 'ehi mario, hey mario')")
     p.add_argument("--no-challenges", action="store_true",
                    help="il modello non può chiedere azioni con [aspetta: ...] (storia interattiva; mai senza Mario)")
     p.add_argument("--wait-seconds", type=float, default=20.0, help="attesa massima di un'azione chiesta (default 20)")
@@ -1598,9 +1675,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("listen", help="prova dell'ingresso vocale: trascrive un file o qualche secondo dal microfono "
                                       "(offline; serve ./tools/setup_stt.sh)")
     p.add_argument("--file", help="file audio da trascrivere (altrimenti registra dal microfono)")
-    p.add_argument("--seconds", type=float, default=5.0, help="secondi da registrare dal microfono (default 5)")
+    p.add_argument("--seconds", type=float, default=None,
+                   help="secondi da registrare dal microfono (default 5); con --wake durata dell'ascolto (default: fino a Ctrl+C)")
     p.add_argument("--model", default="small", choices=["small", "base"], help="modello Whisper (default small)")
     p.add_argument("--keep", action="store_true", help="tiene la registrazione (cartella temporanea) invece di cancellarla")
+    p.add_argument("--wake", action="store_true",
+                   help="prova di «Ehi Mario»: ascolta di continuo (o legge --file) e mostra le chiamate riconosciute")
+    p.add_argument("--phrases", default="ehi mario, hey mario", help="con --wake: frasi di attivazione separate da virgola")
     p.set_defaults(func=cmd_listen)
 
     p = sub.add_parser("voice", help="prova della voce dal PC con i tempi (spd-say, piper o voce IA OpenVoice)")
