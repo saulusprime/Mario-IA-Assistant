@@ -5,7 +5,7 @@ Fotografia del progetto LEGO Mario via Bluetooth LE al 18 ottobre 2026. Qui stan
 racconto di come ci si è arrivati è in [HANDOFF.md](HANDOFF.md), l'uso in [README.md](README.md).
 Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 
-## 1. Verifiche dal vivo fatte (Mario, firmware 6.5.01)
+## 1. Verifiche dal vivo fatte (Mario, firmware 6.5.01; dal 18/10 6.5.03)
 
 - **Connessione e pairing**: Mario richiede un pairing "Just Works" prima delle scritture GATT;
   l'app registra un agente BlueZ proprio e associa il dispositivo alla prima connessione
@@ -87,6 +87,11 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   solo WriteDirectModeData (0x51) è accettato, con feedback "completato", ma il valore non viene
   conservato (rilettura `00 00 00 00`), nessun eco, contatore monete fermo, nessuna reazione.
   WriteDirect (0x50) → `INVALID_USE`; sottocomando 0x00 → `COMMAND_NOT_RECOGNIZED`.
+- **Sottocomandi dei motori** (scansione del 18/10, firmware 6.5.03, `probe_port4.py --scan`, 36 prove):
+  StartPower 0x01 e 0x02, SetAccTime 0x05, SetDecTime 0x06, StartSpeed 0x07 e 0x08, ciascuno senza
+  payload, con un byte zero e con la forma dello standard, su porta 4 e porta 7 → sempre
+  `COMMAND_NOT_RECOGNIZED`, nessun valore spontaneo delle porte 3, 4 e 7, nessuna reazione visibile. A differenza di WriteDirectModeData,
+  la porta 7 risponde con un errore: le scritture 0x51 le ignora, i sottocomandi sconosciuti li rifiuta.
 - **Porta 7 (`Telemetry`)**: non ha mai trasmesso, nemmeno nel livello del 14/10; 70 scritture (zeri, 255, un byte alla volta,
   rampe, ripetizioni) ignorate in silenzio: nessun feedback, nessun errore, rilettura zero. Un
   sospetto di reazione del display si è rivelato un falso positivo.
@@ -273,7 +278,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   due volte (`monitor` e `shell` dopo la riconnessione, dashboard dopo "Connetti", `live-checks` e
   `re-checks`). Ora `MarioDevice` chiude sempre il client; lo provano un BleakClient finto che imita
   BlueZ e il worker della dashboard. La conferma con Mario è nel TODO.
-- **Test**: 243 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Test**: 249 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, broker MQTT finto, controlli statici del JavaScript), verdi nel venv
   dell'host; workflow GitHub Actions su Python 3.11 e 3.13. Dal 18/10 le pagine della dashboard si provano
   anche in un **Firefox headless vero** (`tests/test_browser.py`): client WebDriver BiDi con la sola libreria
@@ -316,7 +321,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 
 ## 6. Catalogo dell'utente
 
-- **Mario**: firmware 6.5.01, hardware 0.4, LWP 3.0, associato al PC; pantaloni blu (0x21).
+- **Mario**: firmware 6.5.03 (aggiornato dall'utente con l'app ufficiale dopo il 14/10; prima 6.5.01), hardware 0.4, LWP 3.0, associato al PC; pantaloni blu (0x21).
 - **Set**: 71360 "Avventura di Mario" e 71425 "Corsa nella miniera di Diddy Kong".
 - **8 basette**, tutte catalogate nel codice e nella pagina Accessori: tubo di partenza (0x00B8),
   Bowser Jr. nel Clown Koopa (0x00F5), Goomba ×2 (0x0002), aereo (0x0160), carrello minerario

@@ -153,7 +153,7 @@ indicazione "occupato").
 ./run.sh assistant --backend demo  # risposte locali a regole, senza rete
 ./run.sh assistant --voice         # si parla a Mario tenendo premuto il suo pulsante (./tools/setup_stt.sh)
 ./run.sh assistant --wake          # oppure chiamandolo: «Ehi Mario, raccontami una storia» (microfono sempre in ascolto)
-./run.sh assistant --profile Leo   # ricordi del bambino che gioca (più quelli comuni)
+./run.sh assistant --profile Luca   # ricordi del bambino che gioca (più quelli comuni)
 ./run.sh listen                    # prova del riconoscimento vocale: 5 s dal microfono (o --file)
 ./run.sh listen --wake             # prova di «Ehi Mario»: mostra le chiamate riconosciute (o --file registrazione.wav)
 ./run.sh web                       # pagina "Assistente" della dashboard
@@ -224,7 +224,7 @@ viaggiano sullo stesso flusso SSE del monitor (`type` = `ASSISTANT`, campo `kind
 conversazione è salvata nella tabella `assistant_messages`; le impostazioni nella tabella
 `settings` (chiavi `assistant.*`).
 
-**Ricordi.** Il modello può chiudere una risposta con `[ricorda: il bambino si chiama Leo]`: il
+**Ricordi.** Il modello può chiudere una risposta con `[ricorda: il bambino si chiama Luca]`: il
 tag non viene letto, finisce nella tabella `assistant_memory` e nelle sessioni successive entra
 nel prompt di sistema ("Cose che ricordi dalle volte scorse…"). I ricordi si vedono, si
 aggiungono e si cancellano dalla pagina (sezione Ricordi), dalle API `/api/assistant/memory` e
@@ -508,7 +508,8 @@ la voce esce dal PC. L'indicazione "occupato" dell'hub (azioni 0x05/0x06) su Mar
 `INVALID_USE` (provato il 12/10/2026): l'opzione resta ma non fa nulla. La porta 4 accetta
 scritture solo con WriteDirectModeData (0x51), con feedback "completato", ma non conserva il
 valore e non reagisce; la porta 7 ignora le scritture in silenzio (`tools/probe_port4.py`,
-prove del 12/10/2026, dettagli in HANDOFF e TODO sezione 7). Provato con il backend demo, con Claude (`claude-sonnet-5-5`: risposte
+prove del 12/10/2026, dettagli in HANDOFF e TODO sezione 7). I sottocomandi dei motori (0x01, 0x02,
+0x05–0x08) non sono riconosciuti su nessuna delle due porte (`probe_port4.py --scan`, 18/10/2026). Provato con il backend demo, con Claude (`claude-sonnet-5-5`: risposte
 in italiano nel personaggio, con i tag emozione, 3–4 s a risposta completa) e con la voce
 del PC e, alle 18:50, con Mario connesso da terminale: salto, rotazione, basette (Start,
 Goomba) e colori del terreno hanno prodotto risposte coerenti nel personaggio; il volume
@@ -941,7 +942,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-243 test senza Bluetooth né rete esterna, raggruppati per file:
+249 test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -963,6 +964,7 @@ python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bi
 | `test_web_pages` (11), `test_web_static` (5) | pagina Eventi (intervalli, colonne per modo), esportazioni, grafici, tabelle dei codici, token e sessioni (revoca, scadenza, cambio di token), HTTPS con un certificato autofirmato, controllo del PC nella pagina Scansione; sintassi del JavaScript e coerenza id/azioni con i template |
 | `test_browser` (5) | la dashboard in un Firefox headless vero via WebDriver BiDi (client in `tests/browser.py`, solo libreria standard): errori JavaScript di ogni pagina, editor e registrazione di un percorso, partita e replay, filtri delle tabelle, zoom con un trascinamento del mouse; saltati senza Firefox |
 | `test_bridge` (7) | ponte: traduzione degli eventi in fatti, lettori di righe JSON e SSE, broker MQTT finto (anche credenziali e rifiuto), WebSocket con il client dei test, flusso vero della dashboard |
+| `test_probe_port4` (6) | scansione dei sottocomandi di Port Output: piano delle prove, esiti (errore, feedback, silenzio, valori spontanei), mappa compressa di `--sweep`, prove con un Mario finto che risponde come quello vero |
 | `test_cli` (11), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, completamento e cronologia della shell, cartelle dal sorgente e con `MARIO_HOME`, `decode`; importazione senza Bluetooth |
 
 I test che importano Flask o bleak vengono saltati dove mancano (per esempio nel sandbox) e
@@ -995,7 +997,7 @@ mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'arch
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale e «Ehi Mario»), fetch_mario_sounds.py
-tests/                  test offline (243), browser.py (Firefox headless via WebDriver BiDi)
+tests/                  test offline (249), browser.py (Firefox headless via WebDriver BiDi)
 docs/                   monitor-json.md (righe JSON e ponte MQTT/WebSocket), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il

@@ -7,6 +7,11 @@ dentro ogni gruppo le prime sono le più utili.
 
 ## 1. Da verificare dal vivo (bastano Mario e `./run.sh monitor` o `tools/live_checks.py`)
 
+- [ ] **Firmware 6.5.03**: fra il 14 e il 18/10 l'utente ha aggiornato Mario con l'app ufficiale (prima 6.5.01);
+      il nome è tornato quello di fabbrica (`Mario` + quattro caratteri), il bond con il PC è rimasto valido.
+      `./run.sh info` per salvare `capabilities-fw-6.5.03.json` e confrontarlo con quello della 6.5.01 (porte,
+      modi, proprietà); ripetere le prove principali (gesti, basette, eventi della porta 3) per vedere se è
+      cambiato qualcosa.
 - [ ] **Riconnessione senza messaggi doppi** (correzione del 18/10, vedi ASIS sezione 4): `./run.sh monitor`,
       spegnere e riaccendere Mario a metà sessione: dopo "riconnesso" ogni messaggio deve comparire una
       volta sola. Stessa prova dalla dashboard (Mario spento, poi "Connetti").
@@ -91,6 +96,12 @@ GATT) è in ASIS, sezione 2; la cattura dal telefono ha la sua guida in `docs/ca
       PacketLogger, copione di gioco, comandi di analisi). I lettori di `decode` per i formati dei telefoni
       sono stati provati solo su file sintetici: la prima cattura vera va controllata con `--json`. È il modo
       più rapido per capire le porte 4 e 7 e il significato degli eventi.
+- [ ] **Immagine del firmware da una cattura dell'aggiornamento**: l'utente ha aggiornato Mario alla 6.5.03 con
+      l'app ufficiale; se sul telefono era attivo il log HCI snoop (Opzioni sviluppatore, di serie è spento), un
+      `adb bugreport` potrebbe contenere ancora il trasferimento via OAD (`f000ffc0-…`), cioè l'immagine stessa.
+      In quel caso servirebbe a `decode` un'opzione che ricompone i blocchi scritti sulla caratteristica Image
+      Block (oggi le scritture non LWP3 vengono scartate). Per i prossimi aggiornamenti (anche di Luigi o
+      Peach): attivare prima il log completo. È il punto di partenza della ricognizione del firmware (sezione 7).
 - [ ] **System type con Luigi e Peach**: Mario risponde `0x40` alla proprietà 0x0B e dichiara `0x43`
       nell'advertisement; verificare se Luigi (0x44) e Peach (0x45) fanno lo stesso quando ci saranno.
 - [ ] **Mario come "central"**: l'advertisement dichiara capacità 0x03 (central e
@@ -273,9 +284,10 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 - [ ] **Schermo e-ink** (riflessivo, opaco come la carta): se la carta funziona, un piccolo
       display e-paper comandato dal PC sotto i piedi di Mario è il modo pulito di scegliere la
       clip; da verificare che il contrasto regga anche all'infrarosso.
-- [ ] **Scansione dei sottocomandi di Port Output** su porta 4 e 7: 0x01, 0x02, 0x05, 0x06,
-      0x07, 0x08 con payload corti; registrare feedback ed errori e ogni reazione fisica
-      (aspettativa bassa, costo un minuto con `probe_port4.py`).
+- [ ] **Mappa completa dei sottocomandi** (`probe_port4.py --sweep`, 5–8 minuti): i sei sottocomandi dei
+      motori sono `COMMAND_NOT_RECOGNIZED` su entrambe le porte (scansione del 18/10, vedi ASIS); resta da
+      vedere se fra 0x00 e 0xFF ce n'è uno, oltre a 0x50 e 0x51, che il firmware riconosce. Tocca anche codici
+      non documentati: da fare con l'utente presente.
 - [ ] **Azioni e proprietà residue**: con prudenza 0x03/0x04 (VCC port on/off); scrittura del
       nome e `reset` (operazione 0x04) sulle proprietà scrivibili, per vedere se producono un
       feedback sonoro (improbabile ma gratis).

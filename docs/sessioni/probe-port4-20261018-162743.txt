@@ -1,0 +1,320 @@
+[16:32:01] Connesso a Mario lp5R; log in ~/Sviluppo/Mario/logs/probe-port4-20261018-162743.txt
+[16:32:01] <- Proprietà ADVERTISING_NAME (0x01) [UPDATE]: Mario lp5R   [0f 00 01 01 06 4d 61 72 69 6f 20 6c 70 35 52]
+[16:32:01] <- Proprietà BUTTON (0x02) [UPDATE]: rilasciato   [06 00 01 02 06 00]
+[16:32:01] <- Proprietà FW_VERSION (0x03) [UPDATE]: 6.5.03.0000   [09 00 01 03 06 00 00 03 65]
+[16:32:01] <- Proprietà HW_VERSION (0x04) [UPDATE]: 0.4.00.0000   [09 00 01 04 06 00 00 00 04]
+[16:32:01] <- Proprietà RSSI (0x05) [UPDATE]: 0 dBm   [06 00 01 05 06 00]
+[16:32:01] <- Proprietà BATTERY_VOLTAGE (0x06) [UPDATE]: 79 %   [06 00 01 06 06 4f]
+[16:32:01] <- Proprietà BATTERY_TYPE (0x07) [UPDATE]: ricaricabile   [06 00 01 07 06 01]
+[16:32:01] <- Proprietà MANUFACTURER_NAME (0x08) [UPDATE]: LEGO System A/S   [14 00 01 08 06 4c 45 47 4f 20 53 79 73 74 65 6d 20 41 2f 53]
+[16:32:02] <- Proprietà RADIO_FW_VERSION (0x09) [UPDATE]: 1.2.0   [0b 00 01 09 06 31 2e 32 2e 30 00]
+[16:32:02] <- Proprietà LWP_VERSION (0x0A) [UPDATE]: 3.0   [07 00 01 0a 06 00 03]
+[16:32:02] <- Proprietà SYSTEM_TYPE_ID (0x0B) [UPDATE]: 0x40 (Boost Move Hub (anche LEGO Mario firmware 6.x riporta 0x40 in questa proprietà))   [06 00 01 0b 06 40]
+[16:32:02] <- Proprietà HW_NETWORK_ID (0x0C) [UPDATE]: 0   [06 00 01 0c 06 00]
+[16:32:02] <- Proprietà PRIMARY_MAC (0x0D) [UPDATE]: F4:60:77:5A:20:11   [0b 00 01 0d 06 f4 60 77 5a 20 11]
+[16:32:02] <- Proprietà SECONDARY_MAC (0x0E) [UPDATE]: 00:00:00:00:00:00   [0b 00 01 0e 06 00 00 00 00 00 00]
+[16:32:03] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[16:32:04] <- Info porta 0: capacità=['input', 'combinabile'], modalità=2, input=[0, 1], output=[]   [0b 00 43 00 01 06 02 03 00 00 00]
+[16:32:04] <- Info porta 0: combinazioni possibili [[0, 1]]   [07 00 43 00 02 03 00]
+[16:32:04] <- Porta 0 modo 0 NAME: RAW   [11 00 44 00 00 00 52 41 57 00 00 00 00 00 00 00 00]
+[16:32:04] <- Porta 0 modo 0 VALUE_FORMAT: 3 x int8, 3 cifre, 0 decimali   [0a 00 44 00 00 80 03 00 03 00]
+[16:32:04] <- Porta 0 modo 1 NAME: GEST   [11 00 44 00 01 00 47 45 53 54 00 00 00 00 00 00 00]
+[16:32:04] <- Porta 0 modo 1 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 00 01 80 02 01 03 00]
+[16:32:04] <- Info porta 1: capacità=['input', 'combinabile'], modalità=2, input=[0, 1], output=[]   [0b 00 43 01 01 06 02 03 00 00 00]
+[16:32:04] <- Info porta 1: combinazioni possibili [[0, 1]]   [07 00 43 01 02 03 00]
+[16:32:04] <- Porta 1 modo 0 NAME: TAG   [11 00 44 01 00 00 54 41 47 00 00 00 00 00 00 00 00]
+[16:32:04] <- Porta 1 modo 0 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 01 00 80 02 01 03 00]
+[16:32:04] <- Porta 1 modo 1 NAME: RGB   [11 00 44 01 01 00 52 47 42 00 00 00 00 00 00 00 00]
+[16:32:04] <- Porta 1 modo 1 VALUE_FORMAT: 3 x int8, 3 cifre, 0 decimali   [0a 00 44 01 01 80 03 00 03 00]
+[16:32:04] <- Info porta 2: capacità=['input'], modalità=1, input=[0], output=[]   [0b 00 43 02 01 02 01 01 00 00 00]
+[16:32:04] <- Porta 2 modo 0 NAME: PANT   [11 00 44 02 00 00 50 41 4e 54 00 00 00 00 00 00 00]
+[16:32:04] <- Porta 2 modo 0 VALUE_FORMAT: 1 x int8, 3 cifre, 0 decimali   [0a 00 44 02 00 80 01 00 03 00]
+[16:32:04] <- Info porta 3: capacità=['input'], modalità=4, input=[0, 1, 2, 3], output=[]   [0b 00 43 03 01 02 04 0f 00 00 00]
+[16:32:04] <- Porta 3 modo 0 NAME: CHAL   [11 00 44 03 00 00 43 48 41 4c 00 00 00 00 00 00 00]
+[16:32:05] <- Porta 3 modo 0 VALUE_FORMAT: 2 x int16, 3 cifre, 0 decimali   [0a 00 44 03 00 80 02 01 03 00]
+[16:32:05] <- Porta 3 modo 1 NAME: VERS   [11 00 44 03 01 00 56 45 52 53 00 00 00 00 00 00 00]
+[16:32:05] <- Porta 3 modo 1 VALUE_FORMAT: 4 x int32, 10 cifre, 0 decimali   [0a 00 44 03 01 80 04 02 0a 00]
+[16:32:05] <- Porta 3 modo 2 NAME: EVENTS   [11 00 44 03 02 00 45 56 45 4e 54 53 00 00 00 00 00]
+[16:32:05] <- Porta 3 modo 2 VALUE_FORMAT: 2 x int16, 10 cifre, 0 decimali   [0a 00 44 03 02 80 02 01 0a 00]
+[16:32:05] <- Porta 3 modo 3 NAME: DEBUG   [11 00 44 03 03 00 44 45 42 55 47 00 00 00 00 00 00]
+[16:32:05] <- Porta 3 modo 3 VALUE_FORMAT: 4 x int32, 10 cifre, 0 decimali   [0a 00 44 03 03 80 04 02 0a 00]
+[16:32:05] <- Info porta 4: capacità=['output', 'input'], modalità=1, input=[0], output=[0]   [0b 00 43 04 01 03 01 01 00 01 00]
+[16:32:05] <- Porta 4 modo 0 NAME: Events   [11 00 44 04 00 00 45 76 65 6e 74 73 00 00 00 00 00]
+[16:32:05] <- Porta 4 modo 0 VALUE_FORMAT: 2 x int16, 5 cifre, 0 decimali   [0a 00 44 04 00 80 02 01 05 00]
+[16:32:05] <- Info porta 6: capacità=['input'], modalità=2, input=[0, 1], output=[]   [0b 00 43 06 01 02 02 03 00 00 00]
+[16:32:05] <- Porta 6 modo 0 NAME: VLT L   [11 00 44 06 00 00 56 4c 54 20 4c 00 00 00 00 00 00]
+[16:32:05] <- Porta 6 modo 0 VALUE_FORMAT: 1 x int16, 4 cifre, 0 decimali   [0a 00 44 06 00 80 01 01 04 00]
+[16:32:05] <- Porta 6 modo 1 NAME: VLT S   [11 00 44 06 01 00 56 4c 54 20 53 00 00 00 00 00 00]
+[16:32:05] <- Porta 6 modo 1 VALUE_FORMAT: 1 x int16, 4 cifre, 0 decimali   [0a 00 44 06 01 80 01 01 04 00]
+[16:32:05] <- Info porta 7: capacità=['output', 'input'], modalità=1, input=[0], output=[0]   [0b 00 43 07 01 03 01 01 00 01 00]
+[16:32:06] <- Porta 7 modo 0 NAME: Telemetry   [11 00 44 07 00 00 54 65 6c 65 6d 65 74 72 79 00 00]
+[16:32:06] <- Porta 7 modo 0 VALUE_FORMAT: 16 x int8, 3 cifre, 0 decimali   [0a 00 44 07 00 80 10 00 03 00]
+[16:32:06] <- Formato input porta 3: modo 2, delta 1, notifiche ON   [0a 00 47 03 02 01 00 00 00 01]
+[16:32:06] notifiche attive: porta 3 modo 2
+[16:32:06] <- Valore porta 3 modo 2: 00 00 00 00 = [0, 0] -> evento classe 0x00 codice 0x00 (0x0000 = evento nullo 0x00/0x00) valore 0   [08 00 45 03 00 00 00 00]
+[16:32:06] <- Formato input porta 4: modo 0, delta 1, notifiche ON   [0a 00 47 04 00 01 00 00 00 01]
+[16:32:06] notifiche attive: porta 4 modo 0
+[16:32:06] <- Formato input porta 7: modo 0, delta 1, notifiche ON   [0a 00 47 07 00 01 00 00 00 01]
+[16:32:06] notifiche attive: porta 7 modo 0
+[16:32:06] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[16:32:06] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[16:32:06] volume: era 100, ora 100
+[16:32:12] === PROVA 1: porta 4, sottocomando 0x01 (StartPower), senza payload
+[16:32:15] -> inviato 06 00 81 04 11 01
+[16:32:15] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:32:18]    esito: COMMAND_NOT_RECOGNIZED
+[16:32:18] === PROVA 2: porta 4, sottocomando 0x01 (StartPower), un byte zero
+[16:32:21] -> inviato 07 00 81 04 11 01 00
+[16:32:21] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:32:24]    esito: COMMAND_NOT_RECOGNIZED
+[16:32:24] === PROVA 3: porta 4, sottocomando 0x01 (StartPower), payload dello standard 32
+[16:32:28] -> inviato 07 00 81 04 11 01 32
+[16:32:28] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:32:31]    esito: COMMAND_NOT_RECOGNIZED
+[16:32:31] === PROVA 4: porta 4, sottocomando 0x02 (StartPower2), senza payload
+[16:32:34] -> inviato 06 00 81 04 11 02
+[16:32:34] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:32:37]    esito: COMMAND_NOT_RECOGNIZED
+[16:32:37] === PROVA 5: porta 4, sottocomando 0x02 (StartPower2), un byte zero
+[16:32:41] -> inviato 07 00 81 04 11 02 00
+[16:32:41] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:32:44]    esito: COMMAND_NOT_RECOGNIZED
+[16:32:44] === PROVA 6: porta 4, sottocomando 0x02 (StartPower2), payload dello standard 32 32
+[16:32:47] -> inviato 08 00 81 04 11 02 32 32
+[16:32:47] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:32:50]    esito: COMMAND_NOT_RECOGNIZED
+[16:32:50] === PROVA 7: porta 4, sottocomando 0x05 (SetAccTime), senza payload
+[16:32:54] -> inviato 06 00 81 04 11 05
+[16:32:54] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:32:57]    esito: COMMAND_NOT_RECOGNIZED
+[16:32:57] === PROVA 8: porta 4, sottocomando 0x05 (SetAccTime), un byte zero
+[16:33:00] -> inviato 07 00 81 04 11 05 00
+[16:33:00] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:03]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:03] === PROVA 9: porta 4, sottocomando 0x05 (SetAccTime), payload dello standard 64 00 00
+[16:33:07] -> inviato 09 00 81 04 11 05 64 00 00
+[16:33:07] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:10]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:10] === PROVA 10: porta 4, sottocomando 0x06 (SetDecTime), senza payload
+[16:33:13] -> inviato 06 00 81 04 11 06
+[16:33:13] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:16]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:16] === PROVA 11: porta 4, sottocomando 0x06 (SetDecTime), un byte zero
+[16:33:20] -> inviato 07 00 81 04 11 06 00
+[16:33:20] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:23]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:23] === PROVA 12: porta 4, sottocomando 0x06 (SetDecTime), payload dello standard 64 00 00
+[16:33:26] -> inviato 09 00 81 04 11 06 64 00 00
+[16:33:26] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:29]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:29] === PROVA 13: porta 4, sottocomando 0x07 (StartSpeed), senza payload
+[16:33:33] -> inviato 06 00 81 04 11 07
+[16:33:33] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:36]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:36] === PROVA 14: porta 4, sottocomando 0x07 (StartSpeed), un byte zero
+[16:33:40] -> inviato 07 00 81 04 11 07 00
+[16:33:40] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:43]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:43] === PROVA 15: porta 4, sottocomando 0x07 (StartSpeed), payload dello standard 32 64 00
+[16:33:47] -> inviato 09 00 81 04 11 07 32 64 00
+[16:33:47] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:50]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:50] === PROVA 16: porta 4, sottocomando 0x08 (StartSpeed2), senza payload
+[16:33:53] -> inviato 06 00 81 04 11 08
+[16:33:53] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:33:56]    esito: COMMAND_NOT_RECOGNIZED
+[16:33:56] === PROVA 17: porta 4, sottocomando 0x08 (StartSpeed2), un byte zero
+[16:34:00] -> inviato 07 00 81 04 11 08 00
+[16:34:00] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:03]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:03] === PROVA 18: porta 4, sottocomando 0x08 (StartSpeed2), payload dello standard 32 32 64 00
+[16:34:06] -> inviato 0a 00 81 04 11 08 32 32 64 00
+[16:34:06] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:09]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:09] === PROVA 19: porta 7, sottocomando 0x01 (StartPower), senza payload
+[16:34:13] -> inviato 06 00 81 07 11 01
+[16:34:13] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:16]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:16] === PROVA 20: porta 7, sottocomando 0x01 (StartPower), un byte zero
+[16:34:19] -> inviato 07 00 81 07 11 01 00
+[16:34:19] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:22]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:22] === PROVA 21: porta 7, sottocomando 0x01 (StartPower), payload dello standard 32
+[16:34:25] -> inviato 07 00 81 07 11 01 32
+[16:34:25] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:28]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:28] === PROVA 22: porta 7, sottocomando 0x02 (StartPower2), senza payload
+[16:34:32] -> inviato 06 00 81 07 11 02
+[16:34:32] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:35]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:35] === PROVA 23: porta 7, sottocomando 0x02 (StartPower2), un byte zero
+[16:34:38] -> inviato 07 00 81 07 11 02 00
+[16:34:38] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:41]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:41] === PROVA 24: porta 7, sottocomando 0x02 (StartPower2), payload dello standard 32 32
+[16:34:45] -> inviato 08 00 81 07 11 02 32 32
+[16:34:45] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:48]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:48] === PROVA 25: porta 7, sottocomando 0x05 (SetAccTime), senza payload
+[16:34:52] -> inviato 06 00 81 07 11 05
+[16:34:52] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:34:55]    esito: COMMAND_NOT_RECOGNIZED
+[16:34:55] === PROVA 26: porta 7, sottocomando 0x05 (SetAccTime), un byte zero
+[16:34:58] -> inviato 07 00 81 07 11 05 00
+[16:34:58] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:01]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:01] === PROVA 27: porta 7, sottocomando 0x05 (SetAccTime), payload dello standard 64 00 00
+[16:35:05] -> inviato 09 00 81 07 11 05 64 00 00
+[16:35:05] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:08]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:08] === PROVA 28: porta 7, sottocomando 0x06 (SetDecTime), senza payload
+[16:35:11] -> inviato 06 00 81 07 11 06
+[16:35:11] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:14]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:14] === PROVA 29: porta 7, sottocomando 0x06 (SetDecTime), un byte zero
+[16:35:18] -> inviato 07 00 81 07 11 06 00
+[16:35:18] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:21]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:21] === PROVA 30: porta 7, sottocomando 0x06 (SetDecTime), payload dello standard 64 00 00
+[16:35:24] -> inviato 09 00 81 07 11 06 64 00 00
+[16:35:24] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:27]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:27] === PROVA 31: porta 7, sottocomando 0x07 (StartSpeed), senza payload
+[16:35:31] -> inviato 06 00 81 07 11 07
+[16:35:31] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:34]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:34] === PROVA 32: porta 7, sottocomando 0x07 (StartSpeed), un byte zero
+[16:35:37] -> inviato 07 00 81 07 11 07 00
+[16:35:37] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:40]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:40] === PROVA 33: porta 7, sottocomando 0x07 (StartSpeed), payload dello standard 32 64 00
+[16:35:44] -> inviato 09 00 81 07 11 07 32 64 00
+[16:35:44] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:47]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:47] === PROVA 34: porta 7, sottocomando 0x08 (StartSpeed2), senza payload
+[16:35:51] -> inviato 06 00 81 07 11 08
+[16:35:51] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:35:54]    esito: COMMAND_NOT_RECOGNIZED
+[16:35:54] === PROVA 35: porta 7, sottocomando 0x08 (StartSpeed2), un byte zero
+[16:35:57] -> inviato 07 00 81 07 11 08 00
+[16:35:57] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:36:00]    esito: COMMAND_NOT_RECOGNIZED
+[16:36:00] === PROVA 36: porta 7, sottocomando 0x08 (StartSpeed2), payload dello standard 32 32 64 00
+[16:36:04] -> inviato 0a 00 81 07 11 08 32 32 64 00
+[16:36:04] <- ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED   [05 00 05 81 05]
+[16:36:07]    esito: COMMAND_NOT_RECOGNIZED
+
+=== RIEPILOGO (da affiancare a ciò che hai visto e sentito su Mario) ===
+ 1. porta 4, sottocomando 0x01 (StartPower), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 2. porta 4, sottocomando 0x01 (StartPower), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 3. porta 4, sottocomando 0x01 (StartPower), payload dello standard 32
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 4. porta 4, sottocomando 0x02 (StartPower2), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 5. porta 4, sottocomando 0x02 (StartPower2), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 6. porta 4, sottocomando 0x02 (StartPower2), payload dello standard 32 32
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 7. porta 4, sottocomando 0x05 (SetAccTime), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 8. porta 4, sottocomando 0x05 (SetAccTime), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+ 9. porta 4, sottocomando 0x05 (SetAccTime), payload dello standard 64 00 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+10. porta 4, sottocomando 0x06 (SetDecTime), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+11. porta 4, sottocomando 0x06 (SetDecTime), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+12. porta 4, sottocomando 0x06 (SetDecTime), payload dello standard 64 00 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+13. porta 4, sottocomando 0x07 (StartSpeed), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+14. porta 4, sottocomando 0x07 (StartSpeed), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+15. porta 4, sottocomando 0x07 (StartSpeed), payload dello standard 32 64 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+16. porta 4, sottocomando 0x08 (StartSpeed2), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+17. porta 4, sottocomando 0x08 (StartSpeed2), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+18. porta 4, sottocomando 0x08 (StartSpeed2), payload dello standard 32 32 64 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+19. porta 7, sottocomando 0x01 (StartPower), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+20. porta 7, sottocomando 0x01 (StartPower), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+21. porta 7, sottocomando 0x01 (StartPower), payload dello standard 32
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+22. porta 7, sottocomando 0x02 (StartPower2), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+23. porta 7, sottocomando 0x02 (StartPower2), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+24. porta 7, sottocomando 0x02 (StartPower2), payload dello standard 32 32
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+25. porta 7, sottocomando 0x05 (SetAccTime), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+26. porta 7, sottocomando 0x05 (SetAccTime), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+27. porta 7, sottocomando 0x05 (SetAccTime), payload dello standard 64 00 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+28. porta 7, sottocomando 0x06 (SetDecTime), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+29. porta 7, sottocomando 0x06 (SetDecTime), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+30. porta 7, sottocomando 0x06 (SetDecTime), payload dello standard 64 00 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+31. porta 7, sottocomando 0x07 (StartSpeed), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+32. porta 7, sottocomando 0x07 (StartSpeed), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+33. porta 7, sottocomando 0x07 (StartSpeed), payload dello standard 32 64 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+34. porta 7, sottocomando 0x08 (StartSpeed2), senza payload
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+35. porta 7, sottocomando 0x08 (StartSpeed2), un byte zero
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+36. porta 7, sottocomando 0x08 (StartSpeed2), payload dello standard 32 32 64 00
+    risposta: ERRORE per il comando PORT_OUTPUT_COMMAND: COMMAND_NOT_RECOGNIZED
+
+=== MAPPA DEGLI ESITI ===
+porta 4  0x01  senza payload: COMMAND_NOT_RECOGNIZED
+porta 4  0x01  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 4  0x01  payload dello standard 32: COMMAND_NOT_RECOGNIZED
+porta 4  0x02  senza payload: COMMAND_NOT_RECOGNIZED
+porta 4  0x02  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 4  0x02  payload dello standard 32 32: COMMAND_NOT_RECOGNIZED
+porta 4  0x05  senza payload: COMMAND_NOT_RECOGNIZED
+porta 4  0x05  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 4  0x05  payload dello standard 64 00 00: COMMAND_NOT_RECOGNIZED
+porta 4  0x06  senza payload: COMMAND_NOT_RECOGNIZED
+porta 4  0x06  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 4  0x06  payload dello standard 64 00 00: COMMAND_NOT_RECOGNIZED
+porta 4  0x07  senza payload: COMMAND_NOT_RECOGNIZED
+porta 4  0x07  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 4  0x07  payload dello standard 32 64 00: COMMAND_NOT_RECOGNIZED
+porta 4  0x08  senza payload: COMMAND_NOT_RECOGNIZED
+porta 4  0x08  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 4  0x08  payload dello standard 32 32 64 00: COMMAND_NOT_RECOGNIZED
+porta 7  0x01  senza payload: COMMAND_NOT_RECOGNIZED
+porta 7  0x01  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 7  0x01  payload dello standard 32: COMMAND_NOT_RECOGNIZED
+porta 7  0x02  senza payload: COMMAND_NOT_RECOGNIZED
+porta 7  0x02  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 7  0x02  payload dello standard 32 32: COMMAND_NOT_RECOGNIZED
+porta 7  0x05  senza payload: COMMAND_NOT_RECOGNIZED
+porta 7  0x05  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 7  0x05  payload dello standard 64 00 00: COMMAND_NOT_RECOGNIZED
+porta 7  0x06  senza payload: COMMAND_NOT_RECOGNIZED
+porta 7  0x06  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 7  0x06  payload dello standard 64 00 00: COMMAND_NOT_RECOGNIZED
+porta 7  0x07  senza payload: COMMAND_NOT_RECOGNIZED
+porta 7  0x07  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 7  0x07  payload dello standard 32 64 00: COMMAND_NOT_RECOGNIZED
+porta 7  0x08  senza payload: COMMAND_NOT_RECOGNIZED
+porta 7  0x08  un byte zero: COMMAND_NOT_RECOGNIZED
+porta 7  0x08  payload dello standard 32 32 64 00: COMMAND_NOT_RECOGNIZED
+[16:36:09] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
+[16:36:09] volume riportato a 100
+[16:36:11] disconnesso

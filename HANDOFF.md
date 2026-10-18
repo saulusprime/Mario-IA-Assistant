@@ -17,7 +17,8 @@ Whisper, provata con frasi sintetiche, non con il microfono) e regole della part
 pomeriggio, ancora senza Mario: avventure con fasi del livello, alternative, musica, modalità registra e replay;
 ponte MQTT/WebSocket; pagina delle tabelle dei codici; sessioni revocabili e HTTPS per la dashboard; `decode`
 corretto sulle catture vere e con i livelli ricostruiti; pacchetto installabile; CI di nuovo verde; pagine
-provate in un Firefox headless; 243 test.
+provate in un Firefox headless. In serata, con Mario (ora firmware 6.5.03): i sottocomandi dei motori di Port
+Output non sono riconosciuti né dalla porta 4 né dalla 7; 249 test.
 Il resto, al 16/10:
 connessione e pairing stabili; sensori decodificati (gesti,
 scanner, pantaloni con filtro di stabilità, eventi di gioco con contatori); dashboard con pagine
@@ -998,6 +999,29 @@ fare e provare senza il giocattolo.
 - Schermo di gioco a tutto schermo con il percorso a icone.
 - Test: da 215 a 243 (`test_browser` 5, `test_bridge` 7, più avventure, pagine, decode, CLI, voce).
 
+### 18/10 sera — Scansione dei sottocomandi di Port Output (`probe_port4.py --scan`)
+
+- Domanda (TODO sezione 7): oltre a WriteDirectModeData, le porte 4 e 7 accettano uno dei sottocomandi dei
+  motori dello standard LWP3? Nuova opzione `--scan`: StartPower 0x01 e 0x02, SetAccTime 0x05, SetDecTime 0x06,
+  StartSpeed 0x07 e 0x08, ciascuno senza payload, con un byte zero e con la forma dello standard (valori
+  moderati), sulla porta 4 e sulla porta 7; annuncio a voce di ogni prova, 3 s di ascolto, mappa degli esiti
+  in fondo al log. Pronta anche `--sweep` (tutti i sottocomandi 0x00–0xFF a ritmo della risposta), non eseguita.
+- Corretto `is_rejected`: cercava "GENERIC_ERROR" nel testo, che invece dice "ERRORE per il comando …", quindi
+  il 12/10 non aveva mai interrotto un sottocomando rifiutato (nessun effetto sui risultati: le prove erano
+  comunque limitate a 4). Ora legge i messaggi.
+- Esito (16:32–16:36, log `docs/sessioni/probe-port4-20261018-162743.txt`): **36 volte `COMMAND_NOT_RECOGNIZED`**,
+  qualunque payload, su entrambe le porte; nessun valore spontaneo delle porte 3, 4 e 7. La porta 7, che ignora
+  in silenzio WriteDirectModeData, rifiuta invece con un errore i sottocomandi che non conosce.
+- Reazione fisica (suoni, animazioni, display): nessuna, riferisce l'utente.
+- Sorpresa alla connessione: **firmware 6.5.03** (fino al 14/10 era 6.5.01) e nome di fabbrica (`Mario` più
+  quattro caratteri, diverso da quello dell'11/10); stesso indirizzo di identità, il bond con il PC ha retto.
+  Volume trovato a 100. L'aggiornamento l'ha fatto l'utente con l'app ufficiale; non si sa se sul telefono
+  fosse attivo il log HCI snoop (se sì, la cattura conterrebbe l'immagine trasferita via OAD: TODO sezione 2).
+- Privacy: in sei log di `docs/sessioni/` il nome era stato sostituito nel testo ma non nei byte esadecimali
+  della proprietà ADVERTISING_NAME; ora anche i byte dicono `MarioCasa` (lunghezza del messaggio corretta, così
+  `decode` lo rilegge). Le versioni precedenti restano nella storia di git.
+- Test: da 243 a 249 (`test_probe_port4`).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -1016,7 +1040,7 @@ fare e provare senza il giocattolo.
 | `mario/rar20.py` | estrazione RAR 2.0 in Python (Unpack20 con modalità audio, CRC32) per i moduli `.mdr` dell'archivio dei suoni |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`), `stt.py` e `stt_worker.py` (ingresso vocale, faster-whisper in `.venv-stt`), `wake_worker.py` (ascolto continuo di «Ehi Mario» con Vosk, client `WakeListener` in `stt.py`), `worker.py` (ciclo di vita comune dei processi con i modelli), `safety.py` (temi da evitare), `report.py` (riepilogo del giorno) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py` (anche modalità registra ed esempi offerti una volta); esempi in `mario/data/adventures/` |
-| `tests/` | 243 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI; `browser.py` comanda un Firefox headless via WebDriver BiDi |
+| `tests/` | 249 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI; `browser.py` comanda un Firefox headless via WebDriver BiDi |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario` (installabile anche non modificabile); test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -1051,7 +1075,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (243, con Firefox headless se c'è); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (249, con Firefox headless se c'è); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva mario/data/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/
