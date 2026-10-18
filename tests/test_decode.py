@@ -117,6 +117,21 @@ class BtsnoopTests(unittest.TestCase):
         decode.run([], hex_args=["-> 04 00 02 01", "05 00 45 02 21"], out=buf, downstream=False)
         self.assertEqual(len(buf.getvalue().splitlines()), 1)
 
+    def test_summary_rebuilds_debug_trace_text(self):
+        # porta 3 in modo DEBUG (re-checks del 14/10/2026): il testo attraversa i confini dei pacchetti
+        from mario import codes
+        text = b"LEAF 0x65010000 May 27 2025 08:44:31\x00"
+        chunks = [text[i:i + 16].ljust(16, b"\x00") for i in range(0, len(text), 16)]
+        lines = ["0a 00 47 03 03 01 00 00 00 01"] + [(b"\x14\x00\x45\x03" + c).hex(" ") for c in chunks]
+        lines.insert(2, lines[1])  # risposta a una lettura ripetuta come prima notifica: va saltata
+        buf = io.StringIO()
+        decode.run([], hex_args=lines, out=buf, summary=True)
+        out = buf.getvalue()
+        self.assertIn("testo: LEAF 0x65010000", out)  # descrizione del singolo pezzo
+        self.assertIn("traccia DEBUG della porta 3: 3 pezzi, 48 byte (1 pezzi uguali al precedente saltati)", out)
+        self.assertIn("testo: 'LEAF 0x65010000 May 27 2025 08:44:31'", out)
+        self.assertIn("CHAL", codes.decode_value(0x46, 0, bytes.fromhex("c0 00 00 00"), []))
+
 
 if __name__ == "__main__":
     unittest.main()

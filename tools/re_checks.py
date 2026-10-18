@@ -11,7 +11,9 @@ Passi (--steps, separati da virgola; default tutti):
   sonno     Mario fermo per 45 s: conto alla rovescia 0x3861, 0x3862 = 2, 0x3866 / 0x1802; poi ripreso
             in mano (risveglio)
   porta3    modi CHAL (0), VERS (1) e DEBUG (3) della porta 3, uno alla volta: valore letto e 20 s di
-            ascolto con pulsante, basetta e sollevamento; alla fine la porta torna in EVENTS (2)
+            ascolto con pulsante (pressione breve, registrata nel log), basetta e sollevamento; alla fine la
+            porta torna in EVENTS (2). --port3-modes DEBUG ripete un solo modo. Il 14/10 il modo DEBUG ha
+            mandato una traccia del firmware (testo "LEAF 0x65010000 ...") e Mario si è spento a metà
   gioco     porte 3 (EVENTS), 4 (Events) e 7 (Telemetry) sottoscritte insieme a scanner, gesti e
             pantaloni durante un mini livello guidato (Start, salti, nemico, monete, fine del tempo):
             sequenza della porta 3 con gli orari e conteggio di quanto arriva dalle porte 4 e 7
@@ -22,12 +24,14 @@ distruttivo: niente azione 0x2F, niente OAD, solo letture e sottoscrizioni.
 Uso (sull'host):
   ./run.sh re-checks                        # tutti i passi (circa 6 minuti con 'gioco')
   ./run.sh re-checks --steps sonno,porta3   # solo alcuni
+  ./run.sh re-checks --steps porta3 --port3-modes DEBUG
   ./run.sh re-checks --no-voice
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import functools
 import shutil
 import subprocess
 import sys
@@ -36,7 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from mario import lwp3  # noqa: E402
+from mario import codes, lwp3  # noqa: E402
 from mario.device import LWPError, MarioDevice  # noqa: E402
 from mario.lwp3 import HubProperty, MessageType  # noqa: E402
 
@@ -171,9 +175,13 @@ async def step_sonno(dev: MarioDevice, rec: Recorder, voice: bool) -> None:
                f"da fermo: {fmt_events(still, t0)} | ripreso in mano: {fmt_events(wake, t0)}")
 
 
-async def step_porta3(dev: MarioDevice, rec: Recorder, voice: bool) -> None:
+async def step_porta3(dev: MarioDevice, rec: Recorder, voice: bool, modes=PORT3_MODES) -> None:
+    try:
+        await dev.property_updates(HubProperty.BUTTON, True)  # le pressioni del pulsante finiscono nel log
+    except Exception as exc:
+        rec.log(f"aggiornamenti del pulsante non attivati: {exc}")
     outcomes = []
-    for mode, name in PORT3_MODES:
+    for mode, name in modes:
         try:
             await dev.subscribe(3, mode, 1, True)
         except (LWPError, asyncio.TimeoutError) as exc:
@@ -185,13 +193,19 @@ async def step_porta3(dev: MarioDevice, rec: Recorder, voice: bool) -> None:
         except (LWPError, asyncio.TimeoutError) as exc:
             value = None
             rec.log(f"porta 3 modo {mode} {name}: lettura fallita ({exc})")
-        speak(f"Modo {name} attivo. Premi il pulsante di Mario, poi appoggialo su una basetta, poi sollevalo.", voice)
+        # Pressione breve: tenuto premuto, il pulsante spegne Mario (il 14/10 si è spento durante DEBUG).
+        speak(f"Modo {name} attivo. Premi brevemente il pulsante di Mario, poi appoggialo su una basetta, "
+              "poi sollevalo.", voice)
         t0 = time.time()
         await asyncio.sleep(20)
         vals = rec.port_values(t0, 3)
         sample = ", ".join(raw.hex(" ") for _, raw in vals[:6]) + ("…" if len(vals) > 6 else "")
+        text = codes.printable_runs(b"".join(raw for _, raw in vals), minimum=6)
         outcomes.append(f"{name}: letto {value.hex(' ') if value else '-'}; {len(vals)} notifiche"
-                        + (f" ({sample})" if vals else ""))
+                        + (f" ({sample})" if vals else "") + (f"; testo {text}" if text else ""))
+        if not dev.connected:
+            rec.result("porta3", "INTERROTTO", " | ".join(outcomes) + f" | Mario si è scollegato durante il modo {name}")
+            return
     await dev.subscribe(3, 2, 1, True)
     rec.log("porta 3 di nuovo in modo 2 EVENTS")
     rec.result("porta3", "OK", " | ".join(outcomes))
@@ -237,12 +251,19 @@ async def main() -> int:
     ap.add_argument("--no-voice", action="store_true")
     ap.add_argument("-t", "--timeout", type=float, default=180.0)
     ap.add_argument("-a", "--address")
+    ap.add_argument("--port3-modes", default=",".join(name for _, name in PORT3_MODES),
+                    help="modi della porta 3 per il passo porta3, separati da virgola (CHAL, VERS, DEBUG)")
     args = ap.parse_args()
     voice = not args.no_voice
     steps = [s.strip() for s in args.steps.split(",") if s.strip()]
     bad = [s for s in steps if s not in ALL_STEPS]
     if bad:
         print(f"passi sconosciuti: {bad}; disponibili: {ALL_STEPS}", file=sys.stderr)
+        return 2
+    wanted = {m.strip().upper() for m in args.port3_modes.split(",") if m.strip()}
+    port3_modes = [(mode, name) for mode, name in PORT3_MODES if name in wanted]
+    if not port3_modes or len(port3_modes) != len(wanted):
+        print(f"modi della porta 3 sconosciuti: {args.port3_modes}; disponibili: CHAL, VERS, DEBUG", file=sys.stderr)
         return 2
     logs = PROJECT / "logs"
     logs.mkdir(exist_ok=True)
@@ -265,11 +286,13 @@ async def main() -> int:
         rec.fh.close()
         return 1
     speak("Collegato. Iniziamo.", voice)
-    handlers = {"gatt": step_gatt, "sistema": step_sistema, "sonno": step_sonno, "porta3": step_porta3, "gioco": step_gioco}
+    handlers = {"gatt": step_gatt, "sistema": step_sistema, "sonno": step_sonno,
+                "porta3": functools.partial(step_porta3, modes=port3_modes), "gioco": step_gioco}
     try:
         for step in steps:
             if not dev.connected:
                 speak("Mario è scollegato: lo ricollego. Se l'icona non lampeggia, premi il tasto.", voice)
+                await dev.disconnect()  # chiude il vecchio client: altrimenti ogni messaggio arriva due volte
                 try:
                     dev = await connect(args, rec, say)
                 except Exception as exc:
@@ -282,8 +305,7 @@ async def main() -> int:
                 rec.result(step, "ERRORE", f"{type(exc).__name__}: {exc}")
         speak("Verifiche finite. Grazie.", voice)
     finally:
-        if dev.connected:
-            await dev.disconnect()
+        await dev.disconnect()
         lines = ["", "=== RIEPILOGO VERIFICHE ==="]
         for step, outcome, details in rec.results:
             lines.append(f"- {step}: {outcome}. {details}")

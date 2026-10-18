@@ -99,7 +99,7 @@ class Decoder:
                "raw": frame.msg.raw.hex(" "), "text": text}
         if frame.direction != "->":
             ev = self.state.event(frame.msg, text)
-            for key in ("port", "mode", "io_type", "values", "decoded", "modes", "prop", "value"):
+            for key in ("port", "mode", "io_type", "data", "values", "decoded", "modes", "prop", "value"):
                 if key in ev:
                     out[key] = ev[key]
         if frame.source:
@@ -469,6 +469,9 @@ def summarize(records: list[dict]) -> str:
     by_type: dict[str, int] = {}
     by_port: dict[str, int] = {}
     game_events: dict[int, dict] = {}
+    debug = bytearray()   # traccia del modo DEBUG della porta 3, ricomposta nell'ordine di arrivo
+    debug_chunks = debug_repeats = 0
+    last_chunk = b""
     errors = []
     for r in records:
         by_type[f"{r['direction']} {r['type']}"] = by_type.get(f"{r['direction']} {r['type']}", 0) + 1
@@ -482,6 +485,15 @@ def summarize(records: list[dict]) -> str:
             g = game_events.setdefault(code, {"n": 0, "values": set()})
             g["n"] += 1
             g["values"].add(value)
+        if r.get("io_type") == 0x46 and r.get("mode") == 3 and r.get("data") and r["type"] == "PORT_VALUE_SINGLE":
+            chunk = bytes.fromhex(r["data"])
+            if chunk == last_chunk:
+                # di solito la risposta a una lettura del valore, ripetuta come prima notifica del flusso
+                debug_repeats += 1
+                continue
+            debug += chunk
+            debug_chunks += 1
+            last_chunk = chunk
     lines = ["=== Riepilogo ===", f"messaggi: {len(records)}"]
     lines += [f"  {k:<32} {v}" for k, v in sorted(by_type.items())]
     if by_port:
@@ -494,6 +506,11 @@ def summarize(records: list[dict]) -> str:
             name = codes.GAME_EVENTS.get(code, "")
             vals = ", ".join(str(v) for v in sorted(g["values"])[:12])
             lines.append(f"  0x{code:04X}: {g['n']:>4}  [{vals}]  {name}")
+    if debug:
+        from . import codes
+        lines.append(f"traccia DEBUG della porta 3: {debug_chunks} pezzi, {len(debug)} byte"
+                     + (f" ({debug_repeats} pezzi uguali al precedente saltati)" if debug_repeats else ""))
+        lines += [f"  testo: {t!r}" for t in codes.printable_runs(debug, minimum=6)]
     if errors:
         lines.append(f"errori generici: {len(errors)}")
         lines += [f"  {e}" for e in errors[:10]]

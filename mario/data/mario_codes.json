@@ -475,27 +475,27 @@
  },
  "game_events": {
   "0x3861": {
-   "name": "conto alla rovescia a un passo al secondo quando Mario resta fermo fuori dal livello: 5→1, poi 8→1 ripetuto (11/10 17:07–17:08); si interrompe se Mario viene mosso (0x3862 = 0). Non è un contatore di monete: il totale è 0x386B",
+   "name": "conto alla rovescia a un passo al secondo quando Mario resta fermo fuori dal livello: 5→1, poi 8→1 ripetuto (11/10 17:07–17:08; confermato il 14/10 dal passo 'sonno' di re-checks: 5→1, 8→1, 8→1 in 31 s); si interrompe se Mario viene mosso (0x3862 = 0). Non è un contatore di monete: il totale è 0x386B",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x3862": {
-   "name": "stato di attività: 0 a ogni movimento, basetta letta o sollevamento (azzera l'inattività); 2 alla fine del conto alla rovescia 5→1 da fermo; 4 alla connessione (12/10 17:39) e 3 s prima della sequenza di fine livello (12/10 18:26:20)",
+   "name": "stato di attività: 0 a ogni movimento, basetta letta o sollevamento (azzera l'inattività); 2 alla fine di ogni conto alla rovescia 5→1 da fermo (anche il 14/10); 4 alla connessione (12/10 17:39) e 3 s prima della sequenza di fine livello (12/10 18:26:20)",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x3857": {
-   "name": "1 e 0 attorno alle letture del colore rosso (lava) con urti e scosse (11/10 17:07:31–36): forse danno subito o reazione alla lava; da riprovare appoggiando Mario sul rosso senza muoverlo",
+   "name": "1 e 0 attorno alle letture del colore rosso (lava) con urti e scosse (11/10 17:07:31–36): forse danno subito o reazione alla lava; il 14/10 solo 0, durante salti e cambi di colore senza rosso; da riprovare appoggiando Mario sul rosso senza muoverlo",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x3866": {
-   "name": "0 insieme a 0x1802 = 2 alla fine dei conti alla rovescia con Mario fermo (11/10 17:08:37, poi 93 s senza alcun gesto: addormentamento?); 1 insieme a 0x1802 = 1 quando Mario è stato ripreso in mano (17:10:10, risveglio?)",
+   "name": "0 insieme a 0x1802 = 2 alla fine dei conti alla rovescia con Mario fermo (11/10 17:08:37, poi 93 s senza alcun gesto; 14/10 dopo 32 s da fermo): addormentamento?; 1 insieme a 0x1802 = 1 quando Mario viene ripreso in mano (11/10 17:10:10, 14/10): risveglio?",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x3803": {
@@ -511,9 +511,9 @@
    "hypothesis": true
   },
   "0x1802": {
-   "name": "2 con 0x3866 = 0 quando Mario, fermo, finisce i conti alla rovescia (sonno?); 1 con 0x3866 = 1 quando viene ripreso in mano (risveglio?) (11/10)",
+   "name": "2 con 0x3866 = 0 quando Mario, fermo, finisce i conti alla rovescia (sonno?); 1 con 0x3866 = 1 quando viene ripreso in mano (risveglio?) (11/10, confermato il 14/10)",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x0000": {
@@ -529,15 +529,15 @@
    "hypothesis": true
   },
   "0x1801": {
-   "name": "livello in corso: 1 alla lettura dello Start (12/10 18:09:14, insieme all'azzeramento delle monete 0x386B = 0), 0 circa 9 s dopo la fine del livello",
+   "name": "livello in corso: 1 alla lettura dello Start (12/10 18:09:14, 14/10 19:00:51, insieme all'azzeramento delle monete 0x386B = 0), 0 circa 9 s dopo la fine del livello; rileggere lo Start durante il livello non lo fa ripartire",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x1803": {
-   "name": "fase del gioco: 1 alla lettura dello Start, 4 pochi secondi dopo (livello in corso), 3 alla fine del livello (con 0x3004 = 601), 0 al ritorno fuori dal livello",
+   "name": "fase del livello: 1 alla lettura dello Start; 4 a 45 s dallo Start, cioè negli ultimi 15 s (in tutte e quattro le sessioni la fine è arrivata esattamente 15 s dopo il 4: 12/10 17:33:14, 18:10:14, 18:26:23, 14/10 19:01:50); 3 alla fine del livello (con 0x3004 = 601); 0 al ritorno fuori dal livello",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x2009": {
@@ -553,9 +553,9 @@
    "hypothesis": true
   },
   "0x3004": {
-   "name": "sempre 601 nella sequenza di fine livello (12/10 17:33, 18:10:14 e 18:26:23, arrivata 21 s e 44 s dopo lo Start: non è il tempo trascorso); forse un codice di esito",
+   "name": "601 alla fine di ogni livello finito a tempo (12/10 17:33, 18:10:14, 18:26:23; 14/10 19:01:50); i due livelli con lo Start registrato sono durati 60 s, quindi 601 potrebbe essere la durata in decimi di secondo (60,1 s): da verificare chiudendo un livello prima, al traguardo",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x3812": {
@@ -595,15 +595,21 @@
    "hypothesis": true
   },
   "0x20C2": {
-   "name": "monete date dalla basetta appena letta (6 o 8 con l'aereo 0x0160 del set 71425, circa 3 s dopo), il totale va in 0x386B",
+   "name": "monete date dalla basetta appena letta (6 o 8 con l'aereo 0x0160 del set 71425, 3–4 s dopo la lettura, anche il 14/10), il totale va in 0x386B",
    "source": "dal vivo",
-   "verified": "12/10/2026",
+   "verified": "14/10/2026",
    "hypothesis": true
   },
   "0x2022": {
    "name": "contatore legato alla basetta Rotazione 0x0014: 1, 2, 3 mentre Mario viene fatto girare (giri contati?)",
    "source": "dal vivo",
    "verified": "12/10/2026",
+   "hypothesis": true
+  },
+  "0x0115": {
+   "name": "0 quando i pantaloni vengono sfilati e 1 quando tornano infilati (14/10 19:01:48 e 19:01:50, durante un livello, insieme ai valori 0x00 e 0x21 della porta 2): pantaloni presenti?",
+   "source": "dal vivo",
+   "verified": "14/10/2026",
    "hypothesis": true
   }
  }

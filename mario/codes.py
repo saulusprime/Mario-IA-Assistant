@@ -11,6 +11,7 @@ I valori non confermati vengono comunque mostrati in esadecimale.
 from __future__ import annotations
 
 import json
+import re
 import struct
 from pathlib import Path
 from typing import Optional
@@ -125,6 +126,11 @@ def port_hint(io_type: int) -> Optional[str]:
     return PORT_HINTS.get(io_type)
 
 
+def printable_runs(data: bytes, minimum: int = 5) -> list[str]:
+    """Pezzi di testo ASCII leggibile (almeno `minimum` caratteri di fila) dentro dati binari."""
+    return [m.group().decode("ascii") for m in re.finditer(rb"[ -~]{%d,}" % minimum, bytes(data))]
+
+
 def gesture_names(value: int) -> list[str]:
     names = [name for bit, name in GESTURES.items() if value & bit]
     unknown = value & ~sum(GESTURES)
@@ -174,5 +180,15 @@ def decode_value(io_type: int, mode: Optional[int], data: bytes, values: list) -
         name = GAME_EVENTS.get(code)
         label = f" = {name}" if name else ""
         return f"evento classe 0x{data[1]:02X} codice 0x{data[0]:02X} (0x{code:04X}{label}) valore {value}"
+
+    if io_type == IO_MARIO_EVENTS and mode == 3:
+        # Dal vivo il 14/10/2026: in modo DEBUG Mario trasmette una traccia del firmware come flusso continuo a
+        # pezzi di 16 byte; record e testo attraversano i confini dei pacchetti (decode --summary li ricompone).
+        text = printable_runs(data)
+        return "traccia DEBUG (pezzo di un flusso)" + (f", testo: {' | '.join(text)}" if text else "")
+
+    if io_type == IO_MARIO_EVENTS and mode in (0, 1):
+        seen = "c0 00 00 00" if mode == 0 else "e2 00 01 b5 ×3, 32 00 32 00"
+        return f"modo {'CHAL' if mode == 0 else 'VERS'}, significato ignoto (il 14/10/2026 valeva {seen})"
 
     return None
