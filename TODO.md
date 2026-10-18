@@ -1,16 +1,20 @@
 # TODO — lavoro aperto e idee
 
-Lista di lavoro del progetto LEGO Mario via Bluetooth LE. Stato al 13 ottobre 2026 (sera).
+Lista di lavoro del progetto LEGO Mario via Bluetooth LE. Stato al 18 ottobre 2026.
 Qui c'è **solo ciò che resta da fare**: le attività completate e verificate sono in
 [ASIS.md](ASIS.md), il diario in [HANDOFF.md](HANDOFF.md). Le voci sono raggruppate per tipo;
 dentro ogni gruppo le prime sono le più utili.
 
 ## 1. Da verificare dal vivo (bastano Mario e `./run.sh monitor` o `tools/live_checks.py`)
 
+- [ ] **Notifiche doppie dopo una riconnessione (corretto il 18/10 senza Mario)**: `./run.sh monitor`,
+      spegnere e riaccendere Mario a metà sessione: dopo "riconnesso" ogni messaggio deve comparire una
+      volta sola (prima arrivava due volte). Stessa prova dalla dashboard (Mario spento, poi "Connetti").
 - [ ] **Gesti senza nome**: dare un nome ai bit `0x0008`, `0x0020`, `0x0080` e confermare il
       `0x0002` (visto girando Mario in piedi): movimenti più isolati, uno alla volta, con
       `tools/live_checks.py --steps gesti` (accelerometro e gesti insieme); girare Mario senza
-      sollevarlo.
+      sollevarlo. Il 14/10 è comparso anche `0x0004`, da solo, due volte (durante i salti e mentre
+      venivano sfilati i pantaloni).
 - [ ] **Scanner in modo RGB da solo** (`monitor --sub 1:1`): in modalità combinata si muove solo
       il primo dei tre canali; capire se nel modo singolo i tre canali cambiano con il colore.
 - [ ] **Pantaloni diversi dai blu**: quando ci saranno altri pantaloni, confrontare i codici con
@@ -21,12 +25,12 @@ dentro ogni gruppo le prime sono le più utili.
       `LOW_VOLTAGE` senza richiesta (gli allarmi sono abilitati e rispondono alla richiesta).
 - [ ] **Reset completo**: `./run.sh unpair` e nuovo pairing, per verificare che il flusso
       automatico funzioni da zero (voce anche in sezione 3).
-- [ ] **`./run.sh re-checks`** (sezione 2 dal vivo, scritto il 13/10 senza Mario): passi `annuncio`
-      (manufacturer data), `gatt` (tabella GATT nel report `info`, OAD solo elencato), `sistema`
-      (0x0B contro advertisement), `sonno` (conto alla rovescia 0x3861 e 0x3866/0x1802 con Mario
-      fermo 45 s, poi ripreso in mano), `porta3` (CHAL/VERS/DEBUG), `gioco` (porte 3, 4, 7 durante
-      un mini livello). Confermare le ipotesi del 13/10 su 0x3861/0x3862/0x3866/0x1802 e sulla
-      macchina a stati 0x1801/0x1803/0x3812; controllare che il log si rilegga con `decode`.
+- [ ] **`./run.sh re-checks --steps porta3`**: tutti i passi sono stati eseguiti il 14/10 (risultati in
+      ASIS, log in `docs/sessioni/`). Il passo `porta3` si è interrotto perché Mario si è spento 12 s dopo
+      l'attivazione del modo DEBUG, mentre lo strumento chiedeva di premere il pulsante: una pressione
+      lunga spegne Mario. Ripeterlo con `--port3-modes DEBUG`: ora lo strumento chiede una pressione
+      breve e scrive nel log ogni pressione. Capire se a spegnerlo è il modo DEBUG o il pulsante, e se la
+      riga `LEAF ...` arriva da sola o dopo la pressione.
 - [ ] **Voce IA (OpenVoice, 14/10)**: provata solo con una registrazione di riferimento sintetica
       (voce piper "riccardo"). Registrare 20–30 s di una voce vera (la propria o di un familiare
       d'accordo), caricarla dalla dashboard (anche m4a dal telefono) e ascoltare
@@ -58,25 +62,31 @@ dentro ogni gruppo le prime sono le più utili.
 
 ## 2. Reverse engineering ancora da fare
 
-Il 13/10, senza Mario, i log registrati sono stati riletti con `decode` (risultati nelle ipotesi di
-`codes.GAME_EVENTS`, nel README e in ASIS) ed è nato lo strumento `./run.sh re-checks` che esegue dal
-vivo i passi qui sotto; la cattura dal telefono ha la sua guida in `docs/cattura-app-ufficiale.md`.
+Il 13/10, senza Mario, i log registrati sono stati riletti con `decode` ed è nato lo strumento
+`./run.sh re-checks`, eseguito con Mario il 14/10 (risultati riletti il 18/10, in ASIS sezioni 1 e 2);
+la cattura dal telefono ha la sua guida in `docs/cattura-app-ufficiale.md`.
 
-- [ ] **Eventi porta 3 (modo EVENTS)**: confermare le ipotesi di `codes.GAME_EVENTS` giocando un
-      livello intero (passo `gioco` di `re-checks`, o `monitor`) e incrociando i contatori (monete
-      `0x386B`, nemici `0x2042`, giri `0x2022`, monete per basetta `0x20C2`) con il display di Mario.
-      Dalla rilettura del 13/10: `0x3861` è un conto alla rovescia (5→1, 8→1, un passo al secondo)
-      con Mario fermo, `0x3866`/`0x1802` sembrano sonno (0/2) e risveglio (1/1), `0x1801`/`0x1803`/
-      `0x3812` una macchina a stati del livello: da confermare con il passo `sonno`. Restano senza
-      nome `0x2009`, `0x200C`, `0x200E`, `0x3857` (rosso/lava?) e il valore 601 di `0x3004`.
-- [ ] **Porta 3, modi CHAL / VERS / DEBUG**: mai letti. Passo `porta3` di `re-checks` (valore letto
-      e 20 s di notifiche per modo, poi ritorno a EVENTS) oppure `sub 3 0` / `sub 3 1` / `sub 3 3`
-      nella shell, uno alla volta.
-- [ ] **Porta 4 (0x55, `Events`)**: le scritture standard sono accettate ma inerti; capire cosa
-      vi scrive l'app ufficiale o Luigi (cattura dal telefono, sotto). Il passo `gioco` di `re-checks`
-      la tiene sottoscritta durante un mini livello e conta quanto arriva.
-- [ ] **Porta 7 (0x60, `Telemetry`)**: le scritture vengono ignorate; il passo `gioco` di
-      `re-checks` la ascolta per circa due minuti di gioco (oppure `monitor --sub 7:0` a lungo).
+- [ ] **Eventi porta 3 (modo EVENTS)**: confermati dal vivo il conto alla rovescia `0x3861`, sonno e
+      risveglio (`0x3866`/`0x1802`), la macchina a stati del livello; dalla rilettura del 18/10 `0x1803 = 4`
+      segna gli ultimi 15 s del livello. Da fare:
+  - incrociare i contatori (monete `0x386B`, nemici `0x2042`, giri `0x2022`, monete per basetta `0x20C2`)
+    con il display di Mario durante un livello;
+  - `0x3004 = 601`: chiudere un livello prima della fine del tempo (basetta Traguardo `0xB7`, che
+    l'utente oggi non ha) e vedere se il valore cambia (durata in decimi di secondo?);
+  - `0x0115` (0 pantaloni sfilati, 1 rimessi?): un solo caso, il 14/10. Con `monitor`, sfilare e
+    rimettere i pantaloni dentro e fuori da un livello;
+  - senza nome: `0x2009`, `0x200C`, `0x200E`, `0x3857` (rosso/lava?).
+- [ ] **Traccia DEBUG della porta 3** (14/10, 1.264 byte in 12 s): capire il formato dei record. Il più
+      frequente è `0a 02 TT TT ff ff ff ff VV 01 00`, con `TT` che cresce di circa 200 a ogni record
+      (millisecondi?) e `VV` tra 94 e 96 (un sensore? batteria? temperatura?). Gli altri tipi (`01 06`,
+      `01 07`, `05 09`, `05 02`, `03 02`) potrebbero corrispondere a gesti, basette e stati. Serve una
+      registrazione più lunga in modo DEBUG con azioni annotate (salto, basetta, pantaloni), senza
+      tenere premuto il pulsante. `decode --summary` già ricompone il flusso e ne estrae il testo.
+- [ ] **Porta 4 (0x55, `Events`)**: le scritture standard sono accettate ma inerti e il 14/10, sottoscritta
+      per tutto un livello, non ha trasmesso nulla; capire cosa vi scrive l'app ufficiale o Luigi
+      (cattura dal telefono, sotto).
+- [ ] **Porta 7 (0x60, `Telemetry`)**: le scritture vengono ignorate e il 14/10 non ha trasmesso nulla
+      per tutto un livello; resta la cattura dell'app ufficiale.
 - [ ] **Cattura del traffico dell'app ufficiale**: procedura in `docs/cattura-app-ufficiale.md`
       (Android con HCI snoop log e `adb bugreport`, iPhone con il profilo Bluetooth logging e
       PacketLogger, copione di gioco, comandi di analisi). `decode` legge direttamente lo zip del
@@ -84,17 +94,11 @@ vivo i passi qui sotto; la cattura dal telefono ha la sua guida in `docs/cattura
       provato solo su file sintetici, la prima cattura vera va controllata con `--json`. È il modo
       più rapido per capire le porte 4 e 7 e il significato degli eventi.
 - [ ] **System type 0x40**: la proprietà 0x0B risponde `0x40` ("Boost Move Hub" nella tabella LWP3,
-      cioè numero di dispositivo 0) mentre l'advertisement dice `0x43` (anche per bricklife). Passi
-      `annuncio` e `sistema` di `re-checks` per rileggere entrambi; verificare se Luigi (0x44) e
-      Peach (0x45) fanno lo stesso quando ci saranno.
+      cioè numero di dispositivo 0) mentre l'advertisement dice `0x43` (anche per bricklife; riletti
+      entrambi il 14/10). Verificare se Luigi (0x44) e Peach (0x45) fanno lo stesso quando ci saranno.
 - [ ] **Mario come "central"**: l'advertisement dichiara capacità 0x03 (central e
       peripheral). È il meccanismo con cui Mario si collega a Luigi/Peach. Osservarlo con
       btmon avendo un secondo personaggio.
-- [ ] **Servizio OAD Texas Instruments** (`f000ffc0-…`): è l'aggiornamento firmware via radio.
-      Da non toccare. Dal 13/10 `info` (e il JSON delle funzioni) elenca la tabella GATT con il
-      servizio OAD e le sue caratteristiche, nominate secondo il profilo TI: da leggere dal vivo
-      (passo `gatt` di `re-checks`) e confrontare con il profilo (FFC1 Image Identify, FFC2 Image
-      Block, FFC5 Control).
 
 ## 3. Sistema e Bluetooth del PC
 
@@ -109,12 +113,9 @@ Controllo automatico di tutti i punti qui sotto: `./run.sh doctor` (anche nella 
 - [x] **Wi-Fi sui 5 GHz quando si usa Mario** (15/10: era già sui 5 GHz; `doctor` avvisa se il
       Wi-Fi torna a 2,4 GHz sullo stesso chip Broadcom). In alternativa una chiavetta Bluetooth
       USB (`./run.sh -i hci1 …`).
-- [ ] **Autosospensione dopo un riavvio**: verificato il 15/10 senza riavviare che resterà
-      disattivata. L'initramfs contiene `btusb.conf` ma non il modulo `btusb`, che quindi si carica
-      dal disco con l'opzione. Il database hardware di systemd non elenca l'adattatore, powertop è
-      disabilitato e TLP non è installato. Al primo riavvio basta `./run.sh doctor`, che deve dire
-      "disattivata (opzione del modulo btusb)". Per applicarla subito senza riavviare:
-      `sudo modprobe -r btusb && sudo modprobe btusb` (scollega per un attimo i dispositivi Bluetooth).
+- [x] **Autosospensione dopo un riavvio** (chiuso il 18/10): al primo riavvio dall'11/10 (kernel
+      6.12.113) `./run.sh doctor` dice "disattivata (opzione del modulo btusb)", `enable_autosuspend` = `N`
+      e il dispositivo è su `on`, come previsto il 15/10.
 - [ ] **Parametri LE del kernel** (solo se il link torna instabile): supervision timeout e
       intervallo via debugfs, comandi nel README.
 - [x] **Agente di pairing** (15/10): BlueZ tiene una coda degli agenti predefiniti
@@ -173,6 +174,9 @@ Provata solo con eventi simulati.
       (il motore già tiene la sequenza delle basette lette).
 - [ ] **Trigger mancanti**: "salto riuscito" e "colpito" dagli eventi della porta 3 (servono le
       ipotesi confermate della sezione 2), contatori con soglie sul tempo, combinazioni "A oppure B".
+      Pronti da usare dopo la rilettura del 18/10: "tempo quasi scaduto" (`0x1803 = 4`, ultimi 15 s del
+      livello) e "livello finito" (`0x1803 = 3`). L'assistente li ha come regole dal 18/10 (`tempo`,
+      `fine_livello`); nelle avventure oggi si ottengono solo con il trigger generico "evento di gioco".
 - [ ] **Azioni verso Mario**: oltre al volume non c'è nulla finché le porte 4 e 7 restano inerti
       (sezione 7); notifica esterna oggi solo via webhook HTTP (ponte MQTT/WebSocket da scrivere).
 - [ ] **Schermo di gioco**: mappa del percorso disegnata, immagini per basette e colori (catalogo
@@ -292,7 +296,34 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 
 ### Evoluzioni dell'assistente
 
-Fatte il 16/10 (dettagli nel README, sezione Assistente); da provare dal vivo:
+Fatte il 16 e il 18/10 (dettagli nel README, sezione Assistente); da provare dal vivo:
+
+- [x] **Attivazione con «Ehi Mario»** (18/10): Vosk ascolta il microfono di continuo con una grammatica ristretta,
+      Whisper controlla la frase; "Ehi Mario!" da solo fa rispondere "Eccomi!" e ascolta la frase dopo. Spenta di
+      default (casella nella pagina Assistente, `assistant --wake`). Provata solo con frasi sintetiche in un flusso
+      di 195 s: 22 chiamate su 24, 1 frase su 40 accettata per sbaglio.
+  - [ ] **Prova con il microfono vero**, con chi gioca d'accordo: `./run.sh listen --wake` (mostra ogni
+        chiamata e il testo di Whisper, nulla viene salvato), poi `assistant --wake` con Mario e la voce del PC.
+        Da guardare: chiamate perse con la voce di un bambino e a qualche metro dal MacBook; falsi allarmi con
+        la TV o una conversazione accanto (quante frasi scartate all'ora: costano tempo di CPU a Whisper); che
+        Mario non si attivi da solo con la propria voce (ascolto in pausa mentre parla e per 0,8 s dopo); il
+        secondo di silenzio che chiude la frase (troppo corto per un bambino che si ferma a pensare?).
+  - [ ] **Tempi del solo "Ehi Mario!"**: tra la chiamata e "Eccomi!" passano un secondo di silenzio e la
+        trascrizione (3–4 s, di più con il browser aperto); intanto suona subito il segnale "ti ascolto", che
+        però suona anche per le chiamate poi scartate. Con il microfono vero decidere se basta, se il segnale
+        disturba, oppure se verificare le chiamate brevi con Whisper `base` (circa 1 s).
+  - [ ] **Nomi vicini a Mario**: "Ehi Maria, dove sei?" a volte passa come "Ehi Mario, dove sei?" (una volta su
+        due nelle prove), e Mario risponde a una domanda non sua. Se in casa c'è una Maria: frase di attivazione
+        diversa (`--wake-phrase "ciao mario"`, casella "frasi" della pagina) e prova con `listen --wake`.
+  - [ ] Se servisse ascoltare anche mentre Mario parla (interromperlo con "Ehi Mario, basta"): cancellazione
+        dell'eco con il modulo `echo-cancel` di PipeWire, oppure una soglia di confidenza più alta durante la voce.
+  - [ ] Vosk con il vocabolario libero come riconoscimento rapido al posto di Whisper: provato il 18/10 sulle
+        stesse frasi e sbaglia troppo ("raccontano una storia", "poi magari facciamo un salto"). Non conviene,
+        a meno di un modello Vosk più grande.
+- [x] **Regole della partita** (18/10): `tempo` (ultimi 15 s del livello, priorità 2) e `fine_livello`, accese;
+      `moneta` ora legge il totale `0x386B` (prima `0x3861`, il conto alla rovescia), sempre spenta.
+  - [ ] **Prova con Mario**: un livello intero con l'assistente; la frase sugli ultimi 15 secondi deve arrivare in
+        tempo (il modello dei sensori risponde in 1–2 s) e non accavallarsi con la fine del livello.
 
 - [x] **Ingresso vocale** (faster-whisper offline, `./tools/setup_stt.sh`; pulsante di Mario come
       "tieni premuto e parla", pulsante della pagina, `/parla`). Provato con frasi sintetiche: small

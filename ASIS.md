@@ -1,6 +1,6 @@
 # ASIS — stato attuale: cosa è fatto e verificato
 
-Fotografia del progetto LEGO Mario via Bluetooth LE al 13 ottobre 2026 (sera). Qui stanno le attività
+Fotografia del progetto LEGO Mario via Bluetooth LE al 18 ottobre 2026. Qui stanno le attività
 **completate** (spostate da [TODO.md](TODO.md), che ora contiene solo il lavoro aperto); il
 racconto di come ci si è arrivati è in [HANDOFF.md](HANDOFF.md), l'uso in [README.md](README.md).
 Le prove dal vivo citate hanno i log in `docs/sessioni/`.
@@ -34,11 +34,24 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 - **Allarmi hub**: `LOW_VOLTAGE`, `HIGH_CURRENT`, `LOW_SIGNAL_STRENGTH`, `OVER_POWER_CONDITION`
   rispondono "nessun problema" alla richiesta e accettano l'abilitazione degli aggiornamenti.
 - **Azioni hub**: `DISCONNECT` → `WILL_DISCONNECT`, link chiuso in 0,2 s, Mario resta acceso;
-  `SWITCH_OFF` → `WILL_SWITCH_OFF` ×2 + `WILL_DISCONNECT` ×2, scollegato in 6 s, Mario spento.
+  `SWITCH_OFF` → `WILL_SWITCH_OFF` + `WILL_DISCONNECT`, scollegato in 6 s, Mario spento. (Nel log del 12/10
+  i due avvisi comparivano due volte: era il difetto delle notifiche doppie dopo una riconnessione, corretto
+  il 18/10; prima della riconnessione `WILL_DISCONNECT` era arrivato una volta sola.)
   `ACTIVATE_BUSY` / `RESET_BUSY` (0x05/0x06) → `INVALID_USE`: non supportate.
 - **Batteria**: tensione raw 0..2705 = 0..3300 mV (porta 6) e percentuale come proprietà.
 - **Standby**: 3 minuti di Mario connesso e fermo senza comandi: nessun messaggio LWP3 legato
   alle animazioni del display; il protocollo non vede ciò che fa il display.
+- **Reverse engineering dal vivo (`./run.sh re-checks`, 14/10 18:57–19:03)**: la prova c'era stata ma i
+  documenti non la registravano; il log è stato riletto il 18/10 (copia in `docs/sessioni/`).
+  - `annuncio`: manufacturer data `00 43 03 ff ff 00` (tipo 0x43, capacità 0x03 central + peripheral).
+  - `gatt`: quattro servizi; l'OAD ha tre caratteristiche, FFC1 Image Identify, FFC2 Image Block e FFC5
+    Control, come nel profilo TI (solo elencate).
+  - `sistema`: proprietà 0x0B = `0x40` contro `0x43` dell'advertisement, confermato.
+  - `sonno`: confermati il conto alla rovescia `0x3861` (5→1, 8→1, 8→1) con `0x3862 = 2` dopo ogni giro,
+    `0x3866 = 0` + `0x1802 = 2` dopo 32 s da fermo e `0x1802 = 1` + `0x3866 = 1` ripreso in mano.
+  - `porta3`: letti per la prima volta CHAL e VERS; il modo DEBUG trasmette una traccia del firmware
+    (sezione 2). Mario si è spento 12 s dopo l'attivazione di DEBUG: causa da capire.
+  - `gioco`: livello di 60 s con Start, salti, Goomba, Clown Koopa, aereo e carrello; porte 4 e 7 mute.
 
 ## 2. Reverse engineering acquisito
 
@@ -51,18 +64,30 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   monete date dall'ultima basetta (6 o 8 con l'aereo, come una roulette); `0x2042` nemici sconfitti
   (riparte da 1 anche fuori dal livello); `0x3712 = 1` circa 1 s dopo ogni nemico; `0x2022` giri
   sulla piattaforma rotante; macchina a stati del livello `0x1801` (1 allo Start, 0 dopo la fine) e
-  `0x1803` (1 allo Start, 4 in livello, 3 a fine livello, 0 fuori); `0x3812` 2 a fine livello, 1
-  fuori; sequenza di fine livello `0x3004=601, 0x3812=2, 0x3852=0, 0x1803=3, 0x386E=0, 0x3803=100`
-  (601 è costante: non è il tempo); `0x3861` conto alla rovescia a un passo al secondo (5→1, poi
-  8→1) con Mario fermo fuori dal livello, chiuso da `0x3866=0`/`0x1802=2` e da 93 s di immobilità
-  (sonno?), con `0x3866=1`/`0x1802=1` al risveglio; `0x3862` 0 a ogni movimento o basetta, 2 dopo
-  il conto alla rovescia, 4 alla connessione. 22 codici in `codes.GAME_EVENTS`; la conferma dal vivo
-  è il passo `sonno` di `./run.sh re-checks`.
-- **Porta 4 (`Events`)**: non ha mai trasmesso. Scritture (39 prove, fuori e dentro un livello):
+  `0x1803` (1 allo Start, 4 negli ultimi 15 s, 3 a fine livello, 0 fuori); `0x3812` 2 a fine livello, 1
+  fuori; sequenza di fine livello `0x3004=601, 0x3812=2, 0x3852=0, 0x1803=3, 0x386E=0, 0x3803=100`;
+  `0x3861` conto alla rovescia a un passo al secondo (5→1, poi 8→1) con Mario fermo fuori dal livello,
+  chiuso da `0x3866=0`/`0x1802=2` (sonno?), con `0x3866=1`/`0x1802=1` al risveglio (confermato dal vivo
+  il 14/10); `0x3862` 0 a ogni movimento o basetta, 2 dopo ogni conto alla rovescia, 4 alla
+  connessione; `0x0115` 0 con i pantaloni sfilati e 1 rimessi (un solo caso, 14/10). 23 codici in
+  `codes.GAME_EVENTS`.
+- **Durata del livello** (rilettura del 18/10 di tutti i log): in quattro livelli su quattro la fine
+  (`0x1803 = 3` con `0x3004 = 601`) arriva esattamente 15 s dopo `0x1803 = 4` (12/10 17:33:14, 18:10:14,
+  18:26:23; 14/10 19:01:50). I due livelli con lo Start registrato (12/10 18:09:14, 14/10 19:00:51) sono
+  durati 60 s, con il 4 a 45 s; rileggere lo Start durante il livello non lo fa ripartire. Tutti finiti a
+  tempo: `0x3004 = 601` potrebbe essere la durata in decimi (60,1 s), da verificare al traguardo.
+- **Porta 3, modi CHAL, VERS e DEBUG** (14/10): CHAL vale `c0 00 00 00`; VERS `e2 00 01 b5` tre volte e
+  `32 00 32 00`. DEBUG trasmette un flusso continuo a pezzi di 16 byte, cioè una traccia del firmware:
+  record e testo attraversano i confini dei pacchetti. In 12 s, 1.264 byte. Contiene
+  il testo `LEAF 0x65010000 May 27 2025 08:44:31` (0x65010000 è la versione 6.5.01; LEAF forse il nome
+  in codice del firmware) e `Game identifier: LEAFGAMEFILE`, poi record periodici `0a 02 TT TT ff ff ff ff
+  VV 01 00` (57, con `TT` che cresce di circa 200 a ogni record e `VV` tra 94 e 96) mescolati ad altri
+  (`01 06 …`, `01 07 …`, `05 09 …`). `decode --summary` ricompone il flusso e ne estrae il testo.
+- **Porta 4 (`Events`)**: non ha mai trasmesso, nemmeno sottoscritta per tutto il livello del 14/10. Scritture (39 prove, fuori e dentro un livello):
   solo WriteDirectModeData (0x51) è accettato, con feedback "completato", ma il valore non viene
   conservato (rilettura `00 00 00 00`), nessun eco, contatore monete fermo, nessuna reazione.
   WriteDirect (0x50) → `INVALID_USE`; sottocomando 0x00 → `COMMAND_NOT_RECOGNIZED`.
-- **Porta 7 (`Telemetry`)**: non ha mai trasmesso; 70 scritture (zeri, 255, un byte alla volta,
+- **Porta 7 (`Telemetry`)**: non ha mai trasmesso, nemmeno nel livello del 14/10; 70 scritture (zeri, 255, un byte alla volta,
   rampe, ripetizioni) ignorate in silenzio: nessun feedback, nessun errore, rilettura zero. Un
   sospetto di reazione del display si è rivelato un falso positivo.
 - **Conclusione sulla voce diretta**: con i comandi standard LWP3 non esiste una via per far
@@ -70,10 +95,11 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   cattura dell'app ufficiale, firmware).
 - **Basette virtuali su schermo**: lo scanner non legge i barcode mostrati su un LCD (luce emessa,
   polarizzatori, probabile lettura nel vicino infrarosso). Pista chiusa per gli schermi emissivi.
-- **System type**: la proprietà 0x0B risponde `0x40` mentre l'advertisement dichiara `0x43`.
+- **System type**: la proprietà 0x0B risponde `0x40` mentre l'advertisement dichiara `0x43` (riletti
+  entrambi il 14/10).
 - **Servizi GATT**: quattro (GATT, GAP, LEGO 1623/1624, OAD Texas Instruments `f000ffc0-…`),
-  nessuna caratteristica nascosta. Dal 13/10 `info` elenca la tabella GATT con i nomi dei servizi
-  noti e l'avviso sull'OAD (da rileggere dal vivo: passo `gatt` di `re-checks`).
+  nessuna caratteristica nascosta. `info` elenca la tabella GATT con i nomi dei servizi noti e l'avviso
+  sull'OAD; letta dal vivo il 14/10: OAD con FFC1 Image Identify, FFC2 Image Block e FFC5 Control.
 
 ## 3. Sistema e Bluetooth del PC (configurazione in essere)
 
@@ -82,7 +108,8 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   Flask 3.1, waitress 3.0).
 - MacBookPro12,1 con Bluetooth e Wi-Fi Broadcom sullo stesso modulo: la connessione regge con il
   Wi-Fi sulla rete a 5 GHz; autosospensione USB disattivata (`/sys/bus/usb/devices/1-3/power/control`
-  = `on`). Il PC non è stato riavviato dall'11/10; verificato il 15/10 che dopo il riavvio resterà
+  = `on`). Confermato al primo riavvio, il 18/10 (kernel 6.12.113): `doctor` dice "disattivata (opzione
+  del modulo btusb)". Il 15/10 si era verificato in anticipo che dopo il riavvio sarebbe rimasta
   disattivata (initramfs con `btusb.conf` e senza il modulo, nessuna regola di systemd, powertop e TLP
   assenti).
 - Firmware: non serve. Per i controller Apple il kernel usa `btbcm_setup_apple`, che non carica
@@ -177,13 +204,27 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   - Temi da evitare nelle domande e nelle risposte, limite di messaggi, riepilogo del giorno con
     riassunto scritto dal modello.
   - Ricordi per bambino, con scadenza e riassunto automatico.
-- **Test**: 194 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Attivazione con «Ehi Mario» (18/10)**, provata senza microfono. Vosk (modello italiano piccolo, offline,
+  circa il 3–4 % di un core) ascolta con una grammatica ristretta e registra la frase dall'inizio; Whisper la
+  trascrive e la tiene solo se contiene la chiamata, altrimenti la scarta senza conservarne il testo. Ascolto in
+  pausa mentre Mario parla. Su un flusso di 195 s con 64 frasi sintetiche (24 chiamate, 40 frasi scelte per
+  ingannare, voci adulte e da bambino): 22 chiamate su 24, 1 frase su 40 accettata per sbaglio. "Ehi Mario!"
+  da solo: Mario risponde "Eccomi!" e ascolta la frase dopo. `./run.sh listen --wake` per provarla.
+- **Regole della partita (18/10)**: ultimi 15 secondi del livello e fine del livello dagli eventi della porta 3;
+  la regola delle monete legge il totale vero (`0x386B`) invece del conto alla rovescia (`0x3861`).
+- **Notifiche doppie dopo una riconnessione (corretto il 18/10)**: quando era Mario a chiudere il link
+  (spegnimento, sonno, azione DISCONNECT), il vecchio client di bleak restava con la sua connessione D-Bus
+  aperta e BlueZ ne riattivava la sessione di notifica alla riconnessione, quindi ogni messaggio arrivava
+  due volte (`monitor` e `shell` dopo la riconnessione, dashboard dopo "Connetti", `live-checks` e
+  `re-checks`). Ora `MarioDevice` chiude sempre il client; lo provano un BleakClient finto che imita
+  BlueZ e il worker della dashboard. La conferma con Mario è nel TODO.
+- **Test**: 215 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, controlli statici del JavaScript), verdi nel venv dell'host; workflow
   GitHub Actions su Python 3.11 e 3.13.
 - **Packaging**: `pyproject.toml` (`mario-ble` 0.2.0, entry point `mario`, extra `serve` per waitress).
 - **Documentazione**: README (uso, protocollo, funzioni verificate, eventi decodificati, decode,
   avventure, problemi di connessione), HANDOFF (diario con orari), TODO (lavoro aperto), ASIS
-  (questo file), `docs/sessioni/` (14 log delle prove, anonimizzati).
+  (questo file), `docs/sessioni/` (15 log delle prove, anonimizzati).
 - **Git**: repository pubblicato su GitHub (`saulusprime/Mario-IA-Assistant`), documenti
   anonimizzati; esclusi `.venv/`, `/logs/`, `/data/`, `.env`, `third_party/` (cloni di riferimento).
 
@@ -191,8 +232,8 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 
 - **Ingresso**: salto, caduta, rotazione (solo con Mario appoggiato), urto (spento), scossa = ripeti
   a riposo e stop mentre parla, pulsante = ascolto on/off, pantaloni con carattere, basette per
-  famiglia (nemico, premio, start, traguardo, amico), terreno, batteria scarica, moneta (ipotesi,
-  spenta); pause minime e filtro di stabilità per pantaloni e colore; regole modificabili dalla
+  famiglia (nemico, premio, start, traguardo, amico), terreno, batteria scarica, monete del livello (spenta),
+  ultimi 15 secondi e fine del livello; a voce col pulsante o con «Ehi Mario» (18/10); pause minime e filtro di stabilità per pantaloni e colore; regole modificabili dalla
   dashboard; valori combinati accettati come valori singoli.
 - **Uscita indiretta**: voce dal PC con velocità e tono per emozione (piper se disponibile), effetti
   sonori, volume di Mario che segue l'emozione e torna alla base; il nome non viene toccato.

@@ -4,7 +4,7 @@ Applicazione Python 3 per parlare con LEGO Mario (e Luigi / Peach) dal PC: scope
 automatica di tutte le funzioni esposte dal dispositivo, comunicazione bidirezionale grezza
 o decodificata, dashboard web e un assistente che usa Mario come ingresso e uscita di una
 sessione con un modello di linguaggio. Repository: https://github.com/saulusprime/Mario-IA-Assistant
-(stato al 13 ottobre 2026: cosa è fatto e verificato in [ASIS.md](ASIS.md), lavoro aperto in
+(stato al 18 ottobre 2026: cosa è fatto e verificato in [ASIS.md](ASIS.md), lavoro aperto in
 [TODO.md](TODO.md), diario in [HANDOFF.md](HANDOFF.md)).
 
 Mario è un hub LEGO che usa il **LEGO Wireless Protocol 3.0** (LWP3), lo stesso dei
@@ -38,6 +38,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
 ./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect)
 ./run.sh re-checks --steps sonno,porta3   # reverse engineering dal vivo (sezione 2 del TODO): annuncio, GATT, porta 3, porte 4 e 7
+./run.sh re-checks --steps porta3 --port3-modes DEBUG   # un solo modo della porta 3 (DEBUG: traccia del firmware)
 ./run.sh volume 30            # imposta il volume (0-100)
 ./run.sh name "Mario Casa"    # cambia il nome Bluetooth
 ./run.sh prop battery         # legge una proprietà
@@ -54,7 +55,9 @@ il tempo di ricerca, `-i hci1` un altro adattatore, `--any-lego` accetta qualsia
 Opzioni utili di `monitor`: `--combined` (accelerometro + gesti e barcode + RGB insieme, in
 modalità combinata), `--json` (una riga JSON per evento, per collegare Mario ad altri programmi),
 `--duration 120`, `--no-battery`, `--rssi`, `--raw-accel`, `--sub 7:0`. Se Mario cade, `monitor`
-e `shell` aspettano che torni visibile e lo riagganciano (`--no-reconnect` per uscire subito).
+e `shell` aspettano che torni visibile e lo riagganciano (`--no-reconnect` per uscire subito). Fino
+al 18/10 dopo una riconnessione ogni messaggio arrivava due volte: il client Bluetooth precedente
+restava aperto e BlueZ gli rimandava le notifiche; ora viene sempre chiuso.
 `info` salva la mappa delle funzioni in `docs/capabilities-fw-<versione>.json` (`--no-save` per
 evitarlo; il nome Bluetooth non viene scritto).
 
@@ -127,8 +130,10 @@ indicazione "occupato").
 ./run.sh assistant --no-mario      # solo tastiera, modello e voce (prova senza Bluetooth)
 ./run.sh assistant --backend demo  # risposte locali a regole, senza rete
 ./run.sh assistant --voice         # si parla a Mario tenendo premuto il suo pulsante (./tools/setup_stt.sh)
+./run.sh assistant --wake          # oppure chiamandolo: «Ehi Mario, raccontami una storia» (microfono sempre in ascolto)
 ./run.sh assistant --profile Leo   # ricordi del bambino che gioca (più quelli comuni)
 ./run.sh listen                    # prova del riconoscimento vocale: 5 s dal microfono (o --file)
+./run.sh listen --wake             # prova di «Ehi Mario»: mostra le chiamate riconosciute (o --file registrazione.wav)
 ./run.sh web                       # pagina "Assistente" della dashboard
 ```
 
@@ -139,7 +144,10 @@ carattere corrispondente (Mario Fuoco è energico, Mario Gatto giocoso, …); un
 letta dallo scanner dice se è un nemico, un premio, la partenza o il traguardo; il colore
 del terreno aggiunge "scotta, è lava" e simili; il pulsante sulla schiena attiva o sospende
 l'ascolto (con l'ingresso vocale acceso diventa "tieni premuto e parla"); la scossa ripete l'ultima risposta; la batteria sotto il 15 % fa dire a Mario che
-è stanco. Lo stato del corpo (pantaloni, terreno, ultima basetta, gesto, batteria) va nel
+è stanco. Dagli eventi di gioco della porta 3: negli ultimi 15 secondi di un livello (`0x1803 = 4`) Mario mette
+fretta ("Presto! Il tempo sta per finire"), alla fine del livello (`0x1803 = 3`) lo dice con le monete raccolte;
+la regola delle monete (`0x386B`) c'è ma è spenta perché scatterebbe spesso (fino al 18/10 leggeva per errore
+`0x3861`, il conto alla rovescia di Mario fermo). Fase del livello e monete entrano anche nello stato del corpo. Lo stato del corpo (pantaloni, terreno, ultima basetta, gesto, batteria) va nel
 prompt di sistema e, quando cambia, in testa al messaggio. Ogni regola ha una pausa minima
 tra due attivazioni (i gesti arrivano a raffica); l'urto è spento di default.
 
@@ -282,6 +290,43 @@ alla fine. In alternativa: il pulsante "🎤 Tieni premuto e parla" della pagina
   `--stt-model`, `--no-voice-button`. Prova: `./run.sh listen` (5 s dal microfono) o
   `./run.sh listen --file voce.wav`.
 - Il microfono vero non è ancora stato provato: va fatto dall'utente.
+
+**Attivazione con «Ehi Mario».** In alternativa al pulsante, il bambino chiama Mario per nome: "Ehi Mario,
+raccontami una storia" detto tutto d'un fiato, oppure "Ehi Mario!", poi Mario risponde "Eccomi! Dimmi pure." e
+ascolta la frase successiva senza bisogno di richiamarlo. Si accende con la casella "attivazione con la voce"
+della pagina Assistente (con le frasi, di default "ehi mario, hey mario") o con `./run.sh assistant --wake`
+(`--wake-phrase` per altre frasi). È spenta di default: il microfono del PC resta aperto.
+- **Due filtri.** Un processo separato (`mario/assistant/wake_worker.py`) ascolta di continuo con
+  [Vosk](https://alphacephei.com/vosk/) e il modello italiano piccolo (Apache 2.0, offline, installati da
+  `./tools/setup_stt.sh`), con una grammatica ristretta: le frasi di attivazione, alcune parole che le somigliano
+  ("maria", "dario", "marco", "mare", "sono mario"…) e "qualcos'altro" per il resto. Costa circa il 3–4 % di un core.
+  È un primo filtro generoso: quando scatta, registra la frase dall'inizio (gli ultimi secondi restano in memoria)
+  fino a un secondo di silenzio. Il giudice è Whisper, che la trascrive: se nel testo non c'è la frase di
+  attivazione la registrazione si scarta. Whisper scrive a volte un "ehi" detto in fretta come "E Mario", "Ai
+  Mario", "Hai Mario": queste forme valgono solo all'inizio della frase, così "Luigi e Mario" non è una chiamata.
+- **Privacy.** L'audio resta in memoria; su disco va solo la frase registrata, cancellata subito dopo la
+  trascrizione. Una frase scartata non lascia testo da nessuna parte (né pagina, né diario, né stato del
+  riconoscimento, né modello): si vede solo "non era «Ehi Mario»: frase scartata". Mentre Mario parla dagli
+  altoparlanti l'ascolto è in pausa (sentirebbe il proprio nome), e così durante le altre registrazioni e
+  trascrizioni e dopo la fine del tempo di gioco.
+- **Prove del 18/10**, senza microfono: 64 frasi sintetiche (piper, voci "paola" e "riccardo", anche alzate di
+  5 semitoni come voce da bambino), 24 chiamate e 40 frasi scelte per ingannare ("Ehi Maria, dove sei?", "Ciao
+  Dario", "Il mio amico Mario ha un fungo", "Hai visto il film di Mario?", "Ehi Marco"), messe in fila in un flusso
+  di 195 s e lette dal processo di ascolto vero: **22 chiamate su 24** riconosciute, **1 frase su 40** accettata per
+  sbaglio ("Ehi Maria" con la voce da bambino, che Whisper sente come "Ehi Mario"). Vosk ha segnalato 36 frasi,
+  14 scartate da Whisper. Tolto "Mario" dal suggerimento di vocabolario di Whisper il falso spariva ma si
+  perdevano quattro chiamate vere: il suggerimento resta.
+- **Tempi.** Dalla fine della frase: un secondo di silenzio per capire che è finita, poi Whisper (3–4 s con il PC
+  scarico, fino a 6–7 s con il browser aperto su questo i7 a due core), poi il modello. Con il pulsante si
+  risparmia il secondo di attesa. Appena Vosk sente la chiamata suona il segnale "ti ascolto" (anche per le
+  chiamate che Whisper poi scarta). Meglio dire la domanda tutta insieme ("Ehi Mario, …"): con "Ehi Mario!" da
+  solo, "Eccomi!" arriva dopo 4–5 s.
+- **Limite.** I nomi molto vicini a Mario confondono anche Whisper: nelle prove "Ehi Maria, dove sei?" è passato
+  come chiamata una volta su due. Con una Maria in casa conviene un'altra frase di attivazione ("ciao mario").
+- Provata il 18/10 anche la catena intera in una sessione (processo di ascolto, Whisper, sessione, modello demo,
+  file letto alla velocità del parlato): chiamata con domanda, "Ehi Mario!" con "Eccomi!" e ascolto successivo.
+- Prova con il microfono vero: `./run.sh listen --wake` mostra ogni chiamata del primo filtro, il testo di Whisper e
+  se la chiamata è valida (Ctrl+C per finire); con `--file` legge una registrazione invece del microfono.
 
 **Latenza.** Misurata il 13/10/2026 con l'API (tre prompt per modello, rete di casa): tempo alla
 prima frase pronunciabile 0,7–1,6 s con `claude-haiku-5-5` (risposta completa 0,9–1,9 s) e
@@ -520,7 +565,8 @@ formato viene riconosciuto dal contenuto. Lo stato delle porte parte da
 `docs/capabilities-fw-6.5.01.json` (ogni porta nel modo che `monitor` attiva di default,
 `--no-default-modes` per non presumerlo) ed evolve con le sottoscrizioni e le modalità combinate
 viste nel file. `--summary` conta i messaggi per tipo e porta ed elenca gli eventi della porta 3
-con i valori osservati. La procedura per catturare il traffico dell'app ufficiale dal telefono (Android
+con i valori osservati; se la porta 3 è stata in modo DEBUG, ricompone la traccia del firmware dai
+pezzi di 16 byte e ne stampa il testo leggibile. La procedura per catturare il traffico dell'app ufficiale dal telefono (Android
 e iPhone, copione di gioco, analisi) è in [docs/cattura-app-ufficiale.md](docs/cattura-app-ufficiale.md);
 i lettori btsnooz e PacketLogger sono stati provati solo su file sintetici.
 
@@ -576,7 +622,7 @@ prodotto da `./run.sh info --json` l'11 ottobre 2026.
 | 0 | 0x47 | 0 `RAW` (3 × int8), 1 `GEST` (2 × int16); combinabili (verificato) | accelerometro x/y/z (fermo in mano y ≈ 17..60, scossa fino a ±98); gesti (bitfield) |
 | 1 | 0x49 | 0 `TAG` (2 × int16), 1 `RGB` (3 × int8); combinabili (verificato) | `[barcode LE16][colore LE16]`, `FFFF` = nulla; in modo RGB combinato si muove solo il primo canale (0..189) |
 | 2 | 0x4A | 0 `PANT` (1 × int8, 0..63) | codice pantaloni a 6 bit; codici transitori durante il cambio |
-| 3 | 0x46 | 0 `CHAL` (2 × int16), 1 `VERS` (4 × int32), 2 `EVENTS` (2 × int16), 3 `DEBUG` (4 × int32) | eventi di gioco: basetta letta, monete, nemici, giri, stato del livello (sotto) |
+| 3 | 0x46 | 0 `CHAL` (2 × int16), 1 `VERS` (4 × int32), 2 `EVENTS` (2 × int16), 3 `DEBUG` (4 × int32) | eventi di gioco: basetta letta, monete, nemici, giri, stato del livello (sotto); CHAL = `c0 00 00 00` e VERS = `e2 00 01 b5` ×3 + `32 00 32 00` (14/10, significato ignoto); DEBUG = traccia del firmware a pezzi di 16 byte, con il testo `LEAF 0x65010000 May 27 2025 08:44:31` |
 | 4 | 0x55 | 0 `Events` (2 × int16), ingresso **e uscita** | mai trasmesso; accetta solo WriteDirectModeData (0x51) con feedback "completato", ma non conserva il valore e non reagisce |
 | 6 | 0x14 | 0 `VLT L`, 1 `VLT S` (1 × int16, raw 0..2705 = 0..3300 mV) | tensione batteria |
 | 7 | 0x60 | 0 `Telemetry` (16 × int8), ingresso **e uscita** | nuova dal firmware 6.x; mai trasmesso; ignora le scritture in silenzio |
@@ -598,7 +644,8 @@ Gesti (porta 0 modo 1): `0x0001` urto, `0x0010` scossa, `0x0100` rotazione,
 `0x1000` cambio direzione, `0x2000` inversione, `0x8000` salto. Dal vivo: il salto scatta anche
 sollevando, appoggiando o colpendo Mario; la scossa accende `0xA111`; girare Mario in piedi dà
 `0x8102` (bit `0x0002` senza nome); inclinarlo `0x0100`; cadere da pochi cm `0x2100`; il bit
-`0x0040` compare con l'urto quando Mario atterra su una basetta. Senza nome: `0x0008`, `0x0020`, `0x0080`.
+`0x0040` compare con l'urto quando Mario atterra su una basetta. Senza nome: `0x0004` (da solo, due
+volte il 14/10), `0x0008`, `0x0020`, `0x0080`.
 
 Pantaloni (porta 2): `0x00` nessuno, `0x03` Ape, `0x05` Luigi, `0x06` Rana,
 `0x0A` Tanuki, `0x0C` Elica, `0x11` Gatto, `0x12` Fuoco, `0x14` Pinguino,
@@ -618,8 +665,8 @@ Colori: `0x13` bianco, `0x15` rosso, `0x17` blu, `0x18` giallo, `0x1A` nero,
 nougat verificati dal vivo).
 
 Eventi di gioco (porta 3 modo 2, `[codice LE16][valore LE16]`), significato ricavato dal vivo il
-12 ottobre con le basette reali e dalla rilettura dei log con `decode` il 13 ottobre (ipotesi, in
-`codes.GAME_EVENTS`; conferma con `./run.sh re-checks`):
+12 ottobre con le basette reali, dalla rilettura dei log con `decode` il 13 e il 18 ottobre e dalla
+prova `./run.sh re-checks` del 14 ottobre (ipotesi, in `codes.GAME_EVENTS`):
 
 | Codice | Significato |
 |---|---|
@@ -630,12 +677,13 @@ Eventi di gioco (porta 3 modo 2, `[codice LE16][valore LE16]`), significato rica
 | `0x3712` | = 1 circa un secondo dopo ogni nemico sconfitto |
 | `0x2022` | giri contati sulla piattaforma rotante |
 | `0x1801` | livello in corso: 1 alla lettura dello Start, 0 circa 9 s dopo la fine |
-| `0x1803` | fase del gioco: 1 allo Start, 4 pochi secondi dopo (in livello), 3 a fine livello, 0 fuori |
+| `0x1803` | fase del livello: 1 allo Start, 4 negli ultimi 15 s (a 45 s dallo Start), 3 a fine livello, 0 fuori. In quattro livelli su quattro la fine è arrivata esattamente 15 s dopo il 4 |
 | `0x3812` | 2 a fine livello (risultati?), 1 fuori dal livello |
-| `0x3004`, `0x3852`, `0x386E`, `0x3803=100` | sequenza di fine livello (`0x3004` sempre 601, non è il tempo) |
-| `0x3861` | conto alla rovescia a un passo al secondo (5→1, poi 8→1) con Mario fermo fuori dal livello: non sono monete |
+| `0x3004`, `0x3852`, `0x386E`, `0x3803=100` | sequenza di fine livello. `0x3004` vale sempre 601: tutti i livelli osservati sono finiti a tempo, e i due con lo Start registrato sono durati 60 s, quindi forse la durata in decimi (60,1 s); da verificare al traguardo |
+| `0x3861` | conto alla rovescia a un passo al secondo (5→1, poi 8→1) con Mario fermo fuori dal livello: non sono monete (confermato dal vivo il 14/10) |
 | `0x3862` | attività: 0 a ogni movimento o basetta, 2 dopo il conto alla rovescia da fermo, 4 alla connessione |
-| `0x3866`, `0x1802` | 0 e 2 alla fine dei conti alla rovescia (sonno?); 1 e 1 quando Mario viene ripreso in mano (risveglio?) |
+| `0x3866`, `0x1802` | 0 e 2 alla fine dei conti alla rovescia (sonno?); 1 e 1 quando Mario viene ripreso in mano (risveglio?); confermato dal vivo il 14/10 |
+| `0x0115` | 0 con i pantaloni sfilati, 1 quando tornano infilati (un solo caso, 14/10) |
 | `0x3857` | 1 e 0 attorno al colore rosso (lava) con urti e scosse: danno? da riprovare da fermo |
 
 ### Osservazioni dal vivo (sessione `monitor` dell'11 ottobre 2026, 3 minuti e 40 secondi)
@@ -692,6 +740,22 @@ porte o modalità in più rispetto a questa tabella le vedrai nel report.
   tre nuovi: Clown Koopa, aereo, carrello minerario).
 - Gesti: il salto scatta anche sollevando o appoggiando Mario; la scossa accende cinque bit insieme;
   bit nuovo 0x0002 girando Mario in piedi.
+
+### Prova `re-checks` del 14 ottobre 2026 (riletta il 18 ottobre)
+
+Log in `docs/sessioni/re-checks-20261014-185746.txt`; dopo la riconnessione delle 19:00:43 ogni messaggio
+vi compare due volte (il difetto corretto il 18/10).
+
+- Advertisement `00 43 03 ff ff 00`; proprietà 0x0B = `0x40`; quattro servizi GATT, l'OAD con FFC1, FFC2
+  e FFC5 come nel profilo TI.
+- Sonno: con Mario fermo `0x3861` conta 5→1, 8→1, 8→1 (`0x3862 = 2` dopo ogni giro), a 32 s
+  `0x3866 = 0` e `0x1802 = 2`; ripreso in mano `0x1802 = 1` e `0x3866 = 1`.
+- Porta 3: CHAL `c0 00 00 00`, VERS `e2 00 01 b5` ×3 + `32 00 32 00`; DEBUG manda in 12 s 1.264 byte di
+  traccia del firmware (testo e record descritti nella tabella delle porte e in ASIS). Mario si è spento
+  12 s dopo l'attivazione di DEBUG (`WILL_SWITCH_OFF`): da capire se per il modo o per il pulsante.
+- Livello: Start alle 19:00:51, `0x1803 = 4` alle 19:01:35, fine alle 19:01:50 (60 s, come il 12/10
+  alle 18:09); porte 4 e 7 sottoscritte per tutto il livello senza alcuna notifica; nuovo evento `0x0115`
+  con i pantaloni; bit di gesto `0x0004`.
 
 ## Problemi di connessione (MacBook con Bluetooth Broadcom)
 
@@ -803,14 +867,13 @@ established") c'è `./tools/capture_btmon.sh`: avvia `btmon` con sudo, tenta la
 connessione e stampa gli eventi HCI rilevanti; il log completo finisce in `logs/`.
 
 **Autosospensione USB dopo un riavvio.** `/etc/modprobe.d/btusb.conf` agisce al caricamento
-del driver; il PC non è stato riavviato dalla creazione del file (11/10), quindi
-`/sys/module/btusb/parameters/enable_autosuspend` dice ancora `Y` mentre il dispositivo è su `on`
-per la scrittura manuale. Verificato il 15/10 che al riavvio resterà `on`: l'initramfs
-(rigenerato il 14/10) contiene `btusb.conf` e non contiene `btusb`, che quindi si carica dal disco
-con l'opzione; la regola `60-autosuspend.rules` di systemd non riguarda questo adattatore (nessun
-`ID_AUTOSUSPEND` nel database hardware); powertop è disabilitato e TLP non c'è. La regola udev
-`tools/99-mario-btusb.rules` resta una sicurezza in più, non necessaria; `doctor` segnala se
-qualcosa cambia.
+del driver. Il 15/10, senza riavviare, si era verificato che al riavvio sarebbe rimasta `on`:
+l'initramfs (rigenerato il 14/10) contiene `btusb.conf` e non contiene `btusb`, che quindi si carica
+dal disco con l'opzione; la regola `60-autosuspend.rules` di systemd non riguarda questo adattatore
+(nessun `ID_AUTOSUSPEND` nel database hardware); powertop è disabilitato e TLP non c'è. Confermato al
+primo riavvio, il 18/10 (kernel 6.12.113): `enable_autosuspend` = `N`, dispositivo su `on`, `doctor`
+dice "disattivata (opzione del modulo btusb)". La regola udev `tools/99-mario-btusb.rules` resta una
+sicurezza in più, non necessaria; `doctor` segnala se qualcosa cambia.
 
 **Agente di pairing.** L'app registra un agente NoInputNoOutput come predefinito e accetta il
 pairing solo dal Mario che sta collegando (dal 15/10: prima approvava qualsiasi richiesta, e con il
@@ -832,18 +895,19 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-Centonovantaquattro test senza Bluetooth né rete esterna, raggruppati per file:
+Duecentoquindici test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
 | `test_lwp3` (18) | codec LWP3, decodificatori e tabelle di Mario |
 | `test_hubstate` (5) | stato dell'hub da `capabilities`, valori combinati con i dati reali del 12/10 |
-| `test_decode` (9) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri |
-| `test_device_fake` (6) | `MarioDevice` e `BleWorker` con un BleakClient finto: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata; agente di pairing che accetta solo il Mario in collegamento |
+| `test_decode` (10) | catture btsnoop sintetiche (monitor e H4, frammentazione L2CAP), bugreport Android (zip, sezioni btsnooz v1/v2, dati troncati), gzip, PacketLogger big/little endian, log di testo, filtri, traccia DEBUG della porta 3 ricomposta |
+| `test_device_fake` (9) | `MarioDevice` e `BleWorker` con un BleakClient finto che imita anche le sessioni di notifica di BlueZ: connessione con tentativi, richieste, errori, scoperta, tabella GATT nel report, notifiche, modalità combinata; agente di pairing che accetta solo il Mario in collegamento; riconnessione dopo che Mario ha chiuso il link (stesso dispositivo, dispositivo nuovo, dashboard) senza messaggi doppi |
 | `test_syscheck` (5) | `doctor` su un sysfs finto: adattatore Apple, rfkill, servizio, autosospensione (subito e ai prossimi avvii), banda del Wi-Fi (nmcli e `iw`), hub LEGO associati, sandbox Flatpak |
 | `test_db` (6) | database della dashboard |
-| `test_assistant` (30), `test_assistant_ext` (15) | emozioni, regole, sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
+| `test_assistant` (31), `test_assistant_ext` (15) | emozioni, regole (anche ultimi 15 s e fine del livello), sessione, ricordi, sicurezza, scossa/rotazione, piper, caricamento della registrazione per la voce IA, API |
 | `test_assistant_evo` (26) | evoluzioni del 16/10. Modello per i sensori. Storia interattiva: tag, salto, basette per famiglia, scadenze, attesa della fine della voce. Ingresso vocale con processo e registratore finti: pulsante di Mario, pressioni brevi, silenzio. Temi, risposte interrotte, limite di messaggi, riepilogo del giorno. Ricordi: migrazione, profili, scadenza, riassunto |
+| `test_wake` (16) | «Ehi Mario»: motore del processo di ascolto con un riconoscitore finto e audio sintetico (frase intera dall'inizio, risultato finale, pausa, ascolto senza chiamata, tempo massimo, soglia sul rumore), grammatica, verifica della trascrizione sulle frasi delle prove del 18/10, processo finto con il protocollo vero e cancello di pausa, sessione: domanda, frase non rivolta a Mario senza tracce, "Eccomi!" e ascolto successivo, pausa mentre Mario parla; impostazioni della dashboard |
 | `test_openvoice` (21) | voce IA: protocollo del processo, client con un processo finto (avvio, blocco, crash e ripartenza), preparazione in anticipo, voce di riserva, piper nel processo persistente; suoni dei giochi: stili, scelte dell'utente, volume, suoni propri, conversioni (MIDI con il volume alzato e il taglio, dove c'è fluidsynth), lettura del catalogo del sito |
 | `test_rar20` (3) | estrazione RAR 2.0 in Python su un archivio costruito bit per bit (tabelle, letterali, copie corte e sovrapposte, ripetizione, CRC, errori) e da `fetch-sounds` |
 | `test_sounds_web` (3) | pagina Suoni: catalogo, file per l'anteprima e percorsi vietati, assegnazioni, stile, caricamento e cancellazione |
@@ -872,7 +936,7 @@ mario/web/              dashboard: app.py (pagine e API), ble_worker.py, db.py, 
 mario/assistant/        Mario come I/O di un LLM: intents, emotions, tts, llm, behaviours, memory, session, service,
                         openvoice (client della voce IA), openvoice_worker (processo piper + OpenVoice),
                         soundpack (suoni veri dei giochi per gli effetti), stt e stt_worker (ingresso vocale),
-                        worker (processi con i modelli caricati), safety (temi da evitare), report (riepilogo)
+                        wake_worker (ascolto di «Ehi Mario» con Vosk), worker (processi con i modelli caricati), safety (temi da evitare), report (riepilogo)
 mario/adventures/       designer di avventure: model, engine, library, service
 mario/data/             mario_codes.json (tabelle) e adventures/ (tre avventure di esempio)
 mario/env.py            caricamento di .env (chiave API) senza dipendenze
@@ -880,14 +944,15 @@ mario/syscheck.py       controllo del PC per il Bluetooth (`doctor`, pagina Scan
 mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'archivio dei suoni
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
-                        setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale), fetch_mario_sounds.py
-tests/                  test offline (194)
+                        setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale e «Ehi Mario»), fetch_mario_sounds.py
+tests/                  test offline (215)
 docs/                   capabilities-fw-6.5.01.json (mappa delle funzioni), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
-                        convertitore V2, voci piper italiane, modelli Whisper (whisper-models/); ignorati da git
+                        convertitore V2, voci piper italiane, modelli Whisper (whisper-models/), modello
+                        italiano di Vosk (vosk-models/); ignorati da git
 .venv-openvoice/        ambiente della voce IA (torch, OpenVoice, piper), creato da tools/setup_openvoice.sh
-.venv-stt/              ambiente dell'ingresso vocale (faster-whisper), creato da tools/setup_stt.sh
+.venv-stt/              ambiente dell'ingresso vocale (faster-whisper, vosk), creato da tools/setup_stt.sh
 data/                   database SQLite della dashboard, voices/ (registrazioni di riferimento), openvoice-cache/
                         (impronte vocali), sounds/ (tmk/ archivio dei suoni, custom/ suoni propri, cache/
                         conversioni, assegnazioni.json); ignorato da git
