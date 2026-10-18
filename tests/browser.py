@@ -185,6 +185,13 @@ class Browser:
         if not found:
             raise BrowserError(f"elemento non trovato: {selector}")
 
+    def screenshot(self, path: str, whole_page: bool = False) -> None:
+        """Foto della scheda in PNG (per controllare a occhio una pagina dopo qualche clic)."""
+        res = self.command("browsingContext.captureScreenshot",
+                           {"context": self.context, "origin": "document" if whole_page else "viewport"})
+        with open(path, "wb") as fh:
+            fh.write(base64.b64decode(res["data"]))
+
     def errors(self) -> list[str]:
         """Errori della console e del JavaScript arrivati finora (poi la lista riparte da zero)."""
         out = [f"{e['params'].get('type')}: {e['params'].get('text')}" for e in self.events

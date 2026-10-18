@@ -54,6 +54,12 @@ MARIO_SYSTEM_TYPES = {0x43: "Mario", 0x44: "Luigi", 0x45: "Peach"}
 DATA_FILE = Path(__file__).resolve().parent / "data" / "mario_codes.json"
 
 
+def load_raw_tables(path: Path = DATA_FILE) -> dict:
+    """Il file dati così com'è: chiavi esadecimali e la descrizione `_descrizione`."""
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 def load_tables(path: Path = DATA_FILE) -> dict[str, dict[int, dict]]:
     """{tabella: {codice: {"name", "source", "verified", ...}}} dal file dati."""
     with open(path, encoding="utf-8") as fh:
@@ -68,6 +74,17 @@ GESTURES: dict[int, str] = {c: i["name"] for c, i in TABLES["gestures"].items()}
 BARCODES: dict[int, str] = {c: i["name"] for c, i in TABLES["barcodes"].items()}
 COLORS: dict[int, str] = {c: i["name"] for c, i in TABLES["colors"].items()}
 GAME_EVENTS: dict[int, str] = {c: i["name"] for c, i in TABLES["game_events"].items()}
+# codici che pyLegoMario conosce senza nome: a parte, così non diventano basette "nemico"
+BARCODES_UNNAMED: dict[int, dict] = TABLES.get("barcodes_unnamed", {})
+
+
+def barcode_label(code: int) -> str:
+    """Nome della basetta per le descrizioni: tabella, codice noto senza nome, o sconosciuto."""
+    if code in BARCODES:
+        return BARCODES[code]
+    if code in BARCODES_UNNAMED:
+        return f"senza nome (in pyLegoMario, strisce {BARCODES_UNNAMED[code].get('stripes', '?')})"
+    return "sconosciuto"
 
 
 def table_info(kind: str, code: int) -> Optional[dict]:
@@ -159,7 +176,7 @@ def decode_value(io_type: int, mode: Optional[int], data: bytes, values: list) -
             barcode, color = le16(data[0:2]), le16(data[2:4])
             parts = []
             if barcode != 0xFFFF:
-                parts.append(f"barcode 0x{barcode:04X} = {BARCODES.get(barcode, 'sconosciuto')}")
+                parts.append(f"barcode 0x{barcode:04X} = {barcode_label(barcode)}")
             if color != 0xFFFF:
                 parts.append(f"colore 0x{color:04X} = {COLORS.get(color, 'sconosciuto')}")
             return "; ".join(parts) or "nessun barcode/colore (sensore sollevato)"

@@ -2,7 +2,7 @@
 {% block content %}
 <section class="card">
   <h1>Accessori di Mario</h1>
-  <p class="muted">Pantaloni, basette con barcode e colori del terreno conosciuti dal software; spunta quelli che possiedi. "Verificato" indica la data in cui il codice è stato confermato con il Mario fisico; le colonne "visti" si aggiornano da sole quando il sensore li riconosce.</p>
+  <p class="muted">Pantaloni, basette con barcode e colori del terreno conosciuti dal software; spunta quelli che possiedi. "Verificato" indica la data in cui il codice è stato confermato con il Mario fisico; le colonne "visti" si aggiornano da sole quando il sensore li riconosce. <a href="/codes">Tutte le tabelle dei codici, anche gesti ed eventi di gioco →</a></p>
   <div class="actions">
     {% for kind in kinds %}<button class="tab {{ 'active' if loop.first }}" data-tab="{{ kind }}">{{ kind_labels[kind] }} <small>{{ stats.get(kind, {}).get('owned', 0) }}/{{ stats.get(kind, {}).get('total', 0) }}</small></button>{% endfor %}
     <span class="spacer"></span>

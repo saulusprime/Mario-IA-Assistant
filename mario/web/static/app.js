@@ -216,7 +216,13 @@
     startStream();
   }
 
-  if (page === "accessories") {
+  if (page === "accessories" && $("#codes-tables")) {
+    $$("button.code-tab").forEach((b) => b.addEventListener("click", () => { $$("button.code-tab").forEach((x) => x.classList.toggle("active", x === b)); $$(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== b.dataset.tab)); }));
+    const filter = () => { const q = $("#codes-q").value.toLowerCase(), onlyVerified = $("#codes-verified").checked; $$(".codes-table tbody tr").forEach((tr) => tr.classList.toggle("hidden", (q && !tr.textContent.toLowerCase().includes(q)) || (onlyVerified && !tr.dataset.verified))); };
+    $("#codes-q").addEventListener("input", filter); $("#codes-verified").addEventListener("change", filter);
+  }
+
+  if (page === "accessories" && $("#acc-q")) {
     const msg = $("#acc-msg");
     $$("button.tab").forEach((b) => b.addEventListener("click", () => { $$("button.tab").forEach((x) => x.classList.toggle("active", x === b)); $$(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== b.dataset.tab)); }));
     const filter = () => { const q = $("#acc-q").value.toLowerCase(), onlyOwned = $("#acc-only-owned").checked; $$(".acc-table tbody tr").forEach((tr) => { const text = tr.textContent.toLowerCase() + " " + $$("input[type=text]", tr).map((i) => i.value.toLowerCase()).join(" "); const owned = $(".acc-owned", tr).checked; tr.classList.toggle("hidden", (q && !text.includes(q)) || (onlyOwned && !owned)); }); };

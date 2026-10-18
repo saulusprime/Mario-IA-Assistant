@@ -96,6 +96,12 @@ class MarioCodesTests(unittest.TestCase):
                          "colore 0x0025 = verde (erba)")
         self.assertIn("sollevato", codes.decode_value(codes.IO_MARIO_SCANNER, 0, bytes.fromhex("ff ff ff ff"), []))
         self.assertEqual(codes.decode_value(codes.IO_MARIO_SCANNER, 1, bytes([1, 2, 3]), []), "RGB r=1 g=2 b=3")
+        # codice che pyLegoMario conosce senza nome: descritto con le strisce, ma non è una basetta della tabella
+        self.assertIn("senza nome (in pyLegoMario, strisce green red blue purple pink)",
+                      codes.decode_value(codes.IO_MARIO_SCANNER, 0, bytes.fromhex("10 00 ff ff"), []))
+        self.assertNotIn(0x0010, codes.BARCODES)
+        self.assertEqual(codes.barcode_label(0x0FFE), "sconosciuto")
+        self.assertEqual(codes.table_info("barcodes", 0x0002)["stripes"], "green red blue pink yellow")
 
     def test_barcode_table_from_pylegomario(self):
         # codici a 16 bit little endian: '0x2f01ffff' nel JSON = byte 2f 01 -> 0x012F

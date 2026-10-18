@@ -1,5 +1,5 @@
 {
- "_descrizione": "Tabelle di LEGO Mario (fw 6.5.01). Chiavi esadecimali. 'fonte': community (bricklife, legomario.py, pyLegoMario, node-poweredup) o 'dal vivo' (questo progetto); 'verificato': confermato con il Mario dell'utente, con la data.",
+ "_descrizione": "Tabelle di LEGO Mario (fw 6.5.01). Chiavi esadecimali. 'fonte': community (bricklife, legomario.py, pyLegoMario, node-poweredup) o 'dal vivo' (questo progetto); 'verificato': confermato con il Mario dell'utente, con la data; 'strisce': colori delle strisce del barcode secondo pyLegoMario (ALL_RGB_CODES.json); 'nota': discordanze fra le fonti. 'barcodes_unnamed': codici che pyLegoMario conosce senza nome, tenuti a parte perché non diventino basette nemico.",
  "pants": {
   "0x00": {
    "name": "nessun pantalone",
@@ -24,12 +24,14 @@
   "0x0A": {
    "name": "Tanuki (Tanooki)",
    "source": "bricklife",
-   "verified": null
+   "verified": null,
+   "note": "legomario.py dà 0x0A = Propeller e 0x0C = Tanooki, al contrario di bricklife e pyLegoMario: da verificare con i pantaloni veri"
   },
   "0x0C": {
    "name": "Elica (Propeller)",
    "source": "bricklife",
-   "verified": null
+   "verified": null,
+   "note": "legomario.py dà 0x0A = Propeller e 0x0C = Tanooki, al contrario di bricklife e pyLegoMario: da verificare con i pantaloni veri"
   },
   "0x11": {
    "name": "Gatto (Cat)",
@@ -118,242 +120,290 @@
   "0x0002": {
    "name": "Goomba (verificato dal vivo il 12/10/2026 con due basette; stesso codice: Fly Guy, Foo, Ant Trooper, Ninji, Para-Goomba, Goombrat, Bone Goomba, Bullet Bill, Swoop, Scuttlebug)",
    "source": "pyLegoMario / legomario.py",
-   "verified": "12/10/2026"
+   "verified": "12/10/2026",
+   "stripes": "green red blue pink yellow"
   },
   "0x0003": {
    "name": "Shy Guy / Tipo Timido (secondo legomario.py)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red blue pink purple"
   },
   "0x0004": {
    "name": "Womp (Whomp)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red blue pink cyan"
   },
   "0x000B": {
    "name": "LEGO NES",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red blue yellow pink"
   },
   "0x000D": {
    "name": "Twimp (Thwimp)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red blue yellow purple"
   },
   "0x000E": {
    "name": "Bob-omba",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red blue yellow cyan"
   },
   "0x0014": {
    "name": "Rotazione (piattaforma rotante: girando Mario conta i giri e dà monete; per legomario.py: Refresh; verificata il 12/10/2026)",
    "source": "pyLegoMario / legomario.py",
-   "verified": "12/10/2026"
+   "verified": "12/10/2026",
+   "stripes": "green red blue purple lime"
   },
   "0x0015": {
    "name": "Blocco tempo",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red blue cyan pink"
   },
   "0x001D": {
    "name": "Bowser",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red blue lime purple"
   },
   "0x0020": {
    "name": "Toadette",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink blue yellow"
   },
   "0x0021": {
    "name": "Tesoro 1",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink blue purple"
   },
   "0x0023": {
    "name": "Fungo velenoso",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink blue lime"
   },
   "0x0029": {
    "name": "Blocco ?",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink yellow blue"
   },
   "0x002B": {
    "name": "Tesoro 2",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink yellow purple"
   },
   "0x002C": {
    "name": "Ponte scorrevole",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink yellow cyan"
   },
   "0x002E": {
    "name": "Nuvola (zattera di nuvole del set 71360, verificata dal vivo il 12/10/2026)",
    "source": "pyLegoMario / legomario.py",
-   "verified": "12/10/2026"
+   "verified": "12/10/2026",
+   "stripes": "green red pink purple blue"
   },
   "0x0030": {
    "name": "Nella (Buzzy Beetle) (stesso codice: Para-Beetle, Mechakoopa)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink purple yellow"
   },
   "0x0031": {
    "name": "Piattaforma mobile",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink purple cyan"
   },
   "0x0035": {
    "name": "Fiammetto (Lava Bubble)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink cyan yellow"
   },
   "0x0037": {
    "name": "Twomp (Thwomp)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink cyan lime"
   },
   "0x003C": {
    "name": "Toad",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red pink lime cyan"
   },
   "0x005B": {
    "name": "Blocco POW",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow blue pink"
   },
   "0x005F": {
    "name": "Interruttore P",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow blue lime"
   },
   "0x0060": {
    "name": "Boom Boom",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow pink blue"
   },
   "0x0063": {
    "name": "Super Fungo",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow pink cyan"
   },
   "0x006A": {
    "name": "Castello di Peach",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow purple blue"
   },
   "0x006B": {
    "name": "Occhio di pietra",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow purple pink"
   },
   "0x006E": {
    "name": "Marghibruco (Pokey)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow purple lime"
   },
   "0x006F": {
    "name": "Piattaforma scorrevole",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red yellow cyan blue"
   },
   "0x0079": {
    "name": "Pipistrello Swoop (secondo legomario.py)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple blue pink"
   },
   "0x007B": {
    "name": "Super Stella",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple blue yellow"
   },
   "0x007E": {
    "name": "Pianta Piranha",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple pink blue"
   },
   "0x0080": {
    "name": "Tesoro 3",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple pink yellow"
   },
   "0x0081": {
    "name": "Peeper",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple pink cyan"
   },
   "0x0088": {
    "name": "Re Boo",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple yellow blue"
   },
   "0x0089": {
    "name": "Cheep Cheep (stesso codice: Urchin, Spiny Cheep Cheep, Torpedo Ted)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple yellow pink"
   },
   "0x008B": {
    "name": "Pinguino piccolo",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple yellow cyan"
   },
   "0x0091": {
    "name": "Chiave inglese",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple cyan lime"
   },
   "0x0092": {
    "name": "Ampere (Amp)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red purple lime blue"
   },
   "0x0099": {
    "name": "Bowser Jr.",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red cyan blue yellow"
   },
   "0x009F": {
    "name": "Yoshi rosa",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red cyan pink purple"
   },
   "0x00A0": {
    "name": "Ingranaggio",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red cyan pink lime"
   },
   "0x00AB": {
    "name": "Altalena",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red cyan purple blue"
   },
   "0x00AE": {
    "name": "Boo",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red cyan purple yellow"
   },
   "0x00AF": {
    "name": "Start Luigi (tubo di partenza)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red cyan purple lime"
   },
   "0x00B7": {
    "name": "Traguardo (bandiera)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "green red lime blue yellow"
   },
   "0x00B8": {
    "name": "Start Mario (tubo di partenza)",
    "source": "pyLegoMario / legomario.py",
-   "verified": "11/10/2026"
+   "verified": "11/10/2026",
+   "stripes": "green red lime blue purple"
   },
   "0x00F2": {
    "name": "Bulbo (Bully)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red pink yellow green"
   },
   "0x00F5": {
    "name": "Bowser Jr. nel Clown Koopa (letta dal vivo il 12/10/2026: icona del Clown Koopa; pyLegoMario dà Bowser Jr. = 0x99, forse basetta di un altro set)",
@@ -363,42 +413,50 @@
   "0x00F4": {
    "name": "Forziere di monete",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red pink cyan green"
   },
   "0x012F": {
    "name": "Dondolo (Swing)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red yellow purple green"
   },
   "0x0136": {
    "name": "Regalo",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red yellow green pink"
   },
   "0x013D": {
    "name": "Ruboniglio (Nabbit)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red yellow pink purple"
   },
   "0x0144": {
    "name": "Frutto rosso",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red yellow purple cyan"
   },
   "0x014B": {
    "name": "Lemmy",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red purple pink green"
   },
   "0x014D": {
    "name": "Start Peach (tubo di partenza)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red purple yellow green"
   },
   "0x0154": {
    "name": "Martelkoopa (Hammer Bro)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red purple lime pink"
   },
   "0x015B": {
    "name": "Carrello minerario (set 71425 Corsa nella miniera di Diddy Kong; letto dal vivo il 12/10/2026)",
@@ -408,7 +466,8 @@
   "0x015E": {
    "name": "Bowser gigante (The Mighty Bowser)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red purple lime yellow"
   },
   "0x0160": {
    "name": "Aereo (set 71425 Corsa nella miniera di Diddy Kong; dà 6 o 8 monete circa 3 s dopo la lettura; letto dal vivo il 12/10/2026)",
@@ -418,7 +477,448 @@
   "0x0164": {
    "name": "Strutzi (Birdo)",
    "source": "pyLegoMario / legomario.py",
-   "verified": null
+   "verified": null,
+   "stripes": "blue red purple green lime"
+  }
+ },
+ "barcodes_unnamed": {
+  "0x0005": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue pink lime"
+  },
+  "0x000F": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue yellow lime"
+  },
+  "0x0010": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue purple pink"
+  },
+  "0x0012": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue purple yellow"
+  },
+  "0x0013": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue purple cyan"
+  },
+  "0x0017": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue cyan yellow"
+  },
+  "0x0018": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue cyan purple"
+  },
+  "0x0019": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue cyan lime"
+  },
+  "0x001A": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue lime pink"
+  },
+  "0x001C": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue lime yellow"
+  },
+  "0x001E": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red blue lime cyan"
+  },
+  "0x0022": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink blue cyan"
+  },
+  "0x002D": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink yellow lime"
+  },
+  "0x0032": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink purple lime"
+  },
+  "0x0033": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink cyan blue"
+  },
+  "0x0036": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink cyan purple"
+  },
+  "0x0038": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink lime blue"
+  },
+  "0x003A": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink lime yellow"
+  },
+  "0x003B": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red pink lime purple"
+  },
+  "0x005D": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow blue purple"
+  },
+  "0x005E": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow blue cyan"
+  },
+  "0x0062": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow pink purple"
+  },
+  "0x0064": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow pink lime"
+  },
+  "0x006D": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow purple cyan"
+  },
+  "0x0070": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow cyan pink"
+  },
+  "0x0072": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow cyan purple"
+  },
+  "0x0073": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow cyan lime"
+  },
+  "0x0074": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow lime blue"
+  },
+  "0x0075": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow lime pink"
+  },
+  "0x0077": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow lime purple"
+  },
+  "0x0078": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red yellow lime cyan"
+  },
+  "0x007C": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple blue cyan"
+  },
+  "0x007D": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple blue lime"
+  },
+  "0x0082": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple pink lime"
+  },
+  "0x008C": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple yellow lime"
+  },
+  "0x008D": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple cyan blue"
+  },
+  "0x008E": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple cyan pink"
+  },
+  "0x0090": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple cyan yellow"
+  },
+  "0x0093": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple lime pink"
+  },
+  "0x0095": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple lime yellow"
+  },
+  "0x0096": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red purple lime cyan"
+  },
+  "0x0097": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan blue pink"
+  },
+  "0x009A": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan blue purple"
+  },
+  "0x009B": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan blue lime"
+  },
+  "0x009C": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan pink blue"
+  },
+  "0x009E": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan pink yellow"
+  },
+  "0x00A6": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan yellow blue"
+  },
+  "0x00A7": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan yellow pink"
+  },
+  "0x00A9": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan yellow purple"
+  },
+  "0x00AA": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan yellow lime"
+  },
+  "0x00AC": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan purple pink"
+  },
+  "0x00B0": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan lime blue"
+  },
+  "0x00B1": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan lime pink"
+  },
+  "0x00B3": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan lime yellow"
+  },
+  "0x00B4": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red cyan lime purple"
+  },
+  "0x00B5": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime blue pink"
+  },
+  "0x00B9": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime blue cyan"
+  },
+  "0x00BA": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime pink blue"
+  },
+  "0x00BC": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime pink yellow"
+  },
+  "0x00BD": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime pink purple"
+  },
+  "0x00BE": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime pink cyan"
+  },
+  "0x00C4": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime yellow blue"
+  },
+  "0x00C5": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime yellow pink"
+  },
+  "0x00C7": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime yellow purple"
+  },
+  "0x00C8": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime yellow cyan"
+  },
+  "0x00C9": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime purple blue"
+  },
+  "0x00CA": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime purple pink"
+  },
+  "0x00CC": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime purple yellow"
+  },
+  "0x00CD": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime purple cyan"
+  },
+  "0x00CE": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime cyan blue"
+  },
+  "0x00CF": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime cyan pink"
+  },
+  "0x00D1": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime cyan yellow"
+  },
+  "0x00D2": {
+   "name": "senza nome",
+   "source": "pyLegoMario",
+   "verified": null,
+   "stripes": "green red lime cyan purple"
   }
  },
  "colors": {

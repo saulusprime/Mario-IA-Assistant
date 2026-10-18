@@ -50,6 +50,16 @@ class EventsPageTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/charts?device_id=999").get_json()["gestures"], {})
         self.assertIn(b"/events", self.client.get("/").data)  # voce di menù
 
+    def test_codes_page_and_api(self):
+        html = self.client.get("/codes").data.decode("utf-8")
+        for needle in ("Eventi di gioco", "0x1803", "fase del livello", "legomario.py", "ipotesi", "/codes",
+                       "Basette senza nome", 'class="stripe" style="background:pink"', "al contrario di bricklife"):
+            self.assertIn(needle, html)
+        self.assertIn('href="/codes"', self.client.get("/accessories").data.decode("utf-8"))
+        tables = self.client.get("/api/codes").get_json()["tables"]
+        self.assertEqual(tables["gestures"]["0x8000"]["source"], "legomario.py")
+        self.assertIn("_descrizione", tables)
+
     def test_scan_page_system_checks(self):
         from mario import syscheck
         fake = [syscheck.Check("autosospensione", syscheck.WARN, "hci0: attiva", "echo on | sudo tee x"),

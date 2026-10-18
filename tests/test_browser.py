@@ -54,7 +54,7 @@ class DashboardInBrowserTests(unittest.TestCase):
 
     def test_every_page_loads_without_javascript_errors(self):
         from mario.web.app import MENU
-        for _key, _label, href in MENU + [("play", "", "/adventures/play")]:
+        for _key, _label, href in MENU + [("play", "", "/adventures/play"), ("codes", "", "/codes")]:
             b = self.open(href)
             self.assertTrue(b.js("document.querySelector('main') !== null"), href)
             b.js("new Promise((ok) => setTimeout(ok, 400))")   # richieste asincrone della pagina
@@ -88,6 +88,17 @@ class DashboardInBrowserTests(unittest.TestCase):
         self.assertEqual(b.js("[...document.querySelectorAll('#steps-table tbody .st-title')].map((e) => e.value)"),
                          ["Start Mario", "Goomba"])
         self.assertNoErrors("editor")
+
+    def test_codes_tables_filter(self):
+        b = self.open("/codes")
+        self.assertEqual(b.js("document.querySelectorAll('button.code-tab').length"), 6)
+        b.click("button.code-tab[data-tab='gestures']")
+        self.assertTrue(b.js("!document.querySelector(\"[data-pane='gestures']\").classList.contains('hidden')"))
+        visible = "[...document.querySelectorAll(\"[data-pane='gestures'] tbody tr\")].filter((tr) => !tr.classList.contains('hidden')).length"
+        total = b.js(visible)
+        b.click("#codes-verified")
+        self.assertLess(b.js(visible), total)
+        self.assertNoErrors("tabelle")
 
     def test_play_and_replay(self):
         client = self.app.test_client()

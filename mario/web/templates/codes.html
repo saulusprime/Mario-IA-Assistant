@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Tabelle dei codici{% endblock %}
+{% block content %}
+<section class="card" id="codes-tables">
+  <div class="actions"><a href="/accessories">← accessori</a><span class="spacer"></span><a href="/api/codes"><button class="small ghost">JSON</button></a></div>
+  <h1>Tabelle dei codici</h1>
+  <p class="muted">{{ description }} I nomi lunghi degli eventi di gioco sono le osservazioni dal vivo; "ipotesi" vuol dire che il significato va ancora confermato (TODO, sezione 2).</p>
+  <div class="actions">
+    {% for t in tables %}<button class="tab code-tab {{ 'active' if loop.first }}" data-tab="{{ t.kind }}">{{ t.label }} <small title="verificati / totale">{{ t.verified }}/{{ t.rows|length }}</small></button>{% endfor %}
+    <span class="spacer"></span>
+    <label>Cerca <input type="text" id="codes-q" placeholder="codice, nome, fonte"></label>
+    <label><input type="checkbox" id="codes-verified"> solo verificati</label>
+  </div>
+  {% for t in tables %}
+  <div class="tabpane {{ '' if loop.first else 'hidden' }}" data-pane="{{ t.kind }}">
+    <table class="compact codes-table">
+      <thead><tr><th>Codice</th><th>Nome</th>{% if t.kind.startswith('barcodes') %}<th>Strisce</th>{% endif %}<th>Fonte</th><th>Verificato</th></tr></thead>
+      <tbody>{% for r in t.rows %}
+        <tr data-verified="{{ 1 if r.verified else '' }}"><td><code>{{ r.hex }}</code></td><td>{{ r.name }}{% if r.note %}<br><span class="small warn-text">⚠ {{ r.note }}</span>{% endif %}</td>
+          {% if t.kind.startswith('barcodes') %}<td class="nowrap stripes" title="{{ r.stripes or '' }}">{% for c in (r.stripes or '').split() %}<span class="stripe" style="background:{{ c }}" title="{{ stripe_colors.get(c, c) }}"></span>{% endfor %}<span class="hidden">{{ r.stripes }}</span></td>{% endif %}
+          <td class="nowrap">{{ r.source }}</td>
+          <td class="nowrap">{% if r.verified %}<span class="badge ok" title="confermato con il Mario dell'utente">{{ r.verified }}</span>{% elif r.source == 'dal vivo' %}<span class="muted">visto</span>{% else %}<span class="muted" title="dalle tabelle della community, non ancora visto dal vivo">comunità</span>{% endif %}{% if r.hypothesis %} <span class="badge warn" title="significato da confermare">ipotesi</span>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

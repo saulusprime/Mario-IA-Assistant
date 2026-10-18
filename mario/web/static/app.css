@@ -95,3 +95,7 @@ svg.chart { width:100%; height:220px; background:#fafbfc; border:1px solid var(-
 /* ---- suoni ---- */
 .chip { display:inline-flex; align-items:center; gap:.2rem; padding:.05rem .4rem .05rem .1rem; margin:.1rem .2rem .1rem 0; border:1px solid var(--line); border-radius:999px; background:#fafbfc; font-size:.86rem; }
 .nowrap { white-space:nowrap; }
+
+/* ---- tabelle dei codici ---- */
+.stripe { display:inline-block; width:.9rem; height:1.1rem; margin-right:1px; border:1px solid rgba(0,0,0,.25); vertical-align:middle; }
+.warn-text { color:#9a6700; }

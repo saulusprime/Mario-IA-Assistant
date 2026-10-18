@@ -112,6 +112,11 @@ ALERT_NAMES = {"low_voltage": HubAlertType.LOW_VOLTAGE, "high_current": HubAlert
                "low_signal": HubAlertType.LOW_SIGNAL_STRENGTH, "over_power": HubAlertType.OVER_POWER_CONDITION}
 
 
+CODE_TABLES = {"pants": "Pantaloni", "barcodes": "Basette", "barcodes_unnamed": "Basette senza nome", "colors": "Colori",
+               "gestures": "Gesti", "game_events": "Eventi di gioco"}
+STRIPE_COLORS = {"green": "verde", "red": "rosso", "blue": "blu", "pink": "rosa", "yellow": "giallo", "purple": "viola",
+                 "lime": "verde chiaro", "cyan": "azzurro"}
+
 RUN_KIND_LABELS = {"start": "🚩 inizio", "step": "📜 passo", "tile": "🔲 basetta", "progress": "➕ progresso",
                    "success": "⭐ riuscito", "timeout": "⏰ tempo scaduto", "fail": "❌ perso", "message": "💬 messaggio",
                    "score": "🪙 punti", "volume": "🔊 volume", "music": "🎵 musica", "webhook": "🌐 webhook",
@@ -316,6 +321,23 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
                     "color": codes.verified_codes("colors"), "other": {}}
         return render_template("accessories.html", page="accessories", grouped=grouped,
                                stats=db.accessory_stats(), kinds=ACCESSORY_KINDS, verified=verified)
+
+    @app.get("/codes")
+    def page_codes():
+        tables = []
+        for kind, label in CODE_TABLES.items():
+            rows = [{"code": code, "hex": f"0x{code:02X}" if kind == "pants" else f"0x{code:04X}", **info}
+                    for code, info in sorted(codes.TABLES.get(kind, {}).items())]
+            tables.append({"kind": kind, "label": label, "rows": rows,
+                           "verified": sum(1 for r in rows if r.get("verified"))})
+        return render_template("codes.html", page="accessories", tables=tables, stripe_colors=STRIPE_COLORS,
+                               description=codes.load_raw_tables().get("_descrizione", ""))
+
+    @app.get("/api/codes")
+    @api
+    def api_codes():
+        """Le tabelle di mario/data/mario_codes.json così come sono (chiavi esadecimali)."""
+        return ok(tables=codes.load_raw_tables())
 
     @app.get("/assistant")
     def page_assistant():
