@@ -1376,6 +1376,11 @@ def cmd_decode(args) -> int:
                       summary=args.summary, downstream=not args.no_tx, assume_default_modes=not args.no_default_modes)
 
 
+def cmd_bridge(args) -> int:
+    from . import bridge
+    return bridge.main(args)
+
+
 TOOLS = {"live-checks": ("live_checks.py", "verifiche dal vivo guidate a voce (pulsante, pantaloni, gesti, RGB, ...)"),
          "catalog-tiles": ("catalog_tiles.py", "sessione guidata con le basette reali (codici, eventi, database)"),
          "probe-port4": ("probe_port4.py", "scritture a scatola nera su porta 4 e 7, osservazione di standby"),
@@ -1704,6 +1709,22 @@ def build_parser() -> argparse.ArgumentParser:
                                       "USB, Wi-Fi a 2,4 GHz, pairing (senza sudo, senza Mario)")
     p.add_argument("--json", action="store_true", help="risultati in JSON")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("bridge", help="ponte verso altri programmi: eventi di Mario con un nome su MQTT e/o WebSocket "
+                                      "(da monitor --json sullo standard input o dal flusso della dashboard)")
+    p.add_argument("--dashboard", metavar="URL", help="legge dal flusso della dashboard, es. http://127.0.0.1:8765 "
+                                                      "(altrimenti le righe di `monitor --json` dallo standard input)")
+    p.add_argument("--token", help="token della dashboard, se protetta (vedi `web --token`)")
+    p.add_argument("--mqtt", metavar="HOST[:PORTA]", help="pubblica sul broker MQTT (QoS 0), argomento <topic>/<tipo>")
+    p.add_argument("--topic", default="mario", help="prefisso degli argomenti MQTT (default mario)")
+    p.add_argument("--mqtt-user", help="utente MQTT")
+    p.add_argument("--mqtt-password", help="password MQTT")
+    p.add_argument("--client-id", default="mario-bridge", help="client id MQTT (default mario-bridge)")
+    p.add_argument("--ws", type=int, metavar="PORTA", help="server WebSocket su questa porta: ogni fatto ai client collegati")
+    p.add_argument("--ws-host", default="127.0.0.1", help="indirizzo del server WebSocket (default 127.0.0.1, solo questo PC)")
+    p.add_argument("--print", action="store_true", help="stampa anche i fatti (già così senza --mqtt e --ws)")
+    p.add_argument("--raw", action="store_true", help="pubblica anche gli eventi grezzi (tipo 'raw')")
+    p.set_defaults(func=cmd_bridge)
 
     for name, (_script, help_text) in TOOLS.items():
         p = sub.add_parser(name, help=f"{help_text} (tools/{_script}; opzioni dopo il nome)")
