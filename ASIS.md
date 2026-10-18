@@ -107,21 +107,25 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   sull'host con `flatpak-spawn`; venv dell'host in `.venv` (Python 3.13, bleak 3.0.2, dbus-fast 5.2,
   Flask 3.1, waitress 3.0).
 - MacBookPro12,1 con Bluetooth e Wi-Fi Broadcom sullo stesso modulo: la connessione regge con il
-  Wi-Fi sulla rete a 5 GHz; autosospensione USB disattivata (`/sys/bus/usb/devices/1-3/power/control`
+  Wi-Fi sulla rete a 5 GHz (`doctor` avvisa se torna a 2,4 GHz; in alternativa si può usare una chiavetta
+  Bluetooth USB con `./run.sh -i hci1 …`); autosospensione USB disattivata (`/sys/bus/usb/devices/1-3/power/control`
   = `on`). Confermato al primo riavvio, il 18/10 (kernel 6.12.113): `doctor` dice "disattivata (opzione
   del modulo btusb)". Il 15/10 si era verificato in anticipo che dopo il riavvio sarebbe rimasta
   disattivata (initramfs con `btusb.conf` e senza il modulo, nessuna regola di systemd, powertop e TLP
   assenti).
-- Firmware: non serve. Per i controller Apple il kernel usa `btbcm_setup_apple`, che non carica
-  nessun `.hcd` (sorgenti del kernel 6.12, 15/10); la ricerca del file dell'11 e del 13/10 partiva da
-  una premessa sbagliata.
+- Firmware: non serve. Per i controller Apple (05ac, interfaccia ff/01/01) il kernel usa
+  `btbcm_setup_apple`, che non carica nessun `.hcd`; la patch la cerca solo `btbcm_setup_patchram`, usata per
+  gli altri Broadcom (sorgenti del kernel 6.12, 15/10). Un file in `/lib/firmware/brcm/` non verrebbe letto, e
+  caricare una patch a mano (comandi HCI del vendor a ogni avvio) richiederebbe un file che non esiste in
+  pubblico. La ricerca del file dell'11 e del 13/10 partiva da una premessa sbagliata.
 - **`./run.sh doctor`** (15/10) controlla senza sudo adattatore, rfkill, servizio, controller,
   autosospensione (subito e ai prossimi avvii), banda del Wi-Fi e hub LEGO associati, con il comando
   per ogni problema; lo stesso nella pagina Scansione e in `/api/system/checks`. Provato sull'host:
   tutto a posto, 124 ms.
 - Agente di pairing ristretto al Mario in collegamento (15/10): prima approvava qualsiasi richiesta
-  mentre l'app era aperta. Alla chiusura BlueZ ripristina l'agente di GNOME (coda degli agenti,
-  sorgenti di BlueZ 5.82).
+  mentre l'app era aperta, e con il pannello Bluetooth di GNOME aperto un dispositivo vicino qualsiasi si
+  sarebbe accoppiato senza conferma. Alla chiusura, anche brusca, BlueZ ripristina l'agente di GNOME (coda
+  degli agenti `default_agents` in `src/agent.c`, sorgenti di BlueZ 5.82).
 - Cause dei blocchi iniziali trovate con tre catture btmon: scansione al 100 % durante la
   connessione (supervision timeout), coesistenza radio a 2,4 GHz (0x3E), pairing negato
   dall'agente di GNOME (`Insufficient Authentication`). Tutte risolte nell'app.
@@ -195,23 +199,34 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   frase dopo 1,8 s, log pulito.
 - **Evoluzioni dell'assistente (16/10)**, provate senza Mario e senza microfono. Tutte le prove con
   Claude erano vere.
-  - Modello rapido per i sensori: haiku, prima frase 1,2–1,5 s.
+  - Modello rapido per i sensori (`sensor_model` "auto" = haiku con Claude): prima frase 1,2–1,5 s contro
+    1,2–2,1 s di sonnet.
   - Ragionamento di Claude 5 spento: le risposte non sono più vuote e sonnet scrive la prima parola in
     1,0 s invece di 6–11 s.
-  - Storia interattiva con `[aspetta: ...]`: sfida riuscita, sbagliata o scaduta.
-  - Ingresso vocale offline con il pulsante di Mario come push-to-talk: small circa 3 s per frase, 4,2 s
-    dal rilascio alla prima frase.
+  - Storia interattiva con `[aspetta: salto | giro | pantaloni X | basetta X | terreno X | scossa | pulsante]`:
+    sfida riuscita, sbagliata o scaduta; provata con Claude e sensori simulati.
+  - Ingresso vocale offline (faster-whisper, `./tools/setup_stt.sh`) con il pulsante di Mario come
+    push-to-talk, il pulsante della pagina e `/parla`: small circa 3 s per frase, 4,2 s dal rilascio alla
+    prima frase.
   - Temi da evitare nelle domande e nelle risposte, limite di messaggi, riepilogo del giorno con
-    riassunto scritto dal modello.
-  - Ricordi per bambino, con scadenza e riassunto automatico.
+    riassunto scritto dal modello su richiesta.
+  - Ricordi per bambino, ricordi comuni, scadenza per quelli del modello, riassunto automatico oltre i 20.
 - **Attivazione con «Ehi Mario» (18/10)**, provata senza microfono. Vosk (modello italiano piccolo, offline,
   circa il 3–4 % di un core) ascolta con una grammatica ristretta e registra la frase dall'inizio; Whisper la
   trascrive e la tiene solo se contiene la chiamata, altrimenti la scarta senza conservarne il testo. Ascolto in
   pausa mentre Mario parla. Su un flusso di 195 s con 64 frasi sintetiche (24 chiamate, 40 frasi scelte per
   ingannare, voci adulte e da bambino): 22 chiamate su 24, 1 frase su 40 accettata per sbaglio. "Ehi Mario!"
-  da solo: Mario risponde "Eccomi!" e ascolta la frase dopo. `./run.sh listen --wake` per provarla.
-- **Regole della partita (18/10)**: ultimi 15 secondi del livello e fine del livello dagli eventi della porta 3;
-  la regola delle monete legge il totale vero (`0x386B`) invece del conto alla rovescia (`0x3861`).
+  da solo: Mario risponde "Eccomi!" e ascolta la frase dopo. Spenta di default (casella nella pagina
+  Assistente, `assistant --wake`); `./run.sh listen --wake` per provarla.
+  - Segnale "ti ascolto" appena Vosk sente la chiamata (anche per quelle poi scartate).
+  - Catena intera provata in una sessione (processo di ascolto su un file a velocità reale, Whisper, modello
+    demo): chiamata con domanda, "Ehi Mario!" con "Eccomi!" e ascolto successivo, stato senza testo.
+  - Provato e scartato: Vosk con il vocabolario libero al posto di Whisper sbaglia troppo ("raccontano una
+    storia", "poi magari facciamo un salto"); senza "Mario" nel suggerimento di vocabolario Whisper perde 4
+    chiamate su 24.
+- **Regole della partita (18/10)**: `tempo` (ultimi 15 secondi del livello, priorità 2) e `fine_livello`
+  dagli eventi della porta 3, accese; la regola delle monete, spenta, legge il totale vero (`0x386B`) invece del
+  conto alla rovescia (`0x3861`).
 - **Notifiche doppie dopo una riconnessione (corretto il 18/10)**: quando era Mario a chiudere il link
   (spegnimento, sonno, azione DISCONNECT), il vecchio client di bleak restava con la sua connessione D-Bus
   aperta e BlueZ ne riattivava la sessione di notifica alla riconnessione, quindi ogni messaggio arrivava
