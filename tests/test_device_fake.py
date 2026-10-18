@@ -99,9 +99,14 @@ FAKE_SERVICES = [
 
 
 class FakeClient:
+    """BleakClient finto. Imita anche BlueZ 5.82 e bleak 3.0.2 sulle notifiche: ogni client che ha fatto
+    StartNotify tiene in BlueZ una sessione finché non chiude la sua connessione D-Bus (disconnect());
+    se è Mario a chiudere il link (drop) la sessione resta e torna attiva alla riconnessione, e ogni
+    sessione viva produce una copia di ogni notifica."""
     hub = FakeHub()
     fail_first_connect = False
     created: list = []
+    sessions: list = []   # client con una sessione StartNotify ancora viva in BlueZ
     services = FAKE_SERVICES
 
     def __init__(self, device, disconnected_callback=None, timeout=20.0, **kwargs):
@@ -124,26 +129,36 @@ class FakeClient:
 
     async def start_notify(self, uuid, callback, **kwargs):
         self._notify = callback
+        FakeClient.sessions.append(self)
         for port, io_type in PORTS.items():
-            callback(None, bytearray(attached_io(port, io_type)))
+            self.push(attached_io(port, io_type))
 
     def push(self, raw: bytes):
-        if self._notify:
-            self._notify(None, bytearray(raw))
+        # un segnale PropertiesChanged per ogni sessione viva; lo riceve solo chi è ancora collegato
+        if self._notify and self._connected:
+            for _ in FakeClient.sessions:
+                self._notify(None, bytearray(raw))
 
     async def write_gatt_char(self, uuid, data, response=True):
         self.written.append(bytes(data))
         for reply in self.hub.replies(bytes(data)):
             if reply == b"DISCONNECT":
-                await self.disconnect()
+                self.drop()
             else:
                 self.push(reply)
 
-    async def disconnect(self):
+    def drop(self):
+        """Mario chiude il link (spegnimento, sonno, DISCONNECT): la connessione D-Bus del client resta aperta."""
         if self._connected:
             self._connected = False
             if self.callback:
                 self.callback(self)
+
+    async def disconnect(self):
+        """Come bleak: chiude il link se c'è, e sempre la connessione D-Bus del client (fine della sessione)."""
+        self.drop()
+        if self in FakeClient.sessions:
+            FakeClient.sessions.remove(self)
 
 
 class FakeScanner:
@@ -175,6 +190,7 @@ class DeviceFakeTests(unittest.TestCase):
         self._orig = (devmod.BleakClient, devmod.BleakScanner)
         devmod.BleakClient, devmod.BleakScanner = FakeClient, FakeScanner
         FakeClient.created = []
+        FakeClient.sessions = []
         FakeClient.hub = FakeHub()
         FakeClient.fail_first_connect = False
 
@@ -303,6 +319,46 @@ class DeviceFakeTests(unittest.TestCase):
             await dev.disconnect()
         run(go())
 
+    def test_reconnect_after_drop_delivers_each_notification_once(self):
+        # Prima del 18/10 ogni messaggio arrivava due volte dopo una riconnessione (live-checks del 12/10,
+        # re-checks del 14/10): il vecchio client restava aperto e BlueZ ne riattivava la sessione.
+        async def go():
+            dev = self.make()
+            await dev.connect(timeout=2.0)
+            seen = []
+            dev.add_listener(lambda msg, text: seen.append(msg.raw))
+            await dev.request_disconnect()  # il finto hub risponde WILL_DISCONNECT e chiude lui il link
+            await asyncio.sleep(0)
+            self.assertFalse(dev.connected)
+            old = FakeClient.created[-1]
+            await dev.connect(timeout=2.0)  # come monitor e shell: stesso MarioDevice
+            self.assertNotIn(old, FakeClient.sessions)
+            seen.clear()
+            FakeClient.created[-1].push(bytes.fromhex("05 00 45 02 21"))
+            self.assertEqual(len(seen), 1)
+            await dev.disconnect()
+            self.assertEqual(FakeClient.sessions, [])
+        run(go())
+
+    def test_disconnect_after_drop_closes_client(self):
+        # come la dashboard e gli strumenti di tools/: dopo la caduta si chiude il dispositivo e se ne crea un altro
+        async def go():
+            dev = self.make()
+            await dev.connect(timeout=2.0)
+            await dev.request_disconnect()
+            await asyncio.sleep(0)
+            await dev.disconnect()
+            self.assertEqual(FakeClient.sessions, [])
+            self.assertIsNone(dev.client)
+            other = self.make()
+            await other.connect(timeout=2.0)
+            seen = []
+            other.add_listener(lambda msg, text: seen.append(msg.raw))
+            FakeClient.created[-1].push(bytes.fromhex("05 00 45 02 21"))
+            self.assertEqual(len(seen), 1)
+            await other.disconnect()
+        run(go())
+
 
 @unittest.skipUnless(HAVE_BLEAK and importlib.util.find_spec("flask"), "servono bleak e flask (venv dell'host)")
 class WorkerFakeTests(unittest.TestCase):
@@ -313,6 +369,7 @@ class WorkerFakeTests(unittest.TestCase):
         self._orig = (devmod.BleakClient, devmod.BleakScanner)
         devmod.BleakClient, devmod.BleakScanner = FakeClient, FakeScanner
         FakeClient.created = []
+        FakeClient.sessions = []
         FakeClient.hub = FakeHub()
         FakeClient.fail_first_connect = False
         self.tmp = tempfile.TemporaryDirectory()
@@ -346,6 +403,35 @@ class WorkerFakeTests(unittest.TestCase):
             self.assertFalse(stream.empty())
             worker.disconnect()
             self.assertEqual(worker.status()["state"], "disconnected")
+        finally:
+            worker.stop()
+
+    def test_worker_reconnect_after_drop_no_duplicates(self):
+        from mario.web.db import Database
+        db = Database(Path(self.tmp.name) / "r.sqlite3")
+        worker = self.ble_worker.BleWorker(db, pair=False)
+        worker.start()
+        try:
+            worker.connect(timeout=3.0)
+            first = FakeClient.created[-1]
+
+            async def drop():  # Mario si spegne da solo
+                first.drop()
+            worker.call(drop)
+            for _ in range(100):
+                if worker.device is None:
+                    break
+                time.sleep(0.02)
+            self.assertIsNone(worker.device)
+            self.assertNotIn(first, FakeClient.sessions)
+            self.assertEqual(worker.connect(timeout=3.0)["state"], "connected")
+
+            async def fire():
+                FakeClient.created[-1].push(bytes.fromhex("05 00 45 02 12"))
+            worker.call(fire)
+            time.sleep(0.2)
+            pants = [e for e in worker.events_since(0, 500) if e.get("port") == 2 and "Fuoco" in e.get("decoded", "")]
+            self.assertEqual(len(pants), 1)
         finally:
             worker.stop()
 

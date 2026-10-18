@@ -368,6 +368,7 @@ class MarioDevice:
         """Cerca Mario e si connette; a ogni tentativo rifa' la scansione da zero."""
         say = progress or (lambda text: None)
         last_error: Optional[BaseException] = None
+        await self._release_client()  # riconnessione (monitor, shell): il client di prima va chiuso
         if self.pair_enabled and not self.agent.registered:
             if not await self.agent.start():
                 say("Attenzione: agente di pairing non registrato; se Mario chiede il pairing, "
@@ -470,12 +471,25 @@ class MarioDevice:
 
     async def disconnect(self) -> None:
         await self.agent.stop()
-        if self.client is not None and self.client.is_connected:
-            try:
-                await asyncio.wait_for(self.client.disconnect(), timeout=10.0)
-            except (BleakError, asyncio.TimeoutError) as exc:
-                log.debug("disconnect: %s", exc)
-        self.client = None
+        await self._release_client()
+
+    async def _release_client(self) -> None:
+        """Chiude il BleakClient anche quando il link è già caduto.
+
+        Se è Mario a chiudere (spegnimento, sonno, azione DISCONNECT), bleak 3 toglie il proprio watcher
+        ma lascia aperta la connessione D-Bus privata del client. BlueZ tiene in vita la sessione di
+        StartNotify di quella connessione e alla riconnessione la riattiva (register_notify in
+        src/gatt-client.c, BlueZ 5.82): con la sessione del client nuovo ogni notifica arrivava due
+        volte (live-checks del 12/10, re-checks del 14/10). client.disconnect() chiude anche la
+        connessione D-Bus, e con lei la vecchia sessione.
+        """
+        client, self.client = self.client, None
+        if client is None:
+            return
+        try:
+            await asyncio.wait_for(client.disconnect(), timeout=10.0)
+        except Exception as exc:  # BleakError, timeout, controlli interni di bleak su un client già caduto
+            log.debug("disconnect: %s", exc)
 
     @property
     def connected(self) -> bool:

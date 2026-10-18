@@ -367,6 +367,7 @@ async def main() -> int:
                     speak("Mario è scollegato: lo ricollego per spegnerlo. Se l'icona non lampeggia, premi il tasto.", voice)
                 else:
                     speak("Mario è scollegato: lo ricollego. Se l'icona non lampeggia, premi il tasto.", voice)
+                await dev.disconnect()  # chiude il vecchio client: altrimenti ogni messaggio arriva due volte
                 try:
                     dev = await connect(args, rec, say)
                 except Exception as exc:
@@ -379,8 +380,7 @@ async def main() -> int:
                 rec.result(step, "ERRORE", f"{type(exc).__name__}: {exc}")
         speak("Verifiche finite. Grazie.", voice)
     finally:
-        if dev.connected:
-            await dev.disconnect()
+        await dev.disconnect()
         lines = ["", "=== RIEPILOGO VERIFICHE ==="]
         for step, outcome, details in rec.results:
             lines.append(f"- {step}: {outcome}. {details}")
