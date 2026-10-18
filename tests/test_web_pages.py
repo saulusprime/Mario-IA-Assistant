@@ -139,19 +139,109 @@ class TokenTests(unittest.TestCase):
         self.assertIn(b"token errato", r.data)
         r = self.client.post("/login", data={"token": "segreto-123", "next": "/monitor"})
         self.assertEqual((r.status_code, r.headers["Location"]), (302, "/monitor"))
-        self.assertIn("mario_token=segreto-123", r.headers.get("Set-Cookie", ""))
+        cookies = r.headers.getlist("Set-Cookie")
+        self.assertTrue(any(c.startswith("mario_session=") for c in cookies))
+        self.assertFalse(any("segreto-123" in c for c in cookies))          # il token non finisce nel cookie
         self.assertEqual(self.client.get("/monitor").status_code, 200)  # il cookie resta nel client di test
+        self.assertEqual(self.client.post("/login", data={"token": "x", "next": "//altro.sito"}).status_code, 403)
+        r = self.client.post("/login", data={"token": "segreto-123", "next": "//altro.sito"})
+        self.assertEqual(r.headers["Location"], "/")                   # niente redirect verso altri siti
         fresh = self.app.test_client()
         r = fresh.get("/events?token=segreto-123")
         self.assertEqual((r.status_code, r.headers["Location"]), (302, "/events"))
         self.assertEqual(fresh.get("/events").status_code, 200)
         self.assertEqual(fresh.get("/login").status_code, 200)
 
+    def test_sessions_list_revoke_expire_and_token_change(self):
+        from mario.web import create_app
+        db = self.app.extensions["db"]
+        phone, laptop = self.app.test_client(), self.app.test_client()
+        phone.get("/?token=segreto-123", headers={"User-Agent": "Telefono"})
+        laptop.post("/login", data={"token": "segreto-123", "next": "/"}, headers={"User-Agent": "Portatile"})
+        sessions = laptop.get("/api/sessions").get_json()["sessions"]
+        self.assertEqual(len(sessions), 2)
+        mine = [x for x in sessions if x["current"]]
+        self.assertTrue(mine and "Portatile" in mine[0]["client"])
+        self.assertIn("Accessi alla dashboard", laptop.get("/").data.decode("utf-8"))
+        other = [x for x in sessions if not x["current"]][0]
+        self.assertEqual(laptop.post("/api/sessions/revoke", json={"id": other["id"]}).get_json()["revoked"], 1)
+        self.assertEqual(phone.get("/api/status").status_code, 401)        # il telefono è fuori
+        self.assertEqual(phone.get("/monitor").status_code, 302)
+        self.assertEqual(laptop.get("/api/status").status_code, 200)
+        # scadenza: la sessione del portatile portata nel passato
+        row = db.list_web_sessions()[0]
+        db._exec("UPDATE web_sessions SET expires=? WHERE id=?", (time.time() - 1, row["id"]))
+        self.assertEqual(laptop.get("/api/status").status_code, 401)
+        # un token nuovo chiude le sessioni aperte con il vecchio
+        laptop.post("/login", data={"token": "segreto-123"})
+        self.assertEqual(laptop.get("/api/status").status_code, 200)
+        app2 = create_app(db_path=Path(self.tmp.name) / "t.sqlite3", start_worker=False, quiet_assistant=True,
+                          token="nuovo-456", session_days=0.5)
+        client2 = app2.test_client()
+        client2.set_cookie("mario_session", laptop.get_cookie("mario_session").value)
+        self.assertEqual(client2.get("/api/status").status_code, 401)
+        self.assertEqual(db.list_web_sessions(), [])                       # tolte all'avvio
+        r = client2.post("/login", data={"token": "nuovo-456"})
+        self.assertIn("Max-Age=43200", r.headers["Set-Cookie"])            # mezza giornata
+        # uscita
+        r = client2.get("/logout")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(client2.get("/api/status").status_code, 401)
+        self.assertEqual(laptop.post("/api/sessions/revoke", json={"id": "x"}).status_code, 401)
+
     def test_no_token_app_has_open_login(self):
         from mario.web import create_app
         app = create_app(db_path=Path(self.tmp.name) / "u.sqlite3", start_worker=False, quiet_assistant=True)
         self.assertEqual(app.test_client().get("/login").status_code, 302)
         self.assertEqual(app.test_client().get("/").status_code, 200)
+
+
+@unittest.skipUnless(importlib.util.find_spec("flask") and importlib.util.find_spec("bleak"),
+                     "servono flask e bleak (ambiente host)")
+class HttpsTests(unittest.TestCase):
+    def test_self_signed_certificate_and_https_server(self):
+        import shutil
+        import ssl
+        import threading
+        import urllib.request
+        from werkzeug.serving import make_server
+        from mario import cli
+        from mario.web import create_app
+        if not shutil.which("openssl"):
+            self.skipTest("openssl non disponibile")
+        import logging
+        logging.getLogger("werkzeug").setLevel(logging.ERROR)
+        with tempfile.TemporaryDirectory() as tmp:
+            pair = cli.self_signed_certificate(Path(tmp) / "tls", "192.168.1.20")
+            self.assertIsNotNone(pair)
+            cert, key = pair
+            self.assertEqual(cli.self_signed_certificate(Path(tmp) / "tls"), pair)       # riusato
+            self.assertEqual(oct(key.stat().st_mode & 0o777), "0o600")
+            self.assertRegex(cli.certificate_fingerprint(cert), r"^([0-9A-F]{2}:){31}[0-9A-F]{2}$")
+            app = create_app(db_path=Path(tmp) / "h.sqlite3", start_worker=False, quiet_assistant=True, token="t-789")
+            server = make_server("127.0.0.1", 0, app, threaded=True, ssl_context=(str(cert), str(key)))
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                ctx = ssl.create_default_context(cafile=str(cert))   # fiducia solo in questo certificato
+                req = urllib.request.Request(f"https://127.0.0.1:{server.server_port}/login",
+                                             data=b"token=t-789&next=/", method="POST")
+                opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx),
+                                                     NoRedirect())
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    opener.open(req, timeout=10)
+                self.assertEqual(caught.exception.code, 302)
+                cookie = caught.exception.headers["Set-Cookie"]
+                self.assertIn("Secure", cookie)                                 # in HTTPS solo su HTTPS
+                with opener.open(urllib.request.Request(f"https://127.0.0.1:{server.server_port}/api/status",
+                                                        headers={"Authorization": "Bearer t-789"}), timeout=10) as resp:
+                    self.assertEqual(resp.status, 200)
+            finally:
+                server.shutdown()
+
+
+class NoRedirect(__import__("urllib.request").request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
 
 
 if __name__ == "__main__":

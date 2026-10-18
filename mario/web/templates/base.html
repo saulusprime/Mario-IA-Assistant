@@ -21,6 +21,7 @@
   <span class="spacer"></span>
   <button class="small" id="st-connect">Connetti</button>
   <button class="small ghost" id="st-disconnect">Disconnetti</button>
+  {% if protected %}<a class="small" href="/logout" title="chiude la sessione di questo browser">Esci</a>{% endif %}
 </div>
 <main>
 {% block content %}{% endblock %}

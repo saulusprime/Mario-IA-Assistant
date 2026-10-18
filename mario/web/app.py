@@ -3,16 +3,18 @@ from __future__ import annotations
 
 import concurrent.futures
 import csv
+import hashlib
 import hmac
 import io
 import json
 import queue
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from bleak.exc import BleakError
-from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from .. import codes, lwp3, syscheck
 from ..assistant import AssistantBusy
@@ -178,19 +180,31 @@ def capabilities_text(caps: dict) -> str:
 
 EVENT_TYPES = ["PORT_VALUE_SINGLE", "PORT_VALUE_COMBINED", "HUB_PROPERTIES", "HUB_ATTACHED_IO", "HUB_ACTIONS",
                "HUB_ALERTS", "GENERIC_ERROR"]
-TOKEN_COOKIE = "mario_token"
+SESSION_COOKIE = "mario_session"
+OLD_TOKEN_COOKIE = "mario_token"  # fino al 18/10 il cookie conteneva il token stesso
+DEFAULT_SESSION_DAYS = 30.0
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = None,
                pair: bool = True, start_worker: bool = True, quiet_assistant: bool = False,
-               token: Optional[str] = None) -> Flask:
-    """`token`: se impostato, ogni pagina e API richiede il token (cookie dopo /login, ?token=... o
-    header Authorization: Bearer). Serve quando la dashboard viene esposta oltre 127.0.0.1."""
+               token: Optional[str] = None, session_days: float = DEFAULT_SESSION_DAYS) -> Flask:
+    """`token`: se impostato, ogni pagina e API richiede il token: header Authorization: Bearer o ?token=...,
+    oppure una sessione aperta con /login o ?token= (cookie con un identificativo casuale, valido
+    `session_days` giorni, revocabile dalla Panoramica; cambiare il token chiude tutte le sessioni).
+    Serve quando la dashboard viene esposta oltre 127.0.0.1."""
     load_dotenv()
     app = Flask(__name__)
     app.json.ensure_ascii = False
     app.config["MARIO_TOKEN"] = token or ""
+    app.config["MARIO_SESSION_DAYS"] = float(session_days)
+    token_hash = _sha256(token) if token else ""
     db = Database(db_path or DEFAULT_DB)
+    if token_hash:
+        db.purge_web_sessions(token_hash)
     db.seed_accessories(codes.PANTS, codes.BARCODES, codes.COLORS)
     worker = BleWorker(db, adapter=adapter, pair=pair)
     if start_worker:
@@ -210,24 +224,47 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
 
     def token_given() -> str:
         auth = request.headers.get("Authorization", "")
-        return (request.args.get("token") or request.cookies.get(TOKEN_COOKIE)
-                or (auth[7:].strip() if auth.lower().startswith("bearer ") else "") or "")
+        return request.args.get("token") or (auth[7:].strip() if auth.lower().startswith("bearer ") else "") or ""
 
-    def with_cookie(resp, value: str):
-        resp.set_cookie(TOKEN_COOKIE, value, max_age=30 * 24 * 3600, httponly=True, samesite="Lax")
+    def token_ok(given: str) -> bool:
+        return bool(given) and hmac.compare_digest(given.encode("utf-8"), app.config["MARIO_TOKEN"].encode("utf-8"))
+
+    def current_session() -> Optional[dict]:
+        value = request.cookies.get(SESSION_COOKIE)
+        if not value:
+            return None
+        row = db.get_web_session(_sha256(value))
+        if row is None or row["token_hash"] != token_hash or (row["expires"] or 0) < time.time():
+            return None
+        return row
+
+    def open_session(resp):
+        """Nuova sessione: nel cookie va un identificativo casuale, nel database la sua impronta."""
+        value = secrets.token_urlsafe(32)
+        days = app.config["MARIO_SESSION_DAYS"]
+        client = f"{request.remote_addr or '?'} · {request.headers.get('User-Agent', '')[:120]}"
+        db.add_web_session(_sha256(value), token_hash, time.time() + days * 86400, client)
+        resp.set_cookie(SESSION_COOKIE, value, max_age=int(days * 86400), httponly=True, samesite="Lax",
+                        secure=request.is_secure)
+        resp.delete_cookie(OLD_TOKEN_COOKIE)
         return resp
 
     @app.before_request
     def require_token():
-        expected = app.config["MARIO_TOKEN"]
-        if not expected or request.endpoint in ("static", "page_login"):
+        if not app.config["MARIO_TOKEN"] or request.endpoint in ("static", "page_login"):
             return None
-        if hmac.compare_digest(token_given(), expected):
+        if token_ok(token_given()):
             if request.args.get("token") and request.method == "GET" and not request.path.startswith("/api/"):
-                return with_cookie(redirect(request.path), expected)  # il token esce dall'URL e resta nel cookie
+                return open_session(redirect(request.path))  # il token esce dall'URL, resta la sessione
+            return None
+        row = current_session()
+        if row is not None:
+            g.session_id = row["id"]
+            if time.time() - (row["last_seen"] or 0) > 60:
+                db.touch_web_session(row["id"])
             return None
         if request.path.startswith("/api/"):
-            return jsonify({"ok": False, "error": "accesso negato: token mancante o errato"}), 401
+            return jsonify({"ok": False, "error": "accesso negato: token mancante o errato, o sessione scaduta"}), 401
         return redirect(url_for("page_login", next=request.path))
 
     @app.route("/login", methods=["GET", "POST"])
@@ -238,11 +275,20 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
             return redirect("/")
         if request.method == "POST":
             given = (request.form.get("token") or "").strip()
-            if hmac.compare_digest(given, expected):
+            if token_ok(given):
                 target = request.form.get("next") or "/"
-                return with_cookie(redirect(target if target.startswith("/") else "/"), expected)
+                return open_session(redirect(target if target.startswith("/") and not target.startswith("//") else "/"))
             error = "token errato"
         return render_template("login.html", page="login", error=error, next=request.args.get("next", "/")), (200 if not error else 403)
+
+    @app.get("/logout")
+    def page_logout():
+        row = current_session()
+        if row is not None:
+            db.delete_web_sessions(row["id"])
+        resp = redirect(url_for("page_login") if app.config["MARIO_TOKEN"] else "/")
+        resp.delete_cookie(SESSION_COOKIE)
+        return resp
 
     def body() -> dict:
         return request.get_json(silent=True) or request.form.to_dict() or {}
@@ -266,6 +312,31 @@ def create_app(db_path: Optional[str | Path] = None, adapter: Optional[str] = No
                 return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
         wrapper.__name__ = fn.__name__
         return wrapper
+
+    @app.get("/api/sessions")
+    @api
+    def api_sessions():
+        current = getattr(g, "session_id", None)
+        rows = db.list_web_sessions(token_hash) if token_hash else []
+        return ok(protected=bool(token_hash), days=app.config["MARIO_SESSION_DAYS"], sessions=[
+            {"id": r["id"][:16], "client": r["client"], "created": r["created"], "last_seen": r["last_seen"],
+             "expires": r["expires"], "current": r["id"] == current} for r in rows])
+
+    @app.post("/api/sessions/revoke")
+    @api
+    def api_sessions_revoke():
+        """{"id": "..."} revoca una sessione; {"others": true} tutte tranne quella in uso; {"all": true} tutte."""
+        d = body()
+        current = getattr(g, "session_id", None)
+        if d.get("all"):
+            return ok(revoked=db.delete_web_sessions())
+        if d.get("others"):
+            return ok(revoked=db.delete_web_sessions(keep=current))
+        prefix = str(d.get("id") or "")
+        if len(prefix) < 8:
+            raise ValueError("identificativo della sessione mancante")
+        matches = [r["id"] for r in db.list_web_sessions(token_hash) if r["id"].startswith(prefix)]
+        return ok(revoked=sum(db.delete_web_sessions(m) for m in matches))
 
     # ----- pagine ---------------------------------------------------------------------
 

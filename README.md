@@ -1,5 +1,7 @@
 # LEGO Mario via Bluetooth LE
 
+[![test](https://github.com/saulusprime/Mario-IA-Assistant/actions/workflows/tests.yml/badge.svg)](https://github.com/saulusprime/Mario-IA-Assistant/actions/workflows/tests.yml)
+
 Applicazione Python 3 per parlare con LEGO Mario (e Luigi / Peach) dal PC: scoperta
 automatica di tutte le funzioni esposte dal dispositivo, comunicazione bidirezionale grezza
 o decodificata, dashboard web e un assistente che usa Mario come ingresso e uscita di una

@@ -24,6 +24,7 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -1604,12 +1605,29 @@ def cmd_web(args) -> int:
     exposed = args.host not in LOOPBACK_HOSTS
     if exposed and not token and not args.no_token:
         token = secrets.token_urlsafe(12)
-    url = f"http://{args.host}:{args.port}/"
-    app = create_app(db_path=args.db, adapter=args.adapter, pair=not args.no_pair, token=token or None)
+    tls = None
+    if args.self_signed:
+        tls = self_signed_certificate(paths.DATA_DIR / "tls", args.host)
+        if tls is None:
+            print("Certificato autofirmato non creato: serve openssl (apt install openssl)", file=sys.stderr)
+            return 2
+    elif args.cert or args.key:
+        if not (args.cert and args.key):
+            print("Per HTTPS servono sia --cert sia --key", file=sys.stderr)
+            return 2
+        tls = (args.cert, args.key)
+    url = f"{'https' if tls else 'http'}://{args.host}:{args.port}/"
+    app = create_app(db_path=args.db, adapter=args.adapter, pair=not args.no_pair, token=token or None,
+                     session_days=args.session_days)
     server = args.server
     if server == "auto":
-        server = "waitress" if importlib.util.find_spec("waitress") else "flask"
+        server = "waitress" if importlib.util.find_spec("waitress") and not tls else "flask"
+    elif server == "waitress" and tls:
+        print("waitress non serve HTTPS: uso il server di Flask", file=sys.stderr)
+        server = "flask"
     print(f"Dashboard LEGO Mario su {url}  (server {server}, Ctrl+C per uscire)", file=sys.stderr)
+    if tls:
+        print(f"HTTPS: certificato {tls[0]} (impronta SHA-256 {certificate_fingerprint(tls[0])})", file=sys.stderr)
     if token:
         print(f"Accesso protetto: apri {url}?token={token}  oppure inserisci il token nella pagina di accesso "
               f"(--token per sceglierlo, --no-token per disattivare)", file=sys.stderr)
@@ -1621,8 +1639,45 @@ def cmd_web(args) -> int:
         from waitress import serve
         serve(app, host=args.host, port=args.port, threads=args.threads, ident="mario-dashboard")
     else:
-        app.run(host=args.host, port=args.port, threaded=True, debug=False, use_reloader=False)
+        app.run(host=args.host, port=args.port, threaded=True, debug=False, use_reloader=False,
+                ssl_context=tuple(map(str, tls)) if tls else None)
     return 0
+
+
+def self_signed_certificate(folder: Path, host: str = "") -> Optional[tuple[Path, Path]]:
+    """Certificato autofirmato per la dashboard (creato una volta con openssl, poi riusato): localhost,
+    127.0.0.1 e l'host indicato se è un indirizzo o un nome."""
+    cert, key = folder / "dashboard-cert.pem", folder / "dashboard-key.pem"
+    if cert.is_file() and key.is_file():
+        return cert, key
+    if not shutil.which("openssl"):
+        return None
+    names = ["DNS:localhost", "IP:127.0.0.1"]
+    if host and host not in ("0.0.0.0", "::", "localhost", "127.0.0.1"):
+        names.append(("IP:" if re.fullmatch(r"[\d.]+|[0-9a-fA-F:]+", host) else "DNS:") + host)
+    host_name = socket.gethostname()
+    if host_name and f"DNS:{host_name}" not in names:
+        names.append(f"DNS:{host_name}")
+    folder.mkdir(parents=True, exist_ok=True)
+    cmd = ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "825", "-subj", "/CN=mario-dashboard",
+           "-keyout", str(key), "-out", str(cert), "-addext", "subjectAltName=" + ",".join(names)]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0 or not cert.is_file():
+        return None
+    key.chmod(0o600)
+    return cert, key
+
+
+def certificate_fingerprint(path) -> str:
+    """Impronta SHA-256 del certificato PEM, da confrontare con quella che mostra il browser."""
+    import hashlib
+    import ssl
+    try:
+        der = ssl.PEM_cert_to_DER_cert(Path(path).read_text(encoding="ascii", errors="replace"))
+    except (OSError, ValueError):
+        return "?"
+    digest = hashlib.sha256(der).hexdigest()
+    return ":".join(digest[i:i + 2].upper() for i in range(0, len(digest), 2))
 
 
 # ---------------------------------------------------------------------------
@@ -1850,6 +1905,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--threads", type=int, default=16, help="thread di waitress (ogni pagina aperta tiene un flusso SSE)")
     p.add_argument("--token", help="token di accesso (anche MARIO_WEB_TOKEN); generato se l'host non è locale")
     p.add_argument("--no-token", action="store_true", help="nessun token anche se esposta oltre 127.0.0.1")
+    p.add_argument("--session-days", type=float, default=30.0,
+                   help="giorni di validità di un accesso con il token (default 30; revoca dalla Panoramica)")
+    p.add_argument("--cert", help="certificato TLS (PEM) per servire in HTTPS, con --key")
+    p.add_argument("--key", help="chiave privata TLS (PEM)")
+    p.add_argument("--self-signed", action="store_true",
+                   help="HTTPS con un certificato autofirmato creato con openssl in data/tls/ (il browser chiede conferma)")
     p.set_defaults(func=cmd_web)
 
     p = sub.add_parser("raw", help="invia byte grezzi e mostra le risposte")

@@ -9,6 +9,7 @@ Tabelle:
   assistant_messages  conversazione con l'assistente (Mario come I/O di un LLM)
   assistant_memory    ricordi dell'assistente tra una sessione e l'altra
   adventures, adventure_runs  avventure del designer (JSON) e partite giocate (esito, punti, log)
+  web_sessions accessi alla dashboard protetta da token (impronta del cookie, scadenza, revoca)
 """
 from __future__ import annotations
 
@@ -100,6 +101,14 @@ CREATE TABLE IF NOT EXISTS adventures (
     json        TEXT NOT NULL,
     created     REAL,
     updated     REAL
+);
+CREATE TABLE IF NOT EXISTS web_sessions (
+    id          TEXT PRIMARY KEY,
+    token_hash  TEXT NOT NULL,
+    created     REAL,
+    expires     REAL,
+    last_seen   REAL,
+    client      TEXT
 );
 CREATE TABLE IF NOT EXISTS adventure_runs (
     id            INTEGER PRIMARY KEY,
@@ -414,6 +423,36 @@ class Database:
     def set_setting(self, key: str, value: str) -> None:
         self._exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                    (key, value))
+
+    # ----- sessioni della dashboard (solo con il token) ----------------------------------
+
+    def add_web_session(self, session_id: str, token_hash: str, expires: float, client: str = "") -> None:
+        now = time.time()
+        self._exec("INSERT INTO web_sessions (id, token_hash, created, expires, last_seen, client) VALUES (?, ?, ?, ?, ?, ?)",
+                   (session_id, token_hash, now, expires, now, client[:200]))
+
+    def get_web_session(self, session_id: str) -> Optional[dict]:
+        return self._one("SELECT * FROM web_sessions WHERE id=?", (session_id,))
+
+    def touch_web_session(self, session_id: str, ts: Optional[float] = None) -> None:
+        self._exec("UPDATE web_sessions SET last_seen=? WHERE id=?", (ts or time.time(), session_id))
+
+    def list_web_sessions(self, token_hash: Optional[str] = None) -> list[dict]:
+        sql, params = "SELECT * FROM web_sessions", []
+        if token_hash is not None:
+            sql += " WHERE token_hash=?"
+            params.append(token_hash)
+        return self._all(sql + " ORDER BY last_seen DESC", params)
+
+    def delete_web_sessions(self, session_id: Optional[str] = None, keep: Optional[str] = None) -> int:
+        """Revoca una sessione, oppure tutte (tranne `keep`)."""
+        if session_id is not None:
+            return self._exec("DELETE FROM web_sessions WHERE id=?", (session_id,))
+        return self._exec("DELETE FROM web_sessions WHERE id<>?", (keep or "",))
+
+    def purge_web_sessions(self, token_hash: str, now: Optional[float] = None) -> int:
+        """Toglie le sessioni scadute e quelle aperte con un token diverso da quello attuale."""
+        return self._exec("DELETE FROM web_sessions WHERE expires<? OR token_hash<>?", (now or time.time(), token_hash))
 
     # ----- assistente ---------------------------------------------------------------
 

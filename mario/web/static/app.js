@@ -91,6 +91,23 @@
       $("#ov-progress").textContent = (st.progress || []).join("\n");
     });
     startStream();
+    if ($("#sessions")) {
+      const smsg = $("#sessions-msg");
+      async function loadSessions() {
+        try { const r = await api("/api/sessions"); const tb = $("#sessions-table tbody"); tb.innerHTML = "";
+          r.sessions.forEach((x) => tb.appendChild(eventRow(x, [esc(x.client) + (x.current ? ' <span class="badge ok">questo browser</span>' : ""), fmtDate(x.created), fmtDate(x.last_seen), fmtDate(x.expires),
+            x.current ? "" : `<button class="small ghost danger" data-revoke="${esc(x.id)}">Revoca</button>`])));
+          if (!r.sessions.length) tb.innerHTML = '<tr><td colspan="5" class="muted">nessuna sessione: l\'accesso avviene con il token nell\'intestazione o nell\'indirizzo</td></tr>'; } catch (e) { flash(smsg, e.message, true); }
+      }
+      document.addEventListener("click", async (ev) => {
+        const b = ev.target.closest("button"); if (!b) return;
+        try {
+          if (b.dataset.revoke) { const r = await api("/api/sessions/revoke", "POST", { id: b.dataset.revoke }); flash(smsg, `revocate: ${r.revoked}`); loadSessions(); }
+          if (b.id === "sessions-others") { const r = await api("/api/sessions/revoke", "POST", { others: true }); flash(smsg, `revocate: ${r.revoked}`); loadSessions(); }
+        } catch (e) { flash(smsg, e.message, true); }
+      });
+      loadSessions();
+    }
   }
 
   if (page === "scan") {

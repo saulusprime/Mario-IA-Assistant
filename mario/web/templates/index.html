@@ -41,6 +41,14 @@
       Eventi salvati: <b>{{ ev_stats.total }}</b>{% if ev_stats.last %} (ultimo {{ fmt_time(ev_stats.last) }}){% endif %}</p>
   </section>
 </div>
+{% if protected %}
+<section class="card" id="sessions">
+  <h1>Accessi alla dashboard</h1>
+  <p class="muted">Ogni browser entrato con il token ha una sessione, valida per i giorni scelti all'avvio (<code>--session-days</code>). Se un telefono si perde o il token è finito nelle mani sbagliate: revoca le sessioni e riavvia il server con un token nuovo (cambiarlo le chiude tutte).</p>
+  <table class="compact" id="sessions-table"><thead><tr><th>Browser</th><th>Aperta</th><th>Ultimo uso</th><th>Scade</th><th></th></tr></thead><tbody></tbody></table>
+  <div class="actions"><button id="sessions-others" class="ghost">Chiudi tutte le altre</button> <a href="/logout"><button class="ghost">Esci da questo browser</button></a> <span id="sessions-msg" class="muted"></span></div>
+</section>
+{% endif %}
 <section class="card">
   <h1>Ultimi eventi</h1>
   <table class="events" id="ov-events"><thead><tr><th>Ora</th><th>Porta</th><th>Evento</th></tr></thead><tbody></tbody></table>
