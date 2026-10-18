@@ -98,7 +98,7 @@ class ServiceTests(unittest.TestCase):
 
     def test_update_settings_rules_payloads_and_secret(self):
         pub = self.service.update_settings({"api_key": "sk-test-1", "rules": {"salto": {"enabled": False, "cooldown": 9, "text": "Hop! {name}"}},
-                                            "port_payloads": {"gioia": "4:01 02"}, "port_writes": "1", "persona": "Parli con Leo",
+                                            "port_payloads": {"gioia": "4:01 02"}, "port_writes": "1", "persona": "Parli con Luca",
                                             "listening": "0", "rate": "30"})
         self.assertTrue(pub["api_key_set"])
         self.assertEqual(self.db.get_setting("assistant.api_key"), "sk-test-1")
@@ -106,13 +106,13 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual((rule.enabled, rule.cooldown, rule.text), (False, 9.0, "Hop! {name}"))
         self.assertEqual(self.service.behaviours.port_payloads, {"gioia": "4:01 02"})
         self.assertTrue(self.service.behaviours.port_writes)
-        self.assertEqual(self.service.session.persona, "Parli con Leo")
+        self.assertEqual(self.service.session.persona, "Parli con Luca")
         self.assertFalse(self.service.session.listening)
         self.assertEqual(self.service.speaker.rate, 30)
         # chiave lasciata vuota: resta; con clear_api_key: via
         self.assertTrue(self.service.update_settings({"api_key": ""})["api_key_set"])
         self.assertFalse(self.service.update_settings({"api_key": "", "clear_api_key": 1})["api_key_set"])
-        self.assertEqual(self.service.update_settings({"rules": "non json"})["persona"], "Parli con Leo")
+        self.assertEqual(self.service.update_settings({"rules": "non json"})["persona"], "Parli con Luca")
         st = self.service.status()
         self.assertEqual(st["llm"]["resolved_backend"], "demo")
         self.assertEqual(st["settings"]["port_payloads"], '{"gioia": "4:01 02"}')

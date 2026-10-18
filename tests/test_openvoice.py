@@ -428,8 +428,8 @@ class SoundPackTests(unittest.TestCase):
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050); w.writeframes(b"\x01\x00" * 2205)
-        item = pack.add_custom(buf.getvalue(), "Risata di Leo!.wav", "risata")
-        self.assertTrue(item["rel"].startswith("custom/Risata-di-Leo-"))
+        item = pack.add_custom(buf.getvalue(), "Risata di Luca!.wav", "risata")
+        self.assertTrue(item["rel"].startswith("custom/Risata-di-Luca-"))
         self.assertEqual((item["section"], item["description"]), ("custom", "risata"))
         pack.assign("giochi", "coin", [item["rel"]])
         cat = pack.catalog(section="custom")

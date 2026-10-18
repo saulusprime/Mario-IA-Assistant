@@ -15,7 +15,7 @@
 [17:11:32] <- Proprietà SECONDARY_MAC (0x0E) [UPDATE]: 00:00:00:00:00:00   [0b 00 01 0e 06 00 00 00 00 00 00]
 [17:11:33] <- Proprietà VOLUME (0x12) [UPDATE]: 100 %   [06 00 01 12 06 64]
 [17:11:53] -> name MarioCasa
-[17:11:53] <- Proprietà ADVERTISING_NAME (0x01) [UPDATE]: MarioCasa   [0b 00 01 01 06 4c 65 6f 54 65 6f]
+[17:11:53] <- Proprietà ADVERTISING_NAME (0x01) [UPDATE]: MarioCasa   [0e 00 01 01 06 4d 61 72 69 6f 43 61 73 61]
 [17:12:10] -> modes 1
 [17:12:10] <- Info porta 1: capacità=['input', 'combinabile'], modalità=2, input=[0, 1], output=[]   [0b 00 43 01 01 06 02 03 00 00 00]
 [17:12:10] <- Info porta 1: combinazioni possibili [[0, 1]]   [07 00 43 01 02 03 00]

@@ -50,21 +50,21 @@ class SilentSpeaker(Speaker):
 class MemoryTagTests(unittest.TestCase):
     def test_memory_tag_split_across_chunks(self):
         es = EmotionStream()
-        items = es.feed("[gioia] Ciao Leo! [ricor") + es.feed("da: il bambino si chiama Leo] [calma] Giochiamo.")
-        self.assertEqual(items, [("emotion", "gioia"), ("text", "Ciao Leo! "), ("memory", "il bambino si chiama Leo"),
+        items = es.feed("[gioia] Ciao Luca! [ricor") + es.feed("da: il bambino si chiama Luca] [calma] Giochiamo.")
+        self.assertEqual(items, [("emotion", "gioia"), ("text", "Ciao Luca! "), ("memory", "il bambino si chiama Luca"),
                                  ("emotion", "calma"), ("text", "Giochiamo.")])
-        self.assertEqual(es.memories, ["il bambino si chiama Leo"])
-        raw = "[gioia] Ciao Leo! [ricorda: il bambino si chiama Leo] [calma] Giochiamo."
-        self.assertEqual(strip_tags(raw), "Ciao Leo! Giochiamo.")
-        self.assertEqual(memory_tags(raw), ["il bambino si chiama Leo"])
+        self.assertEqual(es.memories, ["il bambino si chiama Luca"])
+        raw = "[gioia] Ciao Luca! [ricorda: il bambino si chiama Luca] [calma] Giochiamo."
+        self.assertEqual(strip_tags(raw), "Ciao Luca! Giochiamo.")
+        self.assertEqual(memory_tags(raw), ["il bambino si chiama Luca"])
         es = EmotionStream()
         self.assertEqual(es.feed("[ricorda: " + "x" * 300 + "] fine"), [("text", "[ricorda: " + "x" * 300 + "] fine")])
 
     def test_memory_stores(self):
         mem = ListMemory(["A"])
         self.assertEqual(mem.add("a"), 1)  # doppione, senza distinzione di maiuscole
-        self.assertEqual(mem.add("Il bambino si chiama Leo."), 2)
-        self.assertEqual([m["text"] for m in mem.list()], ["A", "Il bambino si chiama Leo"])
+        self.assertEqual(mem.add("Il bambino si chiama Luca."), 2)
+        self.assertEqual([m["text"] for m in mem.list()], ["A", "Il bambino si chiama Luca"])
         self.assertIn("Cose che ricordi", memory_prompt(mem.list()))
         self.assertEqual(mem.delete(1), 1)
         self.assertEqual(mem.clear(), 1)
@@ -117,14 +117,14 @@ class SessionExtTests(unittest.TestCase):
         self.assertEqual([e for e in self.events if e["kind"] == "intent"][-1]["outcome"], "ripeto l'ultima risposta")
 
     def test_memory_round_trip_in_prompt(self):
-        backend = ScriptedBackend("[gioia] Ciao Leo, che bello conoscerti! [ricorda: il bambino si chiama Leo]")
+        backend = ScriptedBackend("[gioia] Ciao Luca, che bello conoscerti! [ricorda: il bambino si chiama Luca]")
         session = AssistantSession(lambda: backend, Speaker(enabled=False, engine=None), self.engine, emit=self.events.append)
-        session.ask("Ciao, sono Leo")
+        session.ask("Ciao, sono Luca")
         self.assertTrue(wait_idle(session))
-        self.assertEqual(session.last_answer, "Ciao Leo, che bello conoscerti!")
-        self.assertEqual([m["text"] for m in session.memory.list()], ["il bambino si chiama Leo"])
+        self.assertEqual(session.last_answer, "Ciao Luca, che bello conoscerti!")
+        self.assertEqual([m["text"] for m in session.memory.list()], ["il bambino si chiama Luca"])
         self.assertIn("memory", self.kinds())
-        self.assertIn("il bambino si chiama Leo", session.build_system_prompt())
+        self.assertIn("il bambino si chiama Luca", session.build_system_prompt())
         self.assertIn("[ricorda:", session.build_system_prompt())
         self.assertNotIn("ricorda", [s for s, _ in session.speaker.spoken][0].lower())
         session.forget()
@@ -286,11 +286,11 @@ class AssistantExtApiTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_memory_endpoints_and_settings(self):
-        r = self.client.post("/api/assistant/memory", json={"text": "Il bambino si chiama Leo"}).get_json()
+        r = self.client.post("/api/assistant/memory", json={"text": "Il bambino si chiama Luca"}).get_json()
         self.assertTrue(r["ok"])
         mid = r["id"]
-        self.assertEqual([m["text"] for m in self.client.get("/api/assistant/memory").get_json()["memory"]], ["Il bambino si chiama Leo"])
-        self.assertIn("Leo", self.assistant.session.build_system_prompt())
+        self.assertEqual([m["text"] for m in self.client.get("/api/assistant/memory").get_json()["memory"]], ["Il bambino si chiama Luca"])
+        self.assertIn("Luca", self.assistant.session.build_system_prompt())
         self.assertEqual(self.client.delete(f"/api/assistant/memory/{mid}").get_json()["deleted"], 1)
         self.client.post("/api/assistant/memory", json={"text": "uno"})
         self.client.post("/api/assistant/memory", json={"text": "due"})

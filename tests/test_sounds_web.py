@@ -94,7 +94,7 @@ class SoundsWebTests(unittest.TestCase):
         self.assertIn("lettore", r.get_json()["error"])
 
     def test_upload_assign_and_delete(self):
-        data = {"file": (io.BytesIO(wav_bytes()), "risata.wav"), "description": "risata di Leo", "name": "risata",
+        data = {"file": (io.BytesIO(wav_bytes()), "risata.wav"), "description": "risata di Luca", "name": "risata",
                 "style": "voce"}
         r = self.client.post("/api/sounds/upload", data=data, content_type="multipart/form-data").get_json()
         self.assertTrue(r["ok"], r)

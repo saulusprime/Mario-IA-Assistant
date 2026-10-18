@@ -58,12 +58,12 @@
   <h2>Ricordi <small class="muted">(memoria tra le sessioni: il modello li scrive con [ricorda: …])</small></h2>
   <div class="actions">
     <label title="Chi gioca adesso: Mario usa i suoi ricordi e quelli comuni, e salva lì quelli nuovi">Chi gioca <select id="memory-profile"></select></label>
-    <input type="text" id="memory-newprofile" placeholder="nuovo profilo, es. Leo" style="width:9em"> <button id="memory-addprofile" class="small">Aggiungi</button>
+    <input type="text" id="memory-newprofile" placeholder="nuovo profilo, es. Luca" style="width:9em"> <button id="memory-addprofile" class="small">Aggiungi</button>
     <label><input type="checkbox" id="memory-all"> mostra i ricordi di tutti</label>
   </div>
   <ul id="memory-list" class="menu-list"><li class="muted">nessuno</li></ul>
   <div class="actions">
-    <input type="text" id="memory-text" placeholder="Aggiungi un ricordo, es. 'Il bambino si chiama Leo e ama Yoshi'" style="flex:1; min-width:12em">
+    <input type="text" id="memory-text" placeholder="Aggiungi un ricordo, es. 'Il bambino si chiama Luca e ama Yoshi'" style="flex:1; min-width:12em">
     <label title="I ricordi comuni valgono per tutti i bambini"><input type="checkbox" id="memory-common"> comune</label>
     <button id="memory-add">Ricorda</button>
     <button id="memory-clear" class="ghost danger" title="Cancella i ricordi del profilo attivo (tutti, se non c'è un profilo)">Dimentica tutto</button>
@@ -89,7 +89,7 @@
       <div class="actions"><label>Base URL (solo OpenAI-compatibile) <input type="text" id="set-base" placeholder="http://localhost:11434/v1" style="width:20em"></label></div>
       <div class="actions"><label>Token massimi <input type="number" id="set-max" min="50" max="2000" style="width:6em"></label> <label title="Solo per gli endpoint compatibili OpenAI: Claude 5 non la accetta">Temperatura (OpenAI) <input type="number" id="set-temp" min="0" max="1" step="0.1" style="width:5em"></label></div>
       <h2>Carattere</h2>
-      <textarea id="set-persona" rows="3" placeholder="Istruzioni in più per il modello, es. 'Ti chiami MarioCasa e parli con Leo, 7 anni'"></textarea>
+      <textarea id="set-persona" rows="3" placeholder="Istruzioni in più per il modello, es. 'Ti chiami MarioCasa e parli con Luca, 7 anni'"></textarea>
     </div>
     <div>
       <h2>Voce dal PC</h2>
