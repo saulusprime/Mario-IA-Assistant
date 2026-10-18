@@ -14,13 +14,18 @@ record da 16 byte, uno per notifica; il primo byte è il tipo. Dopo la raffica l
   03, 05        contatori, fino a 5 x ([numero][valore LE16]); significato ancora ignoto.
   ff  fine      12 x ff, [record totali LE16][partite LE16].
 
-Le scritture del 12/10 sulla porta 7 venivano ignorate perché mandavano 16 byte invece di uno.
+Il feedback 0x82 della richiesta porta due byte in più: quanti record seguiranno, LE16 (61 il 18/10 con l'app,
+19 dopo la cancellazione), esclusa la fine. Le scritture del 12/10 sulla porta 7 venivano ignorate perché
+mandavano 16 byte invece di uno.
 """
 from __future__ import annotations
 
-from typing import Optional
+import asyncio
+import time
+from typing import Callable, Optional
 
-from .lwp3 import le16
+from . import lwp3
+from .lwp3 import MessageType, le16
 
 SESSION, TILES, COUNTERS_A, COUNTERS_B, END = 0x01, 0x02, 0x03, 0x05, 0xFF
 RECORD_NAMES = {SESSION: "partita", TILES: "basette", COUNTERS_A: "contatori (tipo 3)",
@@ -158,3 +163,134 @@ class Collector:
                                  + " ".join(f"#{k}={v}" for k, v in sorted(s["counters"][kind].items())))
         lines += [f"  attenzione: {p}" for p in self.problems()]
         return lines
+
+
+# ----- richieste a Mario, come le fa l'app ufficiale (solo quelle di lettura) -------------------------------
+
+SNAPSHOT_PORT, CHANNEL_PORT, ARCHIVE_PORT = 3, 4, 7
+READ_REQUESTS = ((0x05, 0x00FE), (0x09, 0x0000))  # porta 4: le due richieste che l'app fa prima di scrivere
+
+
+def snapshot_frame() -> bytes:
+    """Porta 3, modo 2, dati 01 f0: Mario risponde con un'istantanea di contatori (eventi della porta 3)."""
+    return lwp3.port_output_command(SNAPSHOT_PORT, 0x51, bytes([2, 0x01, 0xF0]), 0x1, 0x1)
+
+
+def channel_frame(command: int, value: int) -> bytes:
+    """Porta 4, modo 0: [comando LE16][valore LE16]."""
+    return lwp3.port_output_command(CHANNEL_PORT, 0x51, bytes([0]) + command.to_bytes(2, "little")
+                                    + value.to_bytes(2, "little"), 0x1, 0x1)
+
+
+def archive_frame() -> bytes:
+    """Porta 7, modo 0, un byte 01, con i flag usati dall'app (0x01: in coda, con feedback)."""
+    return lwp3.port_output_command(ARCHIVE_PORT, 0x51, bytes([0]) + REQUEST, 0x0, 0x1)
+
+
+async def fetch(dev, snapshot: bool = True, timeout: float = 10.0,
+                log: Optional[Callable[[str], None]] = None, reply_timeout: float = 2.0) -> dict:
+    """Ripete le richieste di lettura dell'app ufficiale e raccoglie le risposte: istantanea della porta 3,
+    risposte della porta 4, archivio della porta 7. Non manda mai 02 sulla porta 7 né la richiesta 0x0A sulla
+    porta 4, che modificano dati salvati in Mario. `dev` è un MarioDevice (o un oggetto con subscribe, send,
+    add_listener e remove_listener)."""
+    log = log or (lambda text: None)
+    result = {"snapshot": [], "port4": [], "records": [], "collector": Collector(), "errors": []}
+    collector: Collector = result["collector"]
+    replies: asyncio.Queue = asyncio.Queue()
+    state = {"snapshot": False}
+    done = asyncio.Event()
+
+    def on_message(msg, _text: str) -> None:
+        p = msg.payload
+        if msg.msg_type == MessageType.GENERIC_ERROR:
+            result["errors"].append(p.hex(" "))
+        if msg.msg_type == MessageType.PORT_OUTPUT_COMMAND_FEEDBACK and len(p) == 4 and p[0] == ARCHIVE_PORT:
+            # il feedback della richiesta dell'archivio porta anche quanti record seguiranno (61 e 19 il 18/10)
+            result["announced"] = le16(p[2:4])
+        if msg.msg_type != MessageType.PORT_VALUE_SINGLE or not p:
+            return
+        port, data = p[0], bytes(p[1:])
+        if port == SNAPSHOT_PORT and state["snapshot"] and len(data) >= 4:
+            result["snapshot"].append((le16(data[0:2]), le16(data[2:4])))
+        elif port == CHANNEL_PORT and len(data) >= 4:
+            replies.put_nowait((le16(data[0:2]), le16(data[2:4])))
+        elif port == ARCHIVE_PORT:
+            result["records"].append(data.hex(" "))
+            collector.feed(data)
+            if collector.complete:
+                done.set()
+
+    dev.add_listener(on_message)
+    try:
+        for port, mode in ((SNAPSHOT_PORT, 2), (CHANNEL_PORT, 0), (ARCHIVE_PORT, 0)):
+            await dev.subscribe(port, mode, 1)
+        if snapshot:
+            state["snapshot"] = True
+            log("porta 3: richiesta dell'istantanea (01 f0)")
+            await dev.send(snapshot_frame())
+            await asyncio.sleep(1.0)
+            state["snapshot"] = False
+        for command, value in READ_REQUESTS:
+            log(f"porta 4: richiesta 0x{command:02X} con 0x{value:04X}")
+            await dev.send(channel_frame(command, value))
+            try:
+                reply = await asyncio.wait_for(replies.get(), reply_timeout)
+            except asyncio.TimeoutError:
+                reply = None
+            result["port4"].append({"request": command, "value": value,
+                                    "reply": None if reply is None else reply[0],
+                                    "reply_value": None if reply is None else reply[1]})
+        log("porta 7: richiesta dell'archivio delle partite (01)")
+        started = time.monotonic()
+        await dev.send(archive_frame())
+        try:
+            await asyncio.wait_for(done.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
+        result["seconds"] = round(time.monotonic() - started, 2)
+    finally:
+        dev.remove_listener(on_message)
+    return result
+
+
+def fetch_report(result: dict) -> list[str]:
+    """Righe leggibili del risultato di fetch()."""
+    from .codes import GAME_EVENTS, PORT4_REPLIES
+    lines = []
+    if result["snapshot"]:
+        lines.append("istantanea della porta 3: " + ", ".join(f"0x{c:04X}={v}" for c, v in result["snapshot"]))
+        unnamed = [c for c, _ in result["snapshot"] if c not in GAME_EVENTS]
+        if unnamed:
+            lines.append("  codici non in tabella: " + ", ".join(f"0x{c:04X}" for c in unnamed))
+    for item in result["port4"]:
+        if item["reply"] is None:
+            lines.append(f"porta 4: richiesta 0x{item['request']:02X} senza risposta")
+        else:
+            meaning = PORT4_REPLIES.get(item["reply"], "")
+            lines.append(f"porta 4: richiesta 0x{item['request']:02X} -> risposta 0x{item['reply']:02X} "
+                         f"valore 0x{item['reply_value']:04X}" + (f" ({meaning})" if meaning else ""))
+    collector: Collector = result["collector"]
+    if result["records"]:
+        announced = result.get("announced")
+        lines.append(f"porta 7: {len(result['records'])} record in {result.get('seconds', 0):g} s"
+                     + (f" (Mario ne aveva annunciati {announced} più quello finale)" if announced is not None else ""))
+        lines += collector.summary()
+    else:
+        lines.append("porta 7: nessun record (archivio vuoto o richiesta ignorata)")
+    if result["errors"]:
+        lines.append("errori LWP3: " + "; ".join(result["errors"]))
+    return lines
+
+
+def fetch_json(result: dict) -> dict:
+    """Il risultato di fetch() in forma serializzabile (senza il Collector)."""
+    collector: Collector = result["collector"]
+    sessions = [{**{k: v for k, v in s.items() if k not in ("tiles", "counters")},
+                 "tiles": {f"0x{c:04X}": n for c, n in s["tiles"].items()},
+                 "counters": {str(kind): {str(k): v for k, v in values.items()} for kind, values in s["counters"].items()}}
+                for s in collector.sessions]
+    return {"snapshot": [{"code": f"0x{c:04X}", "value": v} for c, v in result["snapshot"]],
+            "port4": result["port4"], "records": result["records"], "sessions": sessions, "end": collector.end,
+            "problems": collector.problems() if result["records"] else [], "errors": result["errors"],
+            "announced": result.get("announced"),
+            "seconds": result.get("seconds")}

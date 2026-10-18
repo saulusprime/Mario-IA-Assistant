@@ -27,6 +27,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh scan                 # cerca i Mario nelle vicinanze
 ./run.sh info                 # si connette e stampa tutte le funzioni scoperte
 ./run.sh info --json          # stessa cosa in JSON
+./run.sh history              # archivio delle partite salvato in Mario (porta 7), senza cancellarlo; JSON in logs/
 ./run.sh monitor              # eventi in tempo reale: gesti, barcode/colori, pantaloni, eventi, batteria
 ./run.sh shell                # console interattiva bidirezionale
 ./run.sh web                  # dashboard web su http://127.0.0.1:8765
@@ -511,7 +512,8 @@ valore e non reagisce; la porta 7 ignora le scritture in silenzio (`tools/probe_
 prove del 12/10/2026, dettagli in HANDOFF e TODO sezione 7). I sottocomandi dei motori (0x01, 0x02,
 0x05–0x08) non sono riconosciuti su nessuna delle due porte (`probe_port4.py --scan`, 18/10/2026). La cattura
 dell'app ufficiale (18/10/2026) ha poi mostrato a cosa servono: la 4 è un canale richiesta/risposta e la 7
-l'archivio delle partite; nemmeno l'app manda comandi per far suonare Mario durante il gioco. Provato con il backend demo, con Claude (`claude-sonnet-5-5`: risposte
+l'archivio delle partite; nemmeno l'app manda comandi per far suonare Mario durante il gioco.
+`./run.sh history` ripete le sole richieste di lettura dell'app e scarica l'archivio (provato il 18/10/2026). Provato con il backend demo, con Claude (`claude-sonnet-5-5`: risposte
 in italiano nel personaggio, con i tag emozione, 3–4 s a risposta completa) e con la voce
 del PC e, alle 18:50, con Mario connesso da terminale: salto, rotazione, basette (Start,
 Goomba) e colori del terreno hanno prodotto risposte coerenti nel personaggio; il volume
@@ -944,7 +946,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-256 test senza Bluetooth né rete esterna, raggruppati per file:
+258 test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -967,7 +969,7 @@ python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bi
 | `test_browser` (5) | la dashboard in un Firefox headless vero via WebDriver BiDi (client in `tests/browser.py`, solo libreria standard): errori JavaScript di ogni pagina, editor e registrazione di un percorso, partita e replay, filtri delle tabelle, zoom con un trascinamento del mouse; saltati senza Firefox |
 | `test_bridge` (7) | ponte: traduzione degli eventi in fatti, lettori di righe JSON e SSE, broker MQTT finto (anche credenziali e rifiuto), WebSocket con il client dei test, flusso vero della dashboard |
 | `test_probe_port4` (6) | scansione dei sottocomandi di Port Output: piano delle prove, esiti (errore, feedback, silenzio, valori spontanei), mappa compressa di `--sweep`, prove con un Mario finto che risponde come quello vero |
-| `test_history` (5) | archivio delle partite della porta 7 con i record veri della cattura dell'app (partita, basette, contatori, fine, controllo dei totali), risposte della porta 4, scritture note dell'app, riepilogo di `decode` |
+| `test_history` (7) | archivio delle partite della porta 7 con i record veri della cattura dell'app (partita, basette, contatori, fine, controllo dei totali), risposte della porta 4, scritture note dell'app, riepilogo di `decode`; `history.fetch` con un Mario finto: stessi byte dell'app, mai le scritture che cancellano |
 | `test_firmware_recon` (2) | ricognizione del firmware: estrazione da APK annidati, intestazione OAD con CRC, tabella dei vettori, entropia, versione dal nome |
 | `test_cli` (11), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, completamento e cronologia della shell, cartelle dal sorgente e con `MARIO_HOME`, `decode`; importazione senza Bluetooth |
 
@@ -984,6 +986,7 @@ mario/hubstate.py       stato dell'hub senza bleak: porte, modi, formati, valori
 mario/codes.py          tabelle Mario caricate da mario/data/mario_codes.json (fonte e verifica), modi di default
 mario/device.py         MarioDevice (bleak), agente di pairing BlueZ, scoperta, report
 mario/decode.py         decodifica offline: btsnoop, bugreport Android (zip, btsnooz), PacketLogger, gzip, log di testo, byte, riepilogo e livelli
+mario/history.py        archivio delle partite della porta 7 e richieste di lettura dell'app ufficiale (./run.sh history)
 mario/bridge.py         ponte verso altri programmi: fatti con un nome su MQTT (client 3.1.1) e WebSocket, da monitor --json o dalla dashboard
 mario/paths.py          cartelle del programma: progetto dal sorgente, ~/.local/share/mario-ble da un pacchetto installato
 mario/cli.py            comandi scan/info/monitor/shell/decode/doctor/bridge/assistant/adventure/web/volume/name/prop/pair/unpair/off/raw
@@ -1001,7 +1004,7 @@ mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'arch
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
                         probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, firmware_recon.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale e «Ehi Mario»), fetch_mario_sounds.py
-tests/                  test offline (256), browser.py (Firefox headless via WebDriver BiDi)
+tests/                  test offline (258), browser.py (Firefox headless via WebDriver BiDi)
 docs/                   monitor-json.md (righe JSON e ponte MQTT/WebSocket), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il

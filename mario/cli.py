@@ -162,6 +162,41 @@ async def cmd_info(args) -> int:
     return 0
 
 
+async def cmd_history(args) -> int:
+    """Archivio delle partite (porta 7) con le sole richieste di lettura che fa l'app ufficiale."""
+    from . import history
+    dev = await connect_device(args)
+    session = SessionLog("history")
+    dev.add_listener(lambda msg, text: session.write(f"<- {text}", msg.raw))
+
+    def note(text: str) -> None:
+        say(text)
+        session.write(f"-> {text}")
+
+    try:
+        await dev.discover(full=False, progress=say)
+        result = await history.fetch(dev, snapshot=not args.no_snapshot, timeout=args.wait, log=note)
+    finally:
+        await dev.disconnect()
+    data = history.fetch_json(result)
+    target = paths.LOGS_DIR / f"history-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        say(f"Archivio non salvato: {exc}")
+        target = None
+    if args.json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(history.fetch_report(result)))
+    for line in history.fetch_report(result):
+        session.write(line)
+    say(f"Log in {session.path}" + (f", archivio in {target}" if target else ""))
+    session.close()
+    return 0 if result["records"] else 1
+
+
 def parse_subscription(text: str) -> tuple[int, int, int]:
     """'1:0' oppure '1:0:5' -> (porta, modo, delta)."""
     parts = text.split(":")
@@ -1725,6 +1760,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-save", action="store_true",
                    help="non aggiornare capabilities-fw-<versione>.json in mario/data (salvato dopo la scoperta completa)")
     p.set_defaults(func=cmd_info)
+
+    p = sub.add_parser("history", help="scarica l'archivio delle partite (porta 7) con le sole richieste di lettura "
+                                        "dell'app ufficiale; non cancella nulla")
+    p.add_argument("--json", action="store_true", help="output in JSON (salvato comunque in logs/history-*.json)")
+    p.add_argument("--no-snapshot", action="store_true", help="senza l'istantanea dei contatori della porta 3")
+    p.add_argument("--wait", type=float, default=15.0, metavar="SECONDI",
+                   help="attesa massima dell'archivio dopo la richiesta (default 15)")
+    p.set_defaults(func=cmd_history)
 
     p = sub.add_parser("monitor", help="mostra in tempo reale gli eventi dei sensori")
     p.add_argument("--sub", action="append", metavar="PORTA:MODO[:DELTA]",

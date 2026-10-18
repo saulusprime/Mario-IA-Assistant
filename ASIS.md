@@ -101,6 +101,14 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   - durante il gioco l'app ha mandato solo il volume: nessun comando che faccia suonare o animare Mario.
   `decode` e il monitor descrivono queste scritture e risposte; `decode --summary` raggruppa l'archivio per
   partita e controlla i totali (`mario/history.py`).
+- **Archivio scaricato dal nostro programma (18/10 19:44, `./run.sh history`)**: con le sole richieste di
+  lettura dell'app (porta 3 `01 f0`, porta 4 0x05 e 0x09, porta 7 `01`, stessi byte) Mario ha risposto come
+  all'app: risposte 0x01/`0x00FE` e 0x0B/`0xFFFF` sulla porta 4, istantanea della porta 3 (con anche lo stato
+  attuale: `0x0115` = 1, `0x1801` = 0; contatori `0x1902` = 20, `0x1910` = 1, `0x1911` = 3) e archivio di 2
+  partite (n. 410 e 411, 19 record più quello finale, in 0,84 s, totali coerenti). Le partite 402–409 non
+  c'erano più: il `02` dell'app cancella l'archivio, la numerazione prosegue. Il feedback della richiesta della
+  porta 7 porta due byte in più: il numero di record che seguiranno (61 con l'app, 19 qui). Nessuna scrittura
+  che modifichi Mario (log `docs/sessioni/history-20261018-194402.txt`).
 - **Porta 4 (`Events`)**, prove a scatola nera del 12/10: con le notifiche attive non ha trasmesso nemmeno per tutto il livello del 14/10. Scritture (39 prove, fuori e dentro un livello):
   solo WriteDirectModeData (0x51) è accettato, con feedback "completato", ma il valore non viene
   conservato (rilettura `00 00 00 00`), nessun eco, contatore monete fermo, nessuna reazione.
@@ -303,7 +311,7 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
   due volte (`monitor` e `shell` dopo la riconnessione, dashboard dopo "Connetti", `live-checks` e
   `re-checks`). Ora `MarioDevice` chiude sempre il client; lo provano un BleakClient finto che imita
   BlueZ e il worker della dashboard. La conferma con Mario è nel TODO.
-- **Test**: 256 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
+- **Test**: 258 senza Bluetooth né rete esterna (BleakClient finto per dispositivo e worker, server
   SSE locale per i backend, broker MQTT finto, controlli statici del JavaScript), verdi nel venv
   dell'host; workflow GitHub Actions su Python 3.11 e 3.13. Dal 18/10 le pagine della dashboard si provano
   anche in un **Firefox headless vero** (`tests/test_browser.py`): client WebDriver BiDi con la sola libreria

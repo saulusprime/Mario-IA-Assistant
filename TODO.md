@@ -12,11 +12,6 @@ dentro ogni gruppo le prime sono le più utili.
       `./run.sh info` per salvare `capabilities-fw-6.5.03.json` e confrontarlo con quello della 6.5.01 (porte,
       modi, proprietà); ripetere le prove principali (gesti, basette, eventi della porta 3) per vedere se è
       cambiato qualcosa.
-- [ ] **Richieste dell'app dal nostro programma** (solo lettura): con le notifiche delle porte 3, 4 e 7 attive,
-      scrivere `01 f0` sulla porta 3 (modo 2), le richieste 0x05 e 0x09 sulla porta 4 e `01` sulla porta 7, e
-      verificare che arrivino istantanea, risposte e archivio delle partite (dopo lo scarico dell'app del 18/10
-      l'archivio potrebbe contenere solo le partite successive). Niente `02` sulla porta 7 né 0x0A sulla porta 4
-      senza il consenso dell'utente: modificano dati salvati in Mario.
 - [ ] **Riconnessione senza messaggi doppi** (correzione del 18/10, vedi ASIS sezione 4): `./run.sh monitor`,
       spegnere e riaccendere Mario a metà sessione: dopo "riconnesso" ogni messaggio deve comparire una
       volta sola. Stessa prova dalla dashboard (Mario spento, poi "Connetti").
@@ -135,6 +130,10 @@ agente di pairing sono chiusi (ASIS, sezione 3).
       aggiungerle quando ci saranno, con `catalog-tiles` o `monitor`.
 
 ## 5. Dashboard web
+
+- [ ] **Archivio delle partite nella dashboard**: pulsante "Scarica archivio" (stessa funzione di
+      `./run.sh history`), partite salvate nel database (tabella nuova) e mostrate per giorno, con le basette e i
+      contatori; mai la cancellazione (`02`) senza una conferma esplicita.
 
 - [ ] **Console e "Aggiorna funzioni"** dalla scheda dispositivo: mai provate con Mario connesso.
 - [ ] **Pagina "Assistente" nel browser con Mario connesso**: provata solo con backend demo e

@@ -1,8 +1,10 @@
 """Archivio delle partite (porta 7), canale della porta 4 e scritture note dell'app: record veri della cattura del 18/10."""
+import asyncio
 import io
 import unittest
 
-from mario import codes, decode, history
+from mario import codes, decode, history, lwp3
+from mario.lwp3 import MessageType
 
 # record presi dalla cattura del traffico dell'app ufficiale (18/10/2026), dati della porta 7 senza intestazione LWP3
 SESSION = bytes.fromhex("01 0b 92 01 00 00 a0 08 8e 08 01 13 04 00 21 01")
@@ -87,6 +89,79 @@ class HistoryTest(unittest.TestCase):
         self.assertIn("<- porta 4: risposta 0x01 valore 0x00FE", text)
         self.assertIn("archivio delle partite (porta 7): 1 partita, 2 record", text)
         self.assertNotIn("attenzione", text)
+
+
+class FakeMario:
+    """Risponde alle richieste dell'app come il Mario della cattura del 18/10."""
+
+    def __init__(self, records=(), port4=True):
+        self.records, self.port4 = list(records), port4
+        self.listeners, self.sent, self.subscribed = [], [], []
+
+    def add_listener(self, listener):
+        self.listeners.append(listener)
+
+    def remove_listener(self, listener):
+        self.listeners.remove(listener)
+
+    async def subscribe(self, port, mode, delta=1):
+        self.subscribed.append((port, mode))
+
+    def emit(self, port, data):
+        msg = lwp3.parse(lwp3.build(MessageType.PORT_VALUE_SINGLE, bytes([port]) + data))
+        for listener in list(self.listeners):
+            listener(msg, "")
+
+    async def send(self, frame):
+        self.sent.append(frame)
+        p = lwp3.parse(frame).payload
+        port, data = p[0], p[4:]  # porta, flag, sottocomando, modo, dati
+        if port == 3:
+            self.emit(3, bytes.fromhex("02 19 a8 00"))
+        elif port == 4 and self.port4:
+            cmd, value = lwp3.le16(data[0:2]), lwp3.le16(data[2:4])
+            self.emit(4, (b"\x01\x00" + value.to_bytes(2, "little")) if cmd == 5 else bytes.fromhex("0b 00 ff ff"))
+        elif port == 7 and data == b"\x01":
+            feedback = lwp3.parse(lwp3.build(MessageType.PORT_OUTPUT_COMMAND_FEEDBACK,
+                                             bytes([7, 0x0A]) + max(0, len(self.records) - 1).to_bytes(2, "little")))
+            for listener in list(self.listeners):
+                listener(feedback, "")
+            loop = asyncio.get_running_loop()
+            for i, rec in enumerate(self.records):
+                loop.call_later(0.001 * (i + 1), self.emit, 7, rec)
+
+
+class FetchTest(unittest.TestCase):
+    def test_fetch_repeats_only_the_read_requests(self):
+        records = [session(402, 2), TILES, bytes([0xFF] * 12) + bytes.fromhex("02 00 01 00")]
+        dev = FakeMario(records)
+        result = asyncio.run(history.fetch(dev, timeout=2.0))
+        self.assertEqual(dev.subscribed, [(3, 2), (4, 0), (7, 0)])
+        # stessi byte dell'app ufficiale; mai 02 sulla porta 7 né 0x0A sulla porta 4
+        self.assertEqual([f.hex(" ") for f in dev.sent], ["09 00 81 03 11 51 02 01 f0", "0b 00 81 04 11 51 00 05 00 fe 00",
+                                                          "0b 00 81 04 11 51 00 09 00 00 00", "08 00 81 07 01 51 00 01"])
+        self.assertEqual(result["snapshot"], [(0x1902, 168)])
+        self.assertEqual([(i["request"], i["reply"], i["reply_value"]) for i in result["port4"]],
+                         [(0x05, 0x01, 0x00FE), (0x09, 0x0B, 0xFFFF)])
+        self.assertTrue(result["collector"].complete)
+        text = "\n".join(history.fetch_report(result))
+        self.assertIn("istantanea della porta 3: 0x1902=168", text)
+        self.assertIn("porta 4: richiesta 0x05 -> risposta 0x01 valore 0x00FE (risposta alla richiesta 0x05)", text)
+        self.assertIn("porta 7: 3 record", text)
+        self.assertIn("Mario ne aveva annunciati 2 più quello finale", text)
+        self.assertIn("partita n. 402", text)
+        data = history.fetch_json(result)
+        self.assertEqual(data["sessions"][0]["tiles"]["0x0002"], 10)
+        self.assertEqual((data["end"]["sessions"], data["problems"]), (1, []))
+
+    def test_fetch_without_answers(self):
+        dev = FakeMario(records=[], port4=False)
+        result = asyncio.run(history.fetch(dev, snapshot=False, timeout=0.1, reply_timeout=0.1))
+        self.assertEqual([f[3] for f in dev.sent], [4, 4, 7])  # niente richiesta della porta 3
+        self.assertEqual([i["reply"] for i in result["port4"]], [None, None])
+        text = "\n".join(history.fetch_report(result))
+        self.assertIn("porta 4: richiesta 0x09 senza risposta", text)
+        self.assertIn("porta 7: nessun record", text)
 
 
 if __name__ == "__main__":
