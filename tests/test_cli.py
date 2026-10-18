@@ -65,6 +65,32 @@ class CliTests(unittest.TestCase):
             self.assertIn("seconda", (Path(tmp) / "b.txt").read_text(encoding="utf-8"))
             log.close()
 
+    def test_shell_completions(self):
+        c = self.cli.shell_completions
+        ports = {0: [0, 1, 2], 1: [0, 1], 3: [0, 1, 2, 3], 6: [0]}
+        self.assertIn("history", c(""))
+        self.assertEqual(c("su"), ["sub"])
+        self.assertEqual(c("prop bat"), ["batteria", "battery", "battery_type", "battery_voltage"])
+        self.assertIn("advertising_name", c("prop "))
+        self.assertEqual(c("watch button "), ["on", "off"])
+        self.assertEqual(c("sub ", ports), ["0", "1", "3", "6"])
+        self.assertEqual(c("sub 3 ", ports), ["0", "1", "2", "3"])
+        self.assertEqual(c("sub 3 2 ", ports), [])                 # delta: nessun suggerimento
+        self.assertEqual(c("sub 3 2 1 o", ports), ["on", "off"])
+        self.assertEqual(c("sub x ", ports), [])
+        self.assertEqual(c("alert low"), ["low_signal", "low_voltage"])
+        self.assertEqual(c("alert power "), ["on", "off", "req"])
+        self.assertEqual(c("help com"), ["combo", "combo-reset"])
+        self.assertEqual(c("raw 05 "), [])
+
+    def test_history_expansion(self):
+        history = ["prop battery", "sub 3 2", "volume 50"]
+        self.assertEqual(self.cli.expand_history("!!", history), "volume 50")
+        self.assertEqual(self.cli.expand_history("!2", history), "sub 3 2")
+        self.assertIsNone(self.cli.expand_history("!9", history))
+        self.assertIsNone(self.cli.expand_history("!!", []))
+        self.assertEqual(self.cli.expand_history("ports", history), "ports")
+
     def test_shell_help_topics(self):
         self.assertIn("sub <porta> <modo>", self.cli.shell_help("sub"))
         self.assertIn("modo:dataset", self.cli.shell_help("combo"))

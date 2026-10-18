@@ -299,6 +299,7 @@ Comandi disponibili (i messaggi in arrivo da Mario vengono mostrati con '<-'):
   quiet [on|off]                mostra solo i messaggi spontanei (valori, proprietà, errori)
   debug [on|off]                mostra i byte grezzi TX/RX
   log [FILE|off]                mostra, cambia o sospende il file di log della sessione
+  history [N]                   ultimi N comandi (20); !! ripete l'ultimo, !N il comando numero N
   off                           spegne Mario
   disconnect                    chiede a Mario di disconnettersi
   quit                          esce dalla shell
@@ -325,6 +326,61 @@ SHELL_DETAILS = {
 }
 SHELL_COMMANDS = sorted({line.split()[0] for line in SHELL_HELP.splitlines() if line.startswith("  ")}
                         | {"exit", "q", "combo-reset", "unsub"})
+
+
+ON_OFF = ["on", "off"]
+# argomenti completati con Tab, per comando e posizione: "props" = nomi delle proprietà, "ports" = porte
+# annunciate, "modes" = modi della porta scritta prima, altrimenti una lista fissa
+SHELL_ARGS = {
+    "prop": ["props"], "watch": ["props", ON_OFF], "modes": ["ports"], "value": ["ports"],
+    "sub": ["ports", "modes", [], ON_OFF], "unsub": ["ports", "modes"], "combo": ["ports"],
+    "combo-reset": ["ports"], "alert": [None, ["on", "off", "req"]], "busy": [ON_OFF], "quiet": [ON_OFF],
+    "debug": [ON_OFF], "log": [["off"]], "help": ["commands"],
+}
+
+
+def shell_completions(buffer: str, ports: Optional[dict[int, list[int]]] = None) -> list[str]:
+    """Completamenti per la riga scritta finora (fino al cursore): il comando, poi i suoi argomenti.
+    `ports` = porte annunciate da Mario con i loro modi."""
+    words = buffer.split()
+    if not buffer.strip() or (len(words) == 1 and not buffer.endswith(" ")):
+        prefix = words[0].lower() if words else ""
+        return [c for c in SHELL_COMMANDS if c.startswith(prefix)]
+    cmd = words[0].lower()
+    index = len(words) - 1 if buffer.endswith(" ") else len(words) - 2
+    prefix = "" if buffer.endswith(" ") else words[-1].lower()
+    kinds = SHELL_ARGS.get(cmd, [])
+    if index >= len(kinds):
+        return []
+    kind = kinds[index]
+    if kind == "props":
+        options = sorted({p.name.lower() for p in HubProperty} | set(lwp3.HUB_PROPERTY_ALIASES))
+    elif kind == "ports":
+        options = [str(port) for port in sorted(ports or {})]
+    elif kind == "modes":
+        try:
+            options = [str(m) for m in (ports or {}).get(parse_int(words[1]), [])]
+        except ValueError:
+            options = []
+    elif kind == "commands":
+        options = SHELL_COMMANDS
+    elif kind is None and cmd == "alert":
+        options = sorted(ALERT_ALIASES)
+    else:
+        options = list(kind or [])
+    return [o for o in options if o.lower().startswith(prefix)]
+
+
+def expand_history(line: str, history: list[str]) -> Optional[str]:
+    """`!!` = ultimo comando, `!N` = comando numero N di `history`; None se il numero non esiste.
+    Le altre righe tornano uguali."""
+    text = line.strip()
+    if text == "!!":
+        return history[-1] if history else None
+    if re.fullmatch(r"!\d+", text):
+        n = int(text[1:])
+        return history[n - 1] if 1 <= n <= len(history) else None
+    return line
 
 
 def shell_help(topic: str = "") -> str:
@@ -358,8 +414,9 @@ def _history_file(name: str) -> Optional[Path]:
 
 
 def _stdin_reader(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, prompt: str = PROMPT,
-                  completions: Optional[list[str]] = None, history: str = "") -> None:
-    """Legge le righe dall'utente in un thread. Su un terminale usa readline (cronologia, completamento)."""
+                  completions=None, history: str = "") -> None:
+    """Legge le righe dall'utente in un thread. Su un terminale usa readline (cronologia, completamento).
+    `completions` è una lista di parole o una funzione che riceve la riga fino al cursore."""
     global _readline_active
     readline = None
     if sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("MARIO_NO_READLINE") != "1":
@@ -370,11 +427,19 @@ def _stdin_reader(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, prompt:
             readline = None
     hist = _history_file(history) if (readline and history) else None
     if readline:
-        words = list(completions or [])
+        words = [] if callable(completions) else list(completions or [])
+        found: list[str] = []
 
         def complete(text, state):
-            matches = [w for w in words if w.startswith(text)]
-            return matches[state] + " " if state < len(matches) else None
+            if state == 0:
+                if callable(completions):
+                    try:
+                        found[:] = completions(readline.get_line_buffer()[:readline.get_endidx()])
+                    except Exception:  # un errore nel completamento non deve rompere il prompt
+                        found[:] = []
+                else:
+                    found[:] = [w for w in words if w.startswith(text)]
+            return found[state] + " " if state < len(found) else None
 
         readline.set_completer(complete)
         readline.set_completer_delims(" \t\n")
@@ -440,6 +505,7 @@ class Shell:
         self.closed = False  # True quando l'utente chiude (quit, off, disconnect, fine input)
         self.session = SessionLog("shell")
         self._listening = False
+        self.history: list[str] = []  # comandi di questa sessione (con readline anche quelli delle precedenti)
 
     def on_message(self, msg, text) -> None:
         self.session.write("<- " + text, msg.raw)
@@ -457,7 +523,7 @@ class Shell:
                 say(f"Log della sessione: {self.session.path}")
             print(SHELL_HELP)
         threading.Thread(target=_stdin_reader, args=(loop, queue),
-                         kwargs={"completions": SHELL_COMMANDS, "history": "shell"}, daemon=True).start()
+                         kwargs={"completions": self.complete, "history": "shell"}, daemon=True).start()
         while self.dev.connected:
             show_prompt()
             getter = asyncio.ensure_future(queue.get())
@@ -476,6 +542,19 @@ class Shell:
             line = line.strip()
             if not line:
                 continue
+            past = self.history_lines()
+            if _readline_active and past and past[-1].strip() == line:
+                past = past[:-1]  # readline ha già messo in cronologia la riga appena scritta
+            expanded = expand_history(line, past)
+            if expanded is None:
+                print(f"  {line}: nessun comando con quel numero (vedi 'history')")
+                continue
+            if expanded != line:
+                print(f"  {expanded}")
+                self._replace_last_history(line, expanded)
+                line = expanded
+            if not _readline_active:
+                self.history.append(line)
             self.session.write("-> " + line)
             try:
                 if await self.handle(line):
@@ -492,6 +571,33 @@ class Shell:
             except Exception as exc:  # un bug in un comando non deve chiudere la sessione
                 print(f"Errore interno nel comando {line.split()[0]!r}: {type(exc).__name__}: {exc}")
                 logging.getLogger("mario").debug("traceback comando shell", exc_info=True)
+
+    def complete(self, buffer: str) -> list[str]:
+        ports = {port: sorted(ps.modes) for port, ps in self.dev.state.ports.items()}
+        return shell_completions(buffer, ports)
+
+    def history_lines(self) -> list[str]:
+        """Cronologia dei comandi: quella di readline (anche delle sessioni precedenti) o quella della sessione."""
+        if _readline_active:
+            try:
+                import readline
+                return [readline.get_history_item(i) for i in range(1, readline.get_current_history_length() + 1)]
+            except ImportError:  # pragma: no cover
+                pass
+        return list(self.history)
+
+    @staticmethod
+    def _replace_last_history(typed: str, expanded: str) -> None:
+        """Nella cronologia di readline `!!` e `!N` lasciano il posto al comando che hanno ripetuto."""
+        if not _readline_active:
+            return
+        try:
+            import readline
+            n = readline.get_current_history_length()
+            if n and readline.get_history_item(n) == typed:
+                readline.replace_history_item(n - 1, expanded)
+        except (ImportError, ValueError):  # pragma: no cover
+            pass
 
     async def handle(self, line: str) -> bool:
         """Esegue un comando; ritorna True se la shell deve terminare."""
@@ -512,6 +618,11 @@ class Shell:
             else:
                 path = self.session.switch(args[0])
                 print(f"  log: {path}" if path else f"  impossibile aprire {args[0]}")
+        elif cmd == "history":
+            lines = self.history_lines()
+            count = parse_int(args[0]) if args else 20
+            for number, text in list(enumerate(lines, 1))[-count:]:
+                print(f"  {number:>4}  {text}")
         elif cmd == "props":
             for prop in HubProperty:
                 try:
