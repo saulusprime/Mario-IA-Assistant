@@ -11,7 +11,7 @@ Interfaccia a riga di comando.
   decode    decodifica catture btsnoop, bugreport Android, PacketLogger iOS, log o byte esadecimali (senza Bluetooth)
   adventure avventure del designer: elenco, prova con eventi simulati, partita con il Mario fisico
   volume / name / prop / raw / off   comandi rapidi one-shot
-  live-checks / catalog-tiles / probe-port4 / diag-connect / re-checks   strumenti dal vivo di tools/
+  live-checks / catalog-tiles / probe-port4 / diag-connect / re-checks / firmware-recon   strumenti di tools/
   fetch-sounds   scarica suoni e voci di Mario (themushroomkingdom.net) per gli effetti dell'assistente
 """
 from __future__ import annotations
@@ -1382,6 +1382,7 @@ TOOLS = {"live-checks": ("live_checks.py", "verifiche dal vivo guidate a voce (p
          "probe-port4": ("probe_port4.py", "scritture a scatola nera su porta 4 e 7, osservazione di standby"),
          "diag-connect": ("diag_connect.py", "diagnostica di connessione: come BlueZ vede Mario"),
          "fetch-sounds": ("fetch_mario_sounds.py", "scarica suoni e voci di Mario da themushroomkingdom.net in data/sounds/tmk (uso privato)"),
+         "firmware-recon": ("firmware_recon.py", "ricognizione del firmware dall'APK dell'app ufficiale (sola lettura, file in data/firmware)"),
          "re-checks": ("re_checks.py", "reverse engineering dal vivo: annuncio, GATT, tipo di sistema, sonno, porta 3 CHAL/VERS/DEBUG, porte 4 e 7 nel gioco")}
 
 

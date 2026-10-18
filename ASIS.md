@@ -98,6 +98,13 @@ Le prove dal vivo citate hanno i log in `docs/sessioni/`.
 - **Conclusione sulla voce diretta**: con i comandi standard LWP3 non esiste una via per far
   suonare o animare Mario; le piste rimaste sono nel TODO (carta stampata, e-ink, luce colorata,
   cattura dell'app ufficiale, firmware).
+- **Ricognizione del firmware (18/10, sola lettura, `./run.sh firmware-recon`)**: dall'app ufficiale per
+  Android (versione 2.11.8, copiata dal telefono dell'utente) risulta che "LEAF" è il nome in codice del
+  prodotto (il firmware si chiama `LEAF_FW_…`, come la riga della traccia DEBUG) e che le definizioni delle
+  porte di Mario salvate dall'app sono identiche fra 6.5.01 e 6.5.03. L'APK non contiene né il firmware né i
+  pacchetti di suoni e animazioni: arrivano da Google Play come pacchetti separati, nella memoria privata
+  dell'app, non leggibile senza root. Ricognizione chiusa al criterio di stop concordato; il log HCI snoop del
+  telefono era spento durante l'aggiornamento alla 6.5.03.
 - **Basette virtuali su schermo**: lo scanner non legge i barcode mostrati su un LCD (luce emessa,
   polarizzatori, probabile lettura nel vicino infrarosso). Pista chiusa per gli schermi emissivi.
 - **System type**: la proprietà 0x0B risponde `0x40` mentre l'advertisement dichiara `0x43` (riletti

@@ -1022,6 +1022,27 @@ fare e provare senza il giocattolo.
   `decode` lo rilegge). Le versioni precedenti restano nella storia di git.
 - Test: da 243 a 249 (`test_probe_port4`).
 
+### 18/10 sera — Ricognizione del firmware (sola lettura)
+
+- Richiesta dell'utente: procedere con il reverse engineering del firmware, nella forma concordata (solo
+  lettura, tempo limitato, stop se l'immagine non si trova o è cifrata; niente scritture sull'OAD, niente
+  accesso hardware, immagini fuori da git).
+- Fonti pubbliche: elenchi di file di versioni 2020–2023 dell'app indicano nomi `LEAF_FW_V<versione>_GE.bin`
+  e pacchetti di asset per personaggio. Le copie su Internet Archive sono ridistribuzioni di terzi: non usate.
+- `tools/firmware_recon.py` (`./run.sh firmware-recon`): copia dal telefono via adb gli APK dell'app, cerca
+  quei file anche negli archivi annidati, li analizza (entropia, intestazione OAD di TI, tabella dei vettori,
+  stringhe note). Tutto in `data/firmware/`, fuori da git.
+- Telefono: il Debug USB cadeva una volta al secondo con "Protocol error" (anche dopo aver rifatto
+  l'autorizzazione); il Debug wireless di Android 12 ha funzionato. `adb mdns` di Debian non vede i servizi:
+  porta di associazione trovata con una query mDNS scritta a mano, poi `adb pair` con il codice.
+- Esito: app 2.11.8, un solo APK (Unity) senza firmware né asset di Mario; l'app li riceve da Google Play
+  come pacchetti separati nella memoria privata (non leggibile senza root). Dalla parte leggibile: "leaf" è il
+  nome in codice del prodotto; le definizioni delle porte salvate dall'app sono identiche fra 6.5.01 e 6.5.03.
+  Log HCI snoop spento durante l'aggiornamento. **Ricognizione chiusa** al criterio di stop.
+- Strada che resta per le porte 4 e 7: cattura del traffico dell'app durante il gioco
+  (`docs/cattura-app-ufficiale.md`), avviata subito dopo.
+- Test: da 249 a 251 (`test_firmware_recon`).
+
 ## 4. Stato del codice
 
 | File | Ruolo |
@@ -1040,7 +1061,7 @@ fare e provare senza il giocattolo.
 | `mario/rar20.py` | estrazione RAR 2.0 in Python (Unpack20 con modalità audio, CRC32) per i moduli `.mdr` dell'archivio dei suoni |
 | `mario/assistant/` | Mario come I/O di un LLM: `intents.py`, `emotions.py`, `tts.py`, `llm.py`, `behaviours.py`, `memory.py`, `session.py`, `service.py`, `openvoice.py` (client della voce IA) e `openvoice_worker.py` (processo piper + OpenVoice, gira con `.venv-openvoice`), `stt.py` e `stt_worker.py` (ingresso vocale, faster-whisper in `.venv-stt`), `wake_worker.py` (ascolto continuo di «Ehi Mario» con Vosk, client `WakeListener` in `stt.py`), `worker.py` (ciclo di vita comune dei processi con i modelli), `safety.py` (temi da evitare), `report.py` (riepilogo del giorno) (vedi README, sezione Assistente) |
 | `mario/adventures/` | designer di avventure: `model.py`, `engine.py`, `library.py`, `service.py` (anche modalità registra ed esempi offerti una volta); esempi in `mario/data/adventures/` |
-| `tests/` | 249 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI; `browser.py` comanda un Firefox headless via WebDriver BiDi |
+| `tests/` | 251 test (vedi tabella nel README); quelli che importano Flask o bleak girano sull'host e in CI; `browser.py` comanda un Firefox headless via WebDriver BiDi |
 | `pyproject.toml`, `.github/workflows/tests.yml` | pacchetto `mario-ble` 0.2.0 con entry point `mario` (installabile anche non modificabile); test su GitHub Actions |
 | `mario/web/app.py` | Flask: pagine (menù) e API JSON |
 | `mario/web/ble_worker.py` | thread Bluetooth della dashboard (loop asyncio, SSE, salvataggio eventi) |
@@ -1075,7 +1096,7 @@ Il lavoro aperto è in [TODO.md](TODO.md); le attività completate e verificate 
 
 ```sh
 cd ~/Sviluppo/Mario
-.venv/bin/python -m unittest discover -s tests   # test offline (249, con Firefox headless se c'è); nel sandbox: python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests   # test offline (251, con Firefox headless se c'è); nel sandbox: python3 -m unittest discover -s tests
 ./run.sh -t 60 info                          # premere il tasto Bluetooth di Mario; salva mario/data/capabilities-fw-*.json
 ./run.sh monitor --combined                  # eventi in tempo reale (accelerometro + gesti insieme), log in logs/
 ./run.sh shell                               # console bidirezionale con readline, log in logs/

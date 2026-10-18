@@ -96,12 +96,6 @@ GATT) è in ASIS, sezione 2; la cattura dal telefono ha la sua guida in `docs/ca
       PacketLogger, copione di gioco, comandi di analisi). I lettori di `decode` per i formati dei telefoni
       sono stati provati solo su file sintetici: la prima cattura vera va controllata con `--json`. È il modo
       più rapido per capire le porte 4 e 7 e il significato degli eventi.
-- [ ] **Immagine del firmware da una cattura dell'aggiornamento**: l'utente ha aggiornato Mario alla 6.5.03 con
-      l'app ufficiale; se sul telefono era attivo il log HCI snoop (Opzioni sviluppatore, di serie è spento), un
-      `adb bugreport` potrebbe contenere ancora il trasferimento via OAD (`f000ffc0-…`), cioè l'immagine stessa.
-      In quel caso servirebbe a `decode` un'opzione che ricompone i blocchi scritti sulla caratteristica Image
-      Block (oggi le scritture non LWP3 vengono scartate). Per i prossimi aggiornamenti (anche di Luigi o
-      Peach): attivare prima il log completo. È il punto di partenza della ricognizione del firmware (sezione 7).
 - [ ] **System type con Luigi e Peach**: Mario risponde `0x40` alla proprietà 0x0B e dichiara `0x43`
       nell'advertisement; verificare se Luigi (0x44) e Peach (0x45) fanno lo stesso quando ci saranno.
 - [ ] **Mario come "central"**: l'advertisement dichiara capacità 0x03 (central e
@@ -295,14 +289,11 @@ state fatte con esito negativo (dettagli in ASIS, sezione 2). Restano, in ordine
 - [ ] **Cattura dell'app ufficiale** (vedi sezione 2): se nella cattura un Port Output verso la
       4 o la 7 è seguito da un suono di Mario, il comando si copia pari pari. Vale anche per il
       collegamento Mario–Luigi: lì Mario parla e suona a comando dell'altro personaggio.
-- [ ] **Reverse engineering del firmware** (se i comandi non esistono): il chip è un
-      Texas Instruments con servizio OAD (`f000ffc0-…`), quindi il firmware si aggiorna via
-      radio con immagini firmate/cifrate dall'app. Passi: recuperare l'immagine firmware
-      dall'app ufficiale (APK/IPA), identificarne il formato OAD, verificare se è firmata;
-      analisi statica (Ghidra, ARM Cortex-M) per trovare le tabelle suoni/animazioni e il
-      dispatcher LWP3; in alternativa accesso hardware via cJTAG sulla scheda. Rischi:
-      brick del giocattolo, perdita di garanzia, aspetti legali del bypass della firma.
-      Da fare solo su un Mario "da laboratorio".
+- [ ] **Reverse engineering del firmware**: la ricognizione in sola lettura del 18/10 si è fermata al
+      criterio di stop (vedi ASIS, sezione 2): l'app attuale non contiene l'immagine, che arriva da Google Play
+      nella memoria privata dell'app. Si riprende solo se l'immagine diventa disponibile in modo lecito senza
+      aggirare protezioni (per esempio dentro un'app futura); niente root, niente scritture sull'OAD, niente
+      accesso hardware sul Mario di casa.
 - [ ] **Audio in streaming verso Mario**: richiederebbe un firmware modificato con un
       canale GATT per PCM/ADPCM e la pipeline verso il DAC/altoparlante; valutare banda
       BLE (≈ 50–100 kbit/s utili) e codec (ADPCM 4 bit, 8 kHz ≈ 32 kbit/s).

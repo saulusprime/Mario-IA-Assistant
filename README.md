@@ -39,7 +39,7 @@ decodificatori specifici di Mario ricavati dal reverse engineering della communi
 ./run.sh adventure --list     # avventure del designer; --play quiz [--no-mario] per giocarne una
 ./run.sh decode logs/x.txt    # decodifica offline di catture btsnoop, log o byte esadecimali
 ./run.sh monitor --json | ./run.sh bridge --mqtt localhost   # eventi con un nome su MQTT e/o WebSocket (--ws 8766)
-./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect)
+./run.sh live-checks --steps gesti   # strumenti di tools/ come sottocomandi (catalog-tiles, probe-port4, diag-connect, firmware-recon)
 ./run.sh re-checks --steps sonno,porta3   # reverse engineering dal vivo (sezione 2 del TODO): annuncio, GATT, porta 3, porte 4 e 7
 ./run.sh re-checks --steps porta3 --port3-modes DEBUG   # un solo modo della porta 3 (DEBUG: traccia del firmware)
 ./run.sh volume 30            # imposta il volume (0-100)
@@ -942,7 +942,7 @@ catture HCI. La cartella è ignorata da git.
 python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bin/python -m unittest discover -s tests
 ```
 
-249 test senza Bluetooth né rete esterna, raggruppati per file:
+251 test senza Bluetooth né rete esterna, raggruppati per file:
 
 | File | Cosa copre |
 |---|---|
@@ -965,6 +965,7 @@ python3 -m unittest discover -s tests -v          # nel venv dell'host: .venv/bi
 | `test_browser` (5) | la dashboard in un Firefox headless vero via WebDriver BiDi (client in `tests/browser.py`, solo libreria standard): errori JavaScript di ogni pagina, editor e registrazione di un percorso, partita e replay, filtri delle tabelle, zoom con un trascinamento del mouse; saltati senza Firefox |
 | `test_bridge` (7) | ponte: traduzione degli eventi in fatti, lettori di righe JSON e SSE, broker MQTT finto (anche credenziali e rifiuto), WebSocket con il client dei test, flusso vero della dashboard |
 | `test_probe_port4` (6) | scansione dei sottocomandi di Port Output: piano delle prove, esiti (errore, feedback, silenzio, valori spontanei), mappa compressa di `--sweep`, prove con un Mario finto che risponde come quello vero |
+| `test_firmware_recon` (2) | ricognizione del firmware: estrazione da APK annidati, intestazione OAD con CRC, tabella dei vettori, entropia, versione dal nome |
 | `test_cli` (11), `test_smoke` (3) | parser, log di sessione, comandi dell'assistente e delle avventure, completamento e cronologia della shell, cartelle dal sorgente e con `MARIO_HOME`, `decode`; importazione senza Bluetooth |
 
 I test che importano Flask o bleak vengono saltati dove mancano (per esempio nel sandbox) e
@@ -995,9 +996,9 @@ mario/env.py            caricamento di .env (chiave API) senza dipendenze
 mario/syscheck.py       controllo del PC per il Bluetooth (`doctor`, pagina Scansione): adattatore, autosospensione, Wi-Fi, pairing
 mario/rar20.py          estrazione RAR 2.0 in Python per i moduli .mdr dell'archivio dei suoni
 tools/                  capture_btmon.sh, diag_connect.py, gatt_notify_test.sh (prova con il solo bluetoothctl),
-                        probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, 99-mario-btusb.rules (udev),
+                        probe_port4.py, catalog_tiles.py, live_checks.py, re_checks.py, firmware_recon.py, 99-mario-btusb.rules (udev),
                         setup_openvoice.sh (voce IA), setup_stt.sh (ingresso vocale e «Ehi Mario»), fetch_mario_sounds.py
-tests/                  test offline (249), browser.py (Firefox headless via WebDriver BiDi)
+tests/                  test offline (251), browser.py (Firefox headless via WebDriver BiDi)
 docs/                   monitor-json.md (righe JSON e ponte MQTT/WebSocket), cattura-app-ufficiale.md (guida alla
                         cattura dal telefono), sessioni/ (log delle prove dal vivo)
 third_party/            cloni di riferimento (LEGO-Mario-Reveng, legomario.py, pyLegoMario), OpenVoice con il
