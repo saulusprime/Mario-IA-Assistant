@@ -64,9 +64,16 @@ DEFAULT_RULES: dict[str, Rule] = {
                     "cambio di colore del terreno (porta 1)", 1, True, 8.0),
     "batteria": Rule("batteria", "prompt", "Ho la batteria quasi scarica, mi sento stanco.",
                      "batteria sotto il 15 % (una volta sola)", 1, True, 600.0),
-    "moneta": Rule("moneta", "prompt", "Ho raccolto una moneta, sono a {value}!",
-                   "evento porta 3 codice 0x3861 (ipotesi: contatore monete)", 1, False, 1.0),
+    # Porta 3 (eventi di gioco). Fino al 18/10 "moneta" leggeva 0x3861, che è il conto alla rovescia di Mario fermo:
+    # il totale delle monete del livello è 0x386B (verificato dal vivo il 12 e il 14/10).
+    "moneta": Rule("moneta", "prompt", "Ho raccolto delle monete: adesso ne ho {value}!",
+                   "monete del livello (porta 3, totale 0x386B): spenta perché scatta spesso", 1, False, 5.0),
+    "tempo": Rule("tempo", "prompt", "Presto! Il tempo del livello sta per finire: restano 15 secondi!",
+                  "ultimi 15 secondi del livello (porta 3: 0x1803 = 4, 45 s dopo lo Start)", 2, True, 30.0),
+    "fine_livello": Rule("fine_livello", "prompt", "Il livello è finito! {coins}",
+                         "fine del livello (porta 3: 0x1803 = 3)", 1, True, 30.0),
 }
+LEVEL_PHASES = {1: "in corso", 4: "ultimi 15 secondi", 3: "finito", 0: None}  # valori di 0x1803
 
 GESTURE_BITS = {0x8000: "salto", 0x0800: "caduta", 0x0100: "rotazione", 0x0001: "urto", 0x0010: "scossa"}
 
@@ -149,7 +156,7 @@ class IntentMapper:
         self.rules: dict[str, Rule] = {k: Rule(**asdict(v)) for k, v in (rules or DEFAULT_RULES).items()}
         self.context: dict = {"pants": None, "pants_name": None, "color": None, "color_name": None,
                               "tile": None, "tile_name": None, "gesture": None, "battery": None,
-                              "lifted": None, "updated": 0.0}
+                              "lifted": None, "level": None, "coins": None, "updated": 0.0}
         # La rotazione scatta di continuo quando Mario è tenuto in mano: vale solo se lo scanner vede
         # qualcosa sotto i piedi (colore o basetta), cioè se Mario è appoggiato.
         self.rotation_only_on_ground = True
@@ -200,6 +207,8 @@ class IntentMapper:
             parts.append(f"ultimo gesto: {c['gesture']}")
         if c.get("lifted"):
             parts.append("sei sollevato da terra (in mano a qualcuno)")
+        if c.get("level"):
+            parts.append(f"livello: {c['level']}" + (f", monete {c['coins']}" if c.get("coins") is not None else ""))
         if c["battery"] is not None:
             parts.append(f"batteria: {c['battery']} %")
         return "; ".join(parts) if parts else "nessun dato dai sensori per ora"
@@ -331,12 +340,22 @@ class IntentMapper:
         return [intent] if intent else []
 
     def _game_event(self, code: int, value: int, ts: float) -> list[Intent]:
-        if code == 0x3861:
+        intent = None
+        if code == 0x386B:  # totale monete del livello, 0 allo Start
             prev, self._coins = self._coins, value
+            self.context["coins"] = value
             if prev is not None and value > prev:
-                intent = self._fire("moneta", ts, value=value, source=f"evento 0x3861 = {value}")
-                return [intent] if intent else []
-        return []
+                intent = self._fire("moneta", ts, value=value, source=f"monete: {value}")
+        elif code == 0x1803 and value in LEVEL_PHASES:  # fase del livello
+            self.context["level"] = LEVEL_PHASES[value]
+            if value == 4:
+                intent = self._fire("tempo", ts, source="livello: ultimi 15 secondi")
+            elif value == 3:
+                coins = f"Ho raccolto {self._coins} monete." if self._coins else ""
+                intent = self._fire("fine_livello", ts, coins=coins, source="livello finito")
+            elif value == 0:
+                self.context["coins"] = self._coins = None
+        return [intent] if intent else []
 
 
 def event_from_message(dev, msg) -> Optional[dict]:

@@ -169,9 +169,27 @@ class IntentTests(unittest.TestCase):
 
     def test_coin_rule_when_enabled(self):
         self.m.set_rule("moneta", enabled=True)
+        # 0x3861 è il conto alla rovescia di Mario fermo (5->1, 8->1): non deve sembrare una moneta
         self.assertEqual(self.m.feed(port_event(0x46, 2, bytes([0x61, 0x38, 0x01, 0x00]))), [])
-        coin = self.m.feed(port_event(0x46, 2, bytes([0x61, 0x38, 0x02, 0x00])))
-        self.assertEqual([i.text for i in coin], ["Ho raccolto una moneta, sono a 2!"])
+        self.assertEqual(self.m.feed(port_event(0x46, 2, bytes([0x61, 0x38, 0x08, 0x00]))), [])
+        self.assertEqual(self.m.feed(port_event(0x46, 2, bytes([0x6B, 0x38, 0x00, 0x00]))), [])  # Start: 0 monete
+        coin = self.m.feed(port_event(0x46, 2, bytes([0x6B, 0x38, 0x07, 0x00])))
+        self.assertEqual([i.text for i in coin], ["Ho raccolto delle monete: adesso ne ho 7!"])
+
+    def test_level_time_and_end(self):
+        def phase(value, ts):
+            return self.m.feed({**port_event(0x46, 2, bytes([0x03, 0x18, value, 0x00])), "ts": ts})
+        self.assertEqual(phase(1, 100.0), [])
+        self.assertEqual(self.m.context["level"], "in corso")
+        self.m.feed({**port_event(0x46, 2, bytes([0x6B, 0x38, 0x08, 0x00])), "ts": 120.0})
+        self.assertEqual(self.m.feed(port_event(0x46, 2, bytes([0x6B, 0x38, 0x08, 0x00]))), [])  # moneta spenta
+        hurry = phase(4, 145.0)  # 45 s dopo lo Start: ultimi 15 secondi
+        self.assertEqual([(i.name, i.priority) for i in hurry], [("tempo", 2)])
+        self.assertIn("livello: ultimi 15 secondi, monete 8", self.m.context_text())
+        end = phase(3, 160.0)
+        self.assertEqual([i.text for i in end], ["Il livello è finito! Ho raccolto 8 monete."])
+        self.assertEqual(phase(0, 169.0), [])
+        self.assertNotIn("livello", self.m.context_text())
 
 
 class LLMTests(unittest.TestCase):
